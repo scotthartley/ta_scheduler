@@ -5,6 +5,7 @@ class Section:
     def __init__(
             self,
             name: str,
-            total_assignments: int = 0):
+            quota: int = 0):
         self.name = name
-        self.total_assignments = total_assignments
+        self.quota = quota
+

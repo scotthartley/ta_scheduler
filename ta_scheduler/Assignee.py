@@ -4,11 +4,11 @@ class Assignee:
     def __init__(
             self,
             name: str,
-            total_assignments: int = 0):
+            quota: int = 0):
         self.name = name
-        self.total_assignments = total_assignments
-        self.sections = []
+        self.quota = quota
+        self.section_priorities = []
 
 
-    def add_section(self, new_section: Section, priority: int):
-        self.sections.append({'sec': new_section, 'priority': priority})
+    def add_section_priority(self, new_section: Section, priority: int):
+        self.section_priorities.append({'sec': new_section, 'priority': priority})

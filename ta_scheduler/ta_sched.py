@@ -6,6 +6,10 @@ from ta_scheduler import Schedules
 from ta_scheduler import Assignee
 from ta_scheduler import Section
 import argparse
+import csv
+
+CSV_ENC = "utf-8-sig"
+
 
 def ta_sched():
     parser = argparse.ArgumentParser()
@@ -14,3 +18,29 @@ def ta_sched():
         help="Name of CSV file")
     args = parser.parse_args()
 
+    assignees = []
+    sections = []
+
+    with open(args.filename, mode='r', encoding=CSV_ENC) as file:
+        reader = csv.reader(file)
+        row_number = 0
+        for row in reader:
+            if row_number == 0:
+                section_names = [x for x in row if x]
+            elif row_number == 1:
+                section_quotas = [x for x in row if x]
+                if len(section_names) != len(section_quotas):
+                    raise Exception("Section names and quotas do not match!")
+                for n in range(len(section_names)):
+                    sections.append(
+                            Section(name=section_names[n],
+                            quota=section_quotas[n]))
+            else:
+                new_assignee = Assignee(name=row[0], quota=row[1])
+                priorities = row[2:]
+                for n in range(len(priorities)):
+                    new_assignee.add_section_priority(sections[n], priorities[n])
+                assignees.append(new_assignee)
+            row_number += 1
+
+    breakpoint()
