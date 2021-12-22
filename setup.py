@@ -20,10 +20,10 @@ setup(name='ta_scheduler',
       include_package_data=True,
       entry_points={
           'console_scripts': [
-              'ta_scheduler = ta_scheduler:ta_scheduler',
+              'ta_sched = ta_scheduler:ta_sched',
           ]
       },
       install_requires=[
       ],
-      python_requires=">=3",
+      python_requires=">=3.1",
       )

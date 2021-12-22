@@ -1,9 +1,10 @@
-﻿,"CHM 101, Sec A","CHM 101, Sec B","CHM 101, Sec C","CHM 102, Sec A","CHM 102, Sec B","CHM 201, Sec A"
-Frodo Baggins,10,5,0,0,,
-Samwise Gamgee,,10,5,0,0,0
-Gandalf,0,0,0,0,0,0
-Aragorn,10,10,5,5,0,0
-Elrond,,,0,0,0,0
-Saruman,0,0,,,,
-Gimli,5,5,5,5,0,0
-Legolas,0,0,0,0,0,0
+﻿,,"CHM 101, Sec A","CHM 101, Sec B","CHM 101, Sec C","CHM 102, Sec A","CHM 102, Sec B","CHM 201, Sec A"
+,,4,4,2,2,2,1
+Frodo Baggins,2,10,5,0,0,,
+Samwise Gamgee,2,,10,5,0,0,0
+Gandalf,2,0,0,0,0,0,0
+Aragorn,2,10,10,5,5,0,0
+Elrond,2,,,0,0,0,0
+Saruman,2,0,0,,,,
+Gimli,1,5,5,5,5,0,0
+Legolas,1,0,0,0,0,0,0
