@@ -5,7 +5,9 @@ class Section:
     def __init__(
             self,
             name: str,
-            quota: int = 0):
+            quota: float = 0,
+            value: float = 1):
         self.name = name
         self.quota = quota
+        self.value = value
 

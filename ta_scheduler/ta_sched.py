@@ -28,19 +28,22 @@ def ta_sched():
             if row_number == 0:
                 section_names = [x for x in row if x]
             elif row_number == 1:
-                section_quotas = [x for x in row if x]
-                if len(section_names) != len(section_quotas):
-                    raise Exception("Section names and quotas do not match!")
+                section_quotas = [float(x) for x in row if x]
+            elif row_number == 2:
+                section_values = [float(x) for x in row if x]
+                if not (len(section_names) == len(section_quotas) == len(section_values)):
+                    raise Exception("Section names, quotas, and values do not match!")
                 for n in range(len(section_names)):
                     sections.append(
                             Section(name=section_names[n],
-                            quota=section_quotas[n]))
+                                    quota=section_quotas[n],
+                                    value=section_values[n]))
             else:
-                new_assignee = Assignee(name=row[0], quota=row[1])
+                new_assignee = Assignee(name=row[0], target_load=row[1])
                 priorities = row[2:]
                 for n in range(len(priorities)):
                     new_assignee.add_section_priority(sections[n], priorities[n])
                 assignees.append(new_assignee)
             row_number += 1
 
-    breakpoint()
+    schedule = Schedules(assignees, sections)

@@ -4,11 +4,18 @@ class Assignee:
     def __init__(
             self,
             name: str,
-            quota: int = 0):
+            target_load: float = 0):
         self.name = name
-        self.quota = quota
+        self.target_load = target_load
         self.section_priorities = []
 
 
     def add_section_priority(self, new_section: Section, priority: int):
         self.section_priorities.append({'sec': new_section, 'priority': priority})
+
+    def section_priority(self, section: Section):
+        for n in self.section_priorities:
+            if n['sec'] == section:
+                return n['priority']
+        return None
+
