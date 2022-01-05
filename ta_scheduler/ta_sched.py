@@ -26,16 +26,22 @@ def ta_sched():
         row_number = 0
         for row in reader:
             if row_number == 0:
-                section_names = [x for x in row if x]
+                course_names = [x for x in row if x]
             elif row_number == 1:
-                section_quotas = [x for x in row if x]
+                section_names = [x for x in row if x]
             elif row_number == 2:
+                section_quotas = [x for x in row if x]
+            elif row_number == 3:
                 section_values = [x for x in row if x]
-                if not (len(section_names) == len(section_quotas) == len(section_values)):
-                    raise Exception("Section names, quotas, and values do not match!")
+                if not (len(course_names)
+                        == len(section_names)
+                        == len(section_quotas)
+                        == len(section_values)):
+                    raise Exception("Course names, section names, quotas, and values do not match!")
                 for n in range(len(section_names)):
                     sections.append(
-                            Section(name=section_names[n],
+                            Section(course_name=course_names[n],
+                                    section_name=section_names[n],
                                     quota=section_quotas[n],
                                     value=section_values[n]))
             else:

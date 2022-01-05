@@ -4,6 +4,7 @@
 
 # Maximum number of assignments an assignee can have.
 MAX_ASSIGNMENTS = 3
+SPLIT_PENALTY = 5
 
 import itertools
 
@@ -95,13 +96,22 @@ class Schedules:
 
         for schedule in self.all_schedules:
             points = 0
+            assignee_courses = {}
             for assignment in schedule:
                 assignee = assignment[0]
                 section = assignment[1]
                 points += assignee.section_priority(section)
+                if assignee not in assignee_courses:
+                    assignee_courses[assignee] = [section.course_name]
+                else:
+                    assignee_courses[assignee].append(section.course_name)
+                for a in assignee_courses:
+                    points -= (len(set(assignee_courses[a]))-1)*SPLIT_PENALTY
             scored_schedules.append({'points':points, 'schedule':schedule})
 
-        scored_schedules = sorted(scored_schedules, key = lambda x: x['points'], reverse=True)
+        scored_schedules = sorted(scored_schedules,
+                                  key = lambda x: x['points'],
+                                  reverse=True)
 
         return scored_schedules
 
