@@ -2,19 +2,19 @@
 
 """
 
-# Maximum number of assignments an assignee can have.
-MAX_ASSIGNMENTS = 3
-SPLIT_PENALTY = 5
-
 import itertools
 
 class Schedules:
     def __init__(self,
                  assignees: list,
-                 sections: list):
+                 sections: list,
+                 split_penalty: float,
+                 max_assignments: int):
 
         self.assignees = assignees
         self.sections = sections
+        self.split_penalty = split_penalty
+        self.max_assignments = max_assignments
 
         self.target_loads = {a:a.target_load for a in assignees}
         self.target_quotas = {s:s.quota for s in sections}
@@ -45,7 +45,7 @@ class Schedules:
         # Generate a list of all possible combinations of assignments
         # for the assignee.
         all_assignment_combos = []
-        for n in range(MAX_ASSIGNMENTS):
+        for n in range(self.max_assignments):
             all_assignment_combos += list(itertools.combinations(
                     possible_assignments, n+1))
 
@@ -106,7 +106,8 @@ class Schedules:
                 else:
                     assignee_courses[assignee].append(section.course_name)
                 for a in assignee_courses:
-                    points -= (len(set(assignee_courses[a]))-1)*SPLIT_PENALTY
+                    points -= ((len(set(assignee_courses[a]))-1)
+                            * self.split_penalty)
             scored_schedules.append({'points':points, 'schedule':schedule})
 
         scored_schedules = sorted(scored_schedules,

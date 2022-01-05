@@ -16,6 +16,14 @@ def ta_sched():
     parser.add_argument(
         "filename",
         help="Name of CSV file")
+    parser.add_argument(
+        "-s", "--split_penalty",
+        help="Penalty to apply to split assignments",
+        type=float, default=5.0)
+    parser.add_argument(
+        "-m", "--max_assignments",
+        help="Maximum number of assignments to consider per person",
+        type=int, default=3)
     args = parser.parse_args()
 
     assignees = []
@@ -52,5 +60,5 @@ def ta_sched():
                 assignees.append(new_assignee)
             row_number += 1
 
-    schedules = Schedules(assignees, sections)
+    schedules = Schedules(assignees, sections, args.split_penalty, args.max_assignments)
     schedules.dump()
