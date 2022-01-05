@@ -15,11 +15,11 @@ class Schedules:
         self.assignees = assignees
         self.sections = sections
 
-        target_loads = {a:a.target_load for a in assignees}
-        target_quotas = {s:s.quota for s in sections}
+        self.target_loads = {a:a.target_load for a in assignees}
+        self.target_quotas = {s:s.quota for s in sections}
 
         self.all_schedules, _ = self._build_schedules(
-                assignees, sections, target_loads, target_quotas)
+                self.assignees, self.target_quotas)
 
         for x in self.all_schedules:
             for y in x:
@@ -29,7 +29,7 @@ class Schedules:
         print("Total schedules:", len(self.all_schedules))
 
 
-    def _build_schedules(self, assignees, sections, loads, quotas) -> list:
+    def _build_schedules(self, assignees, quotas) -> list:
         total_quotas = sum([quotas[x] for x in quotas])
 
         # We are done if there are no assignees.
@@ -42,7 +42,7 @@ class Schedules:
 
         # Choose the first assignee as the person to assign to sections.
         current_assignee = assignees[0]
-        possible_assignments = [(current_assignee, s) for s in sections]
+        possible_assignments = [(current_assignee, s) for s in self.sections]
 
         # Generate a list of all possible combinations of assignments
         # for the assignee.
@@ -58,11 +58,12 @@ class Schedules:
         for combo in all_assignment_combos:
             acceptable = True
             for c in combo:
-                if c[1].value > loads[current_assignee] or quotas[c[1]] == 0:
+                if (c[1].value > self.target_loads[current_assignee]
+                        or quotas[c[1]] == 0):
                     acceptable = False
             if acceptable:
                 total_load = sum([c[1].value for c in combo])
-                if total_load == loads[current_assignee]:
+                if total_load == self.target_loads[current_assignee]:
                     candidate_combos.append(combo)
 
         schedules = []
@@ -79,7 +80,7 @@ class Schedules:
                     if section in sections_used:
                         new_quotas[section] -= 1
                 sub_schedules, success = self._build_schedules(
-                        remaining_assignees, sections, loads, new_quotas)
+                        remaining_assignees, new_quotas)
                 # Overall success if any of the combinations work out.
                 if sub_schedules and success:
                     for s in sub_schedules:
