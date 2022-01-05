@@ -1,3 +1,4 @@
 # Specify filepatterns you want git to ignore.
 *.egg-info/
 __pycache__/
+Tests/output.txt

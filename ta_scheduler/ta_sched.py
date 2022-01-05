@@ -61,4 +61,4 @@ def ta_sched():
             row_number += 1
 
     schedules = Schedules(assignees, sections, args.split_penalty, args.max_assignments)
-    schedules.dump()
+    print(schedules.dump())

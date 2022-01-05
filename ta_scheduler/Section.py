@@ -10,7 +10,7 @@ class Section:
             value: float = 1):
         self.course_name = course_name
         self.section_name = section_name
-        self.name = course_name + ", " + section_name
+        self.name = course_name + " (" + section_name + ")"
         self.quota = float(quota)
         self.value = float(value)
 

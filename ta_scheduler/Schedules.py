@@ -117,10 +117,26 @@ class Schedules:
         return scored_schedules
 
 
-    def dump(self):
-        print("Total schedules:", len(self.all_schedules), "\n")
+    def dump(self) -> str:
+        output = f"Total schedules: {len(self.all_schedules)}\n\n"
         for x in self.scored_schedules:
-            print(x['points'])
-            for y in x['schedule']:
-                print(f"{y[0].name}, {y[1].name}")
-            print()
+
+            sch_by_assignee = {}
+            sch_by_section = {}
+            for assignment in x['schedule']:
+                name = assignment[0].name
+                section = assignment[1].name
+                if name not in sch_by_assignee:
+                    sch_by_assignee[name] = []
+                sch_by_assignee[name].append(section)
+                if section not in sch_by_section:
+                    sch_by_section[section] = []
+                sch_by_section[section].append(name)
+            output += f"Points: {x['points']}\n"
+            for sec in sch_by_section:
+                output += f"{sec}: {', '.join(sch_by_section[sec])}\n"
+            output += "\n"
+            for name in sch_by_assignee:
+                output += f"{name}: {', '.join(sch_by_assignee[name])}\n"
+            output += "\n\n"
+        return output
