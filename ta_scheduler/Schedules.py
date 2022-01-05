@@ -42,7 +42,10 @@ class Schedules:
 
         # Choose the first assignee as the person to assign to sections.
         current_assignee = assignees[0]
-        possible_assignments = [(current_assignee, s) for s in self.sections]
+        # Generate all possible assignments, taking into account whether
+        # the section priorities are None.
+        possible_assignments = [(current_assignee, s) for s in self.sections
+                if current_assignee.section_priority(s)]
 
         # Generate a list of all possible combinations of assignments
         # for the assignee.
