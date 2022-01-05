@@ -1,6 +1,10 @@
 from ta_scheduler import Section
 
 class Assignee:
+    """An assignee (person to be assigned to sections). Has a name,
+    target load, and priorities by section.
+
+    """
     def __init__(
             self,
             name: str,

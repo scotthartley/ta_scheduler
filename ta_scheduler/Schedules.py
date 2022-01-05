@@ -1,10 +1,15 @@
-"""Defines the Schedule class.
+"""Defines the Schedules class.
 
 """
 
 import itertools
 
 class Schedules:
+    """Class that organizes sets of assignees and sections into
+    schedules, which are lists of tuples of the form (assignee,
+    section).
+
+    """
     def __init__(self,
                  assignees: list,
                  sections: list,
@@ -16,21 +21,33 @@ class Schedules:
         self.split_penalty = split_penalty
         self.max_assignments = max_assignments
 
+        # For convenience, dictionaries of target loads by assignee and
+        # target quotas by section.
         self.target_loads = {a:a.target_load for a in assignees}
         self.target_quotas = {s:s.quota for s in sections}
 
         self.all_schedules, _ = self._build_schedules(
-                self.assignees, self.target_quotas)
+                assignees=self.assignees,
+                quotas=self.target_quotas)
         self.scored_schedules = self._score()
 
 
-    def _build_schedules(self, assignees:list, quotas:dict) -> list:
+    def _build_schedules(self,
+                         assignees: list,
+                         quotas: dict) -> list:
+        """Recursive function that builds out the schedule. Takes a list
+        of assignees remaining to be assigned and quotas for sections
+        that need to be filled.
+
+        """
         total_quotas = sum([quotas[x] for x in quotas])
 
         # We are done if there are no assignees.
         if not assignees and total_quotas == 0:
             overall_success = True
             return ([], overall_success)
+        # If we no longer have assignees but quotas are unsatisfied, we
+        # have failed.
         elif not assignees:
             overall_success = False
             return ([], overall_success)
@@ -78,7 +95,8 @@ class Schedules:
                     if section in sections_used:
                         new_quotas[section] -= 1
                 sub_schedules, success = self._build_schedules(
-                        remaining_assignees, new_quotas)
+                        assignees=remaining_assignees,
+                        quotas=new_quotas)
                 # Overall success if any of the combinations work out.
                 if sub_schedules and success:
                     for s in sub_schedules:
@@ -92,6 +110,11 @@ class Schedules:
 
 
     def _score(self) -> list:
+        """Returns a list of schedules sorted by their scores, applying
+        the input priorities (from the Assignee class) and the split
+        penalty.
+
+        """
         scored_schedules = []
 
         for schedule in self.all_schedules:
@@ -106,6 +129,7 @@ class Schedules:
                 else:
                     assignee_courses[assignee].append(section.course_name)
                 for a in assignee_courses:
+                    # Set removes duplicates from the list.
                     points -= ((len(set(assignee_courses[a]))-1)
                             * self.split_penalty)
             scored_schedules.append({'points':points, 'schedule':schedule})
@@ -118,6 +142,9 @@ class Schedules:
 
 
     def dump(self) -> str:
+        """Return a string of formatted output.
+
+        """
         output = f"Total schedules: {len(self.all_schedules)}\n\n"
         for x in self.scored_schedules:
 

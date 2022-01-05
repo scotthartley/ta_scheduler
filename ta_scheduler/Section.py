@@ -1,5 +1,6 @@
 class Section:
-    """Defines the section class.
+    """Defines the section class. Has a course_name, section_name, name
+    (calculated from the others), a quota, and a value (workload).
     """
 
     def __init__(
@@ -13,4 +14,3 @@ class Section:
         self.name = course_name + " (" + section_name + ")"
         self.quota = float(quota)
         self.value = float(value)
-
