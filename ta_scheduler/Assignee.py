@@ -8,8 +8,10 @@ class Assignee:
     def __init__(
             self,
             name: str,
+            exp: str,
             target_load: float = 0):
         self.name = name
+        self.exp = exp
         self.target_load = float(target_load)
         self.section_priorities = []
 

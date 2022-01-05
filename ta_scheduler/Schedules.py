@@ -14,11 +14,13 @@ class Schedules:
                  assignees: list,
                  sections: list,
                  split_penalty: float,
+                 match_bonus: float,
                  max_assignments: int):
 
         self.assignees = assignees
         self.sections = sections
         self.split_penalty = split_penalty
+        self.match_bonus = match_bonus
         self.max_assignments = max_assignments
 
         # For convenience, dictionaries of target loads by assignee and
@@ -120,18 +122,37 @@ class Schedules:
         for schedule in self.all_schedules:
             points = 0
             assignee_courses = {}
+            section_assignees = {}
             for assignment in schedule:
                 assignee = assignment[0]
                 section = assignment[1]
                 points += assignee.section_priority(section)
+
                 if assignee not in assignee_courses:
-                    assignee_courses[assignee] = [section.course_name]
-                else:
-                    assignee_courses[assignee].append(section.course_name)
+                    assignee_courses[assignee] = []
+                assignee_courses[assignee].append(section.course_name)
+
+                if section not in section_assignees:
+                    section_assignees[section] = []
+                section_assignees[section].append(assignee)
+
             for a in assignee_courses:
                 # Set removes duplicates from the list.
                 points -= ((len(set(assignee_courses[a]))-1)
                         * self.split_penalty)
+
+            # Count numbers of experienced and inexperienced TAs.
+            # Apply bonus for pairing them.
+            for s in section_assignees:
+                num_exp = 0
+                num_inexp = 0
+                for a in section_assignees[s]:
+                    if a.exp == 'e':
+                        num_exp += 1
+                    if a.exp == 'i':
+                        num_inexp += 1
+                points += min(num_exp, num_inexp) * self.match_bonus
+
             scored_schedules.append({'points':points, 'schedule':schedule})
 
         scored_schedules = sorted(scored_schedules,

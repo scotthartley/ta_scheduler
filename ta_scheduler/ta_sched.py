@@ -1,5 +1,17 @@
 """Executable script for managing input and the Schedule class.
 
+    Input is a csv file of the following format:
+    - Row 1: Course names (must match for identical courses)
+    - Row 2: Course section names
+    - Row 3: Course TA quotas (number of people)
+    - Row 4: Course section values (credit that TAs get for assignment)
+    - Remaining rows are TAs in following format:
+        - Col 1: Name
+        - Col 2: "i" (inexperienced), "n" (neutral), or "e" (experienced)
+        - Col 3: Total load (sum of section values)
+        - Remaining columns give scores for particular assignments.
+          Leave blank (not 0) if TA is unavailable.
+
 """
 
 from ta_scheduler import Schedules
@@ -17,8 +29,12 @@ def ta_sched():
         "filename",
         help="Name of CSV file")
     parser.add_argument(
-        "-s", "--split_penalty",
+        "-sp", "--split_penalty",
         help="Penalty to apply to split assignments",
+        type=float, default=5.0)
+    parser.add_argument(
+        "-mb", "--match_bonus",
+        help="Bonus to apply to experienced/inexperienced combinations",
         type=float, default=5.0)
     parser.add_argument(
         "-m", "--max_assignments",
@@ -53,12 +69,13 @@ def ta_sched():
                                     quota=section_quotas[n],
                                     value=section_values[n]))
             else:
-                new_assignee = Assignee(name=row[0], target_load=row[1])
-                priorities = row[2:]
+                new_assignee = Assignee(name=row[0], exp=row[1], target_load=row[2])
+                priorities = row[3:]
                 for n in range(len(priorities)):
                     new_assignee.add_section_priority(sections[n], priorities[n])
                 assignees.append(new_assignee)
             row_number += 1
 
-    schedules = Schedules(assignees, sections, args.split_penalty, args.max_assignments)
+    schedules = Schedules(assignees, sections, args.split_penalty,
+            args.match_bonus, args.max_assignments)
     print(schedules.dump())
