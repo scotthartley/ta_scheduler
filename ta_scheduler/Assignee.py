@@ -10,8 +10,10 @@ class Assignee:
         self.section_priorities = []
 
 
-    def add_section_priority(self, new_section: Section, priority: int):
-        self.section_priorities.append({'sec': new_section, 'priority': priority})
+    def add_section_priority(self, new_section: Section, priority: str):
+        self.section_priorities.append(
+                {'sec': new_section,
+                 'priority': float(priority) if priority else None})
 
     def section_priority(self, section: Section):
         for n in self.section_priorities:

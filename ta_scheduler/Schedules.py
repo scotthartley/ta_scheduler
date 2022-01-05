@@ -20,6 +20,7 @@ class Schedules:
 
         self.all_schedules, _ = self._build_schedules(
                 self.assignees, self.target_quotas)
+        self.scored_schedules = self._score()
 
 
     def _build_schedules(self, assignees:list, quotas:dict) -> list:
@@ -38,7 +39,7 @@ class Schedules:
         # Generate all possible assignments, taking into account whether
         # the section priorities are None.
         possible_assignments = [(current_assignee, s) for s in self.sections
-                if current_assignee.section_priority(s)]
+                if current_assignee.section_priority(s) != None]
 
         # Generate a list of all possible combinations of assignments
         # for the assignee.
@@ -89,9 +90,26 @@ class Schedules:
         return (schedules, overall_success)
 
 
+    def _score(self) -> list:
+        scored_schedules = []
+
+        for schedule in self.all_schedules:
+            points = 0
+            for assignment in schedule:
+                assignee = assignment[0]
+                section = assignment[1]
+                points += assignee.section_priority(section)
+            scored_schedules.append({'points':points, 'schedule':schedule})
+
+        scored_schedules = sorted(scored_schedules, key = lambda x: x['points'], reverse=True)
+
+        return scored_schedules
+
+
     def dump(self):
         print("Total schedules:", len(self.all_schedules), "\n")
-        for x in self.all_schedules:
-            for y in x:
+        for x in self.scored_schedules:
+            print(x['points'])
+            for y in x['schedule']:
                 print(f"{y[0].name}, {y[1].name}")
             print()
