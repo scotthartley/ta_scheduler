@@ -46,4 +46,5 @@ def ta_sched():
                 assignees.append(new_assignee)
             row_number += 1
 
-    schedule = Schedules(assignees, sections)
+    schedules = Schedules(assignees, sections)
+    schedules.dump()

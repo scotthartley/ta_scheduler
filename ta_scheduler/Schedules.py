@@ -21,13 +21,6 @@ class Schedules:
         self.all_schedules, _ = self._build_schedules(
                 self.assignees, self.target_quotas)
 
-        for x in self.all_schedules:
-            for y in x:
-                print(f"{y[0].name}, {y[1].name}")
-            print()
-
-        print("Total schedules:", len(self.all_schedules))
-
 
     def _build_schedules(self, assignees, quotas) -> list:
         total_quotas = sum([quotas[x] for x in quotas])
@@ -94,3 +87,11 @@ class Schedules:
                     schedules.append(combo)
 
         return (schedules, overall_success)
+
+
+    def dump(self):
+        print("Total schedules:", len(self.all_schedules), "\n")
+        for x in self.all_schedules:
+            for y in x:
+                print(f"{y[0].name}, {y[1].name}")
+            print()
