@@ -22,7 +22,7 @@ class Schedules:
                 self.assignees, self.target_quotas)
 
 
-    def _build_schedules(self, assignees, quotas) -> list:
+    def _build_schedules(self, assignees:list, quotas:dict) -> list:
         total_quotas = sum([quotas[x] for x in quotas])
 
         # We are done if there are no assignees.
