@@ -128,10 +128,10 @@ class Schedules:
                     assignee_courses[assignee] = [section.course_name]
                 else:
                     assignee_courses[assignee].append(section.course_name)
-                for a in assignee_courses:
-                    # Set removes duplicates from the list.
-                    points -= ((len(set(assignee_courses[a]))-1)
-                            * self.split_penalty)
+            for a in assignee_courses:
+                # Set removes duplicates from the list.
+                points -= ((len(set(assignee_courses[a]))-1)
+                        * self.split_penalty)
             scored_schedules.append({'points':points, 'schedule':schedule})
 
         scored_schedules = sorted(scored_schedules,
