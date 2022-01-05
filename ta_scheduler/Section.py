@@ -8,6 +8,6 @@ class Section:
             quota: float = 0,
             value: float = 1):
         self.name = name
-        self.quota = quota
-        self.value = value
+        self.quota = float(quota)
+        self.value = float(value)
 

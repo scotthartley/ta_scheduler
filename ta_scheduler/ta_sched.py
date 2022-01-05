@@ -28,9 +28,9 @@ def ta_sched():
             if row_number == 0:
                 section_names = [x for x in row if x]
             elif row_number == 1:
-                section_quotas = [float(x) for x in row if x]
+                section_quotas = [x for x in row if x]
             elif row_number == 2:
-                section_values = [float(x) for x in row if x]
+                section_values = [x for x in row if x]
                 if not (len(section_names) == len(section_quotas) == len(section_values)):
                     raise Exception("Section names, quotas, and values do not match!")
                 for n in range(len(section_names)):
