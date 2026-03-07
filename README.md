@@ -9,7 +9,7 @@ The app runs on any OS, but the native file dialogs (Open, Save As, Import CSV) 
 ## Features
 
 - **Visual weekly grid** — drag to draw, resize, and move time blocks for courses, labs, and TA commitments (7 AM – 7 PM, Mon–Fri)
-- **CP-SAT solver** — automatically assigns TAs to lab roles while respecting SE caps, availability, and scheduling conflicts; locked manual assignments are always preserved
+- **CP-SAT solver** — automatically assigns TAs to lab roles while respecting section equivalent (SE) caps, availability, and scheduling conflicts; locked manual assignments are always preserved
 - **CSV import** — paste in a department course export to bulk-import graduate courses and lab sections, including multi-day meetings (MWF, TR, etc.)
 - **Conflict-override assignment** — manually force-assign a TA despite a conflict, with the reason clearly shown
 - **DOCX export** — generate a formatted schedule document
@@ -39,7 +39,7 @@ Dependencies:
 ## Running
 
 ```bash
-python app.py
+python ta_scheduler.py
 ```
 
 Opens at [http://localhost:5050](http://localhost:5050). (Port 5050 is used because macOS AirPlay Receiver occupies 5000.)
@@ -82,7 +82,7 @@ When assigning a TA manually, the assignment modal shows eligible TAs at the top
 
 ```
 ta_scheduler/
-├── app.py             # Flask backend, CP-SAT solver, DOCX export, CSV import
+├── ta_scheduler.py             # Flask backend, CP-SAT solver, DOCX export, CSV import
 ├── static/
 │   └── index.html     # Entire frontend (vanilla JS/CSS/HTML, no build tools)
 ├── requirements.txt
@@ -104,7 +104,7 @@ assignments:  [{lab_id, role_id, ta_id, locked}]
 - `day`: 0 = Mon … 4 = Fri
 - `start_min` / `end_min`: minutes since midnight (e.g. 540 = 9:00 AM)
 - `experience`: `"experienced"` or `"inexperienced"`
-- `se_value`: service equivalent units (float, e.g. 1.0 or 0.5)
+- `se_value`: section equivalent (SE) units — a float representing workload (e.g. 1.0 = one full lab section)
 
 ## Solver details
 

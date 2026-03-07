@@ -8,7 +8,7 @@ A single-user desktop web app (macOS) for scheduling graduate teaching assistant
 
 ```bash
 cd /Users/hartlecs/git_repos/ta_scheduler
-python app.py
+python ta_scheduler.py
 # Opens at http://localhost:5050
 ```
 
@@ -18,7 +18,7 @@ Port 5050 is used because macOS AirPlay Receiver occupies 5000.
 
 ```
 ta_scheduler/          ← repo root (flat, no subdirectories)
-├── app.py             ← Flask backend + OR-Tools CP-SAT solver + python-docx export + CSV import
+├── ta_scheduler.py             ← Flask backend + OR-Tools CP-SAT solver + python-docx export + CSV import
 ├── static/
 │   └── index.html     ← entire frontend (vanilla JS, no build tools, no dependencies)
 ├── requirements.txt
@@ -37,7 +37,7 @@ Install: `pip install -r requirements.txt`
 
 ## Architecture
 
-**Backend (`app.py`):**
+**Backend (`ta_scheduler.py`):**
 - Flask serves `static/index.html` and a JSON REST API
 - All persistent data lives in a single `.json` file chosen by the user via macOS file dialogs (`osascript`)
 - No data file is required to start; the app begins with empty in-memory state
@@ -108,6 +108,6 @@ Manual TA assignments default to `locked: true`.
 ## Key conventions
 
 - IDs are generated client-side with `uid()` (random hex string)
-- `EMPTY_DATA` in `app.py` defines the schema for a blank schedule
+- `EMPTY_DATA` in `ta_scheduler.py` defines the schema for a blank schedule
 - The `_osascript_dialog()` helper wraps all macOS file dialogs
 - `_get_meetings(item)` in the solver returns all `(day, start_min, end_min)` tuples for an item, falling back to the top-level fields for legacy entries without a `meetings` array
