@@ -51,14 +51,17 @@ def _file_dialog(dialog_type, directory=None, save_filename="", file_types=()):
     """Show a native file dialog via pywebview and return the chosen path, or None."""
     if _window is None:
         return None
-    import webview
+    from webview import FileDialog
     kwargs = dict(directory=directory or _default_dir(), file_types=file_types)
-    if dialog_type == webview.SAVE_DIALOG:
+    if dialog_type == FileDialog.SAVE:
         kwargs["save_filename"] = save_filename
     result = _window.create_file_dialog(dialog_type, **kwargs)
-    if result and len(result) > 0:
-        return result[0]
-    return None
+    if not result:
+        return None
+    # SAVE dialog returns a plain string; OPEN/FOLDER returns a tuple
+    if isinstance(result, str):
+        return result or None
+    return result[0] if len(result) > 0 else None
 
 
 def times_overlap(s1, e1, s2, e2):
@@ -151,11 +154,11 @@ def _default_dir():
 
 @app.route("/api/saveas", methods=["POST"])
 def save_as():
-    import webview
+    from webview import FileDialog
     data = request.get_json()
     current = get_data_file()
     default_name = os.path.basename(current) if current else "schedule.json"
-    path = _file_dialog(webview.SAVE_DIALOG,
+    path = _file_dialog(FileDialog.SAVE,
                         save_filename=default_name,
                         file_types=("JSON files (*.json)", "All files (*.*)"))
     if path is None:
@@ -169,8 +172,8 @@ def save_as():
 
 @app.route("/api/open-dialog", methods=["POST"])
 def open_dialog():
-    import webview
-    path = _file_dialog(webview.OPEN_DIALOG,
+    from webview import FileDialog
+    path = _file_dialog(FileDialog.OPEN,
                         file_types=("JSON files (*.json)", "All files (*.*)"))
     if path is None:
         return jsonify({"cancelled": True})
@@ -185,8 +188,8 @@ def open_dialog():
 
 @app.route("/api/import-csv", methods=["POST"])
 def import_csv_route():
-    import webview
-    path = _file_dialog(webview.OPEN_DIALOG,
+    from webview import FileDialog
+    path = _file_dialog(FileDialog.OPEN,
                         file_types=("CSV files (*.csv)", "All files (*.*)"))
     if path is None:
         return jsonify({"cancelled": True})
@@ -279,18 +282,19 @@ def run_schedule():
 
 @app.route("/api/export/docx", methods=["POST"])
 def export_docx():
+    from webview import FileDialog
     data = request.get_json()
+    path = _file_dialog(FileDialog.SAVE,
+                        save_filename="ta_schedule.docx",
+                        file_types=("Word documents (*.docx)", "All files (*.*)"))
+    if not path or path in ("/", ""):
+        return jsonify({"cancelled": True})
+    if not path.endswith(".docx"):
+        path += ".docx"
     try:
         doc = generate_docx(data)
-        buf = io.BytesIO()
-        doc.save(buf)
-        buf.seek(0)
-        response = make_response(buf.read())
-        response.headers["Content-Type"] = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-        response.headers["Content-Disposition"] = "attachment; filename=ta_schedule.docx"
-        return response
+        doc.save(path)
+        return jsonify({"path": path})
     except Exception:
         traceback.print_exc()
         return jsonify({"error": traceback.format_exc()}), 500

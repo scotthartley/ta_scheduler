@@ -504,11 +504,9 @@ async function exportDocx() {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(S.data)
     });
-    if (!r.ok) { alert('Export failed'); return; }
-    const blob = await r.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'ta_schedule.docx'; a.click();
+    const result = await r.json();
+    if (result.cancelled) return;
+    if (result.error) { alert('Export failed:\n' + result.error); return; }
   } catch(e) { alert('Export failed: ' + e); }
 }
 
