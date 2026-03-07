@@ -122,7 +122,6 @@ def open_dialog():
     script = (
         f'set f to choose file '
         f'with prompt "Open Schedule" '
-        f'of type {{"json", "JSON"}} '
         f'default location POSIX file "{_default_dir()}"\n'
         f'return POSIX path of f'
     )
@@ -195,6 +194,7 @@ def solve(data):
 
     # ── decision variables ──
     x = {}
+    real_vars = []
     for lab in labs:
         for rr in lab.get("roles", []):
             role_id = rr["role_id"]
@@ -230,16 +230,21 @@ def solve(data):
                 var = model.NewBoolVar(f"x_{lab['id']}_{role_id}_{ta['id']}")
                 if key in locked_set:
                     model.Add(var == 1)
+                else:
+                    real_vars.append(var)
                 x[key] = var
 
-    # ── constraint 1: role count ──
+    # ── constraint 1: role count (soft upper bound, maximize fill) ──
     for lab in labs:
         for rr in lab.get("roles", []):
             role_id = rr["role_id"]
             count = rr.get("count", 1)
             ta_vars = [x[(lab["id"], role_id, ta["id"])]
                        for ta in tas if (lab["id"], role_id, ta["id"]) in x]
-            model.Add(sum(ta_vars) == count)
+            model.Add(sum(ta_vars) <= count)
+
+    if real_vars:
+        model.Maximize(sum(real_vars))
 
     # ── constraint 2: SE cap ──
     SE_SCALE = 100
@@ -297,85 +302,40 @@ def solve(data):
                             "ta_id": ta["id"],
                             "locked": False,
                         })
+
+        # compute unfilled roles
+        unfilled = []
+        for lab in labs:
+            for rr in lab.get("roles", []):
+                role_id = rr["role_id"]
+                count = rr.get("count", 1)
+                assigned = sum(
+                    1 for a in new_assignments
+                    if a["lab_id"] == lab["id"] and a["role_id"] == role_id
+                )
+                if assigned < count:
+                    role_label = roles_map.get(role_id, {}).get("label", role_id)
+                    unfilled.append({
+                        "lab_id": lab["id"],
+                        "lab_name": lab["name"],
+                        "role_id": role_id,
+                        "role_label": role_label,
+                        "assigned": assigned,
+                        "required": count,
+                    })
+
+        solve_status = "partial" if unfilled else ("optimal" if status == cp_model.OPTIMAL else "feasible")
         return {
-            "status": "optimal" if status == cp_model.OPTIMAL else "feasible",
+            "status": solve_status,
             "assignments": new_assignments,
-            "diagnostics": {},
+            "diagnostics": {"unfilled_roles": unfilled},
         }
     else:
-        diagnostics = diagnose(data, gc_map, roles_map)
         return {
             "status": "infeasible",
             "assignments": [a for a in assignments_in if a.get("locked")],
-            "diagnostics": diagnostics,
+            "diagnostics": {"unfilled_roles": [], "error": "Locked assignments conflict with constraints."},
         }
-
-
-def diagnose(data, gc_map, roles_map):
-    labs = data.get("labs", [])
-    tas = data.get("tas", [])
-    uncoverable = []
-
-    for lab in labs:
-        for rr in lab.get("roles", []):
-            role_id = rr["role_id"]
-            count = rr.get("count", 1)
-            req_exp = rr.get("required_experienced", False)
-            available = 0
-            for ta in tas:
-                if req_exp and ta.get("experience") != "experienced":
-                    continue
-                blocked = False
-                for gc_id in ta.get("grad_course_ids", []):
-                    gc = gc_map.get(gc_id)
-                    if gc and gc["day"] == lab.get("day") and times_overlap(
-                        lab["start_min"], lab["end_min"], gc["start_min"], gc["end_min"]
-                    ):
-                        blocked = True
-                        break
-                if not blocked:
-                    for oc in ta.get("other_commitments", []):
-                        if oc["day"] == lab.get("day") and times_overlap(
-                            lab["start_min"], lab["end_min"], oc["start_min"], oc["end_min"]
-                        ):
-                            blocked = True
-                            break
-                if not blocked:
-                    available += 1
-            if available < count and lab["id"] not in uncoverable:
-                uncoverable.append(lab["id"])
-
-    blocking = {}
-    for lab_id in uncoverable:
-        lab = next((l for l in labs if l["id"] == lab_id), None)
-        if not lab:
-            continue
-        for ta in tas:
-            for gc_id in ta.get("grad_course_ids", []):
-                gc = gc_map.get(gc_id)
-                if gc and gc["day"] == lab.get("day") and times_overlap(
-                    lab["start_min"], lab["end_min"], gc["start_min"], gc["end_min"]
-                ):
-                    if gc_id not in blocking:
-                        blocking[gc_id] = {"name": gc["name"], "ta_ids": set(), "lab_ids": set()}
-                    blocking[gc_id]["ta_ids"].add(ta["id"])
-                    blocking[gc_id]["lab_ids"].add(lab_id)
-
-    return {
-        "uncoverable_labs": uncoverable,
-        "blocking_grad_courses": sorted(
-            [
-                {
-                    "grad_course_id": gc_id,
-                    "name": info["name"],
-                    "blocked_ta_count": len(info["ta_ids"]),
-                    "affected_lab_count": len(info["lab_ids"]),
-                }
-                for gc_id, info in blocking.items()
-            ],
-            key=lambda x: -x["blocked_ta_count"],
-        ),
-    }
 
 
 # ── DOCX export ──────────────────────────────────────────────────────────────

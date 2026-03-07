@@ -385,6 +385,8 @@ const S = {
   drag: null,
   schedView: 'lab',
   dirty: false,
+  schedDiag: {},
+  schedStatus: null,
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -438,6 +440,7 @@ async function loadData() {
       fetch('/api/file-path'),
     ]);
     S.data = await dataRes.json();
+    S.schedDiag = {}; S.schedStatus = null;
     currentFilePath = (await pathRes.json()).path || '';
     updateStatusBar();
     renderAll();
@@ -478,6 +481,7 @@ async function openNative() {
     if (result.error) { alert('Could not open file:\n' + result.error); return; }
     S.data = result.data;
     S.selId = null;
+    S.schedDiag = {}; S.schedStatus = null;
     currentFilePath = result.path;
     updateStatusBar();
     renderAll();
@@ -552,7 +556,7 @@ function switchTab(tab) {
   if (isGrid) {
     renderLeftPanel(); showGridPlaceholder();
   } else if (tab === 'schedule') {
-    renderSchedule({}, null);
+    renderSchedule();
   } else if (tab === 'meeting') {
     renderMeetingFinder();
   }
@@ -563,7 +567,7 @@ function renderAll() {
     renderLeftPanel();
     if (S.selId) { renderGrid(); renderItemForm(); } else showGridPlaceholder();
   } else if (S.tab === 'schedule') {
-    renderSchedule({}, null);
+    renderSchedule();
   } else if (S.tab === 'meeting') {
     renderMeetingFinder();
   }
@@ -1244,32 +1248,37 @@ function setSchedView(v) {
   S.schedView = v;
   $id('view-lab-btn').classList.toggle('active', v==='lab');
   $id('view-ta-btn').classList.toggle('active',  v==='ta');
-  renderSchedule({}, null);
+  renderSchedule();
 }
 
 function clearAssignments() {
   S.data.assignments = S.data.assignments.filter(a => a.locked);
+  S.schedDiag = {}; S.schedStatus = null;
   markDirty(); renderSchedule({}, null);
 }
 
 function renderSchedule(diag, status) {
-  diag = diag || {};
+  if (diag !== undefined) { S.schedDiag = diag || {}; S.schedStatus = status || null; }
+  diag = S.schedDiag;
+  status = S.schedStatus;
   // Diagnostics
   const diagDiv = $id('diagnostics');
-  const uncov = diag.uncoverable_labs || [];
+  const unfilled = diag.unfilled_roles || [];
   const blocking = diag.blocking_grad_courses || [];
-  if (status === 'infeasible' && (uncov.length || blocking.length)) {
-    const labsMap = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
-    const gcMap   = Object.fromEntries(S.data.grad_courses.map(g=>[g.id,g]));
+  if (status === 'infeasible') {
     let html = '<h4>⚠ Infeasible Schedule</h4>';
-    if (uncov.length) {
-      html += '<p><strong>Uncoverable labs:</strong></p><ul>' +
-        uncov.map(id => `<li>${escHtml(labsMap[id]?.name||id)}</li>`).join('') + '</ul>';
-    }
+    if (diag.error) html += `<p>${escHtml(diag.error)}</p>`;
     if (blocking.length) {
       html += '<p><strong>Blocking grad courses (most impact first):</strong></p><ul>' +
         blocking.map(b => `<li>${escHtml(b.name)} — blocks ${b.blocked_ta_count} TA(s) from ${b.affected_lab_count} lab(s)</li>`).join('') + '</ul>';
     }
+    diagDiv.style.cssText = '';
+    diagDiv.innerHTML = html;
+    diagDiv.style.display = 'block';
+  } else if (status === 'partial' && unfilled.length) {
+    let html = '<h4 style="color:#92400e;">⚠ Partial Schedule — Some roles could not be fully filled</h4><ul>' +
+      unfilled.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
+    diagDiv.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;';
     diagDiv.innerHTML = html;
     diagDiv.style.display = 'block';
   } else {
@@ -1330,13 +1339,13 @@ function renderLabView(container) {
 
         const lockBtn = el('span','lock-btn', a.locked ? '🔒' : '🔓');
         lockBtn.title = a.locked ? 'Unlock' : 'Lock';
-        lockBtn.onclick = () => { a.locked = !a.locked; markDirty(); renderSchedule({},null); };
+        lockBtn.onclick = () => { a.locked = !a.locked; markDirty(); renderSchedule(); };
 
         const rmBtn = el('span','rm-btn','×');
         rmBtn.title = 'Remove assignment';
         rmBtn.onclick = () => {
           S.data.assignments = S.data.assignments.filter(x => x!==a);
-          markDirty(); renderSchedule({},null);
+          markDirty(); renderSchedule();
         };
         chip.appendChild(lockBtn); chip.appendChild(rmBtn);
         roleDiv.appendChild(chip);
@@ -1482,7 +1491,7 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
       }
       markDirty();
       closeModal();
-      renderSchedule({},null);
+      renderSchedule();
     };
     listDiv.appendChild(row);
   });
