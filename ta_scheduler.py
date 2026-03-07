@@ -299,236 +299,174 @@ def export_docx():
 # ── solver ───────────────────────────────────────────────────────────────────
 
 def solve(data):
-    try:
-        from ortools.sat.python import cp_model
-    except ImportError:
-        return {"status": "error", "message": "ortools not installed. Run: pip install ortools"}
-
-    model = cp_model.CpModel()
-
     roles_map = {r["id"]: r for r in data.get("roles", [])}
-    labs = data.get("labs", [])
-    tas = data.get("tas", [])
+    labs      = data.get("labs", [])
+    tas       = data.get("tas", [])
     assignments_in = data.get("assignments", [])
-    gc_map = {gc["id"]: gc for gc in data.get("grad_courses", [])}
+    gc_map    = {gc["id"]: gc for gc in data.get("grad_courses", [])}
 
     if not labs or not tas:
         return {"status": "feasible", "assignments": assignments_in, "diagnostics": {}}
 
-    locked_set = {
-        (a["lab_id"], a["role_id"], a["ta_id"])
-        for a in assignments_in
-        if a.get("locked")
-    }
+    # ── initialise per-TA state from locked assignments ──────────────────────
+    labs_by_id = {lab["id"]: lab for lab in labs}
 
-    # ── decision variables ──
-    x = {}
-    real_vars = []
-    for lab in labs:
-        for rr in lab.get("roles", []):
-            role_id = rr["role_id"]
-            for ta in tas:
-                key = (lab["id"], role_id, ta["id"])
+    ta_used_se        = {}   # ta_id -> float  (outside duties + assigned roles)
+    ta_booked_labs    = {}   # ta_id -> {lab_id, ...}  (for double-booking check)
+    ta_courses        = {}   # ta_id -> {course_name, ...}  (for split penalty)
+    ta_per_slot       = {}   # (lab_id, role_id) -> {ta_id, ...}
 
-                # availability hard-exclude
-                unavail = False
-                lab_meetings = _get_meetings(lab)
-                for gc_id in ta.get("grad_course_ids", []):
-                    gc = gc_map.get(gc_id)
-                    if not gc:
-                        continue
-                    for gc_day, gc_start, gc_end in _get_meetings(gc):
-                        for lab_day, lab_start, lab_end in lab_meetings:
-                            if gc_day == lab_day and times_overlap(lab_start, lab_end, gc_start, gc_end):
-                                unavail = True
-                                break
-                        if unavail:
-                            break
-                    if unavail:
-                        break
-                if not unavail:
-                    for oc in ta.get("other_commitments", []):
-                        for lab_day, lab_start, lab_end in lab_meetings:
-                            if oc["day"] == lab_day and times_overlap(lab_start, lab_end, oc["start_min"], oc["end_min"]):
-                                unavail = True
-                                break
-                        if unavail:
-                            break
-                if unavail:
-                    x[key] = model.NewConstant(0)
-                    continue
+    for ta in tas:
+        outside_se = sum(d.get("se_value", 0) for d in ta.get("outside_duties", []))
+        ta_used_se[ta["id"]]     = outside_se
+        ta_booked_labs[ta["id"]] = set()
+        ta_courses[ta["id"]]     = set()
 
-                var = model.NewBoolVar(f"x_{lab['id']}_{role_id}_{ta['id']}")
-                if key in locked_set:
-                    model.Add(var == 1)
-                else:
-                    real_vars.append(var)
-                x[key] = var
+    locked_assignments = [a for a in assignments_in if a.get("locked")]
+    for a in locked_assignments:
+        tid, lid, rid = a["ta_id"], a["lab_id"], a["role_id"]
+        lab  = labs_by_id.get(lid)
+        role = roles_map.get(rid, {})
+        if lab and tid in ta_used_se:
+            ta_used_se[tid]     += role.get("se_value", 1.0)
+            ta_booked_labs[tid].add(lid)
+            ta_courses[tid].add(lab.get("name", ""))
+        key = (lid, rid)
+        ta_per_slot.setdefault(key, set()).add(tid)
 
-    # ── constraint 1: role count (soft upper bound, maximize fill) ──
-    for lab in labs:
-        for rr in lab.get("roles", []):
-            role_id = rr["role_id"]
-            count = rr.get("count", 1)
-            ta_vars = [x[(lab["id"], role_id, ta["id"])]
-                       for ta in tas if (lab["id"], role_id, ta["id"]) in x]
-            model.Add(sum(ta_vars) <= count)
+    # ── helpers ───────────────────────────────────────────────────────────────
 
-    # ── objective: fill slots (high weight) + experience preference (low weight) ──
-    FILL_W = 1000
-    obj_terms = [v * FILL_W for v in real_vars]
-    for lab in labs:
-        for rr in lab.get("roles", []):
-            role_id = rr["role_id"]
-            pref_exp = rr.get("preferred_experienced", 0)
-            if pref_exp <= 0:
+    def static_conflict(ta, lab):
+        """True if ta has a fixed time conflict with lab (courses or commitments)."""
+        lab_mtgs = _get_meetings(lab)
+        for gc_id in ta.get("grad_course_ids", []):
+            gc = gc_map.get(gc_id)
+            if not gc:
                 continue
-            exp_vars = [
-                x[(lab["id"], role_id, ta["id"])]
-                for ta in tas
-                if ta.get("experience") == "experienced"
-                and (lab["id"], role_id, ta["id"]) in x
-            ]
-            if not exp_vars:
-                continue
-            exp_count = model.NewIntVar(0, pref_exp, f"exp_{lab['id']}_{role_id}")
-            model.Add(exp_count <= sum(exp_vars))
-            obj_terms.append(exp_count)
-    # ── soft penalty: minimize split assignments ──
-    # A "split" is a TA assigned to labs from more than one distinct course name.
-    # For each TA, count distinct course names assigned; penalize each name beyond the first.
-    SPLIT_W = 200
-    from collections import defaultdict
-    course_lab_roles = defaultdict(list)  # course_name -> [(lab_id, role_id)]
-    for lab in labs:
-        cn = lab.get("name", "")
-        for rr in lab.get("roles", []):
-            course_lab_roles[cn].append((lab["id"], rr["role_id"]))
+            for gd, gs, ge in _get_meetings(gc):
+                for ld, ls, le in lab_mtgs:
+                    if ld == gd and times_overlap(ls, le, gs, ge):
+                        return True
+        for oc in ta.get("other_commitments", []):
+            for ld, ls, le in lab_mtgs:
+                if oc["day"] == ld and times_overlap(ls, le, oc["start_min"], oc["end_min"]):
+                    return True
+        return False
 
-    if len(course_lab_roles) > 1:
+    def double_booked(ta_id, lab):
+        """True if assigning ta to lab would clash with an already-assigned lab."""
+        lab_mtgs = _get_meetings(lab)
+        for booked_id in ta_booked_labs[ta_id]:
+            booked = labs_by_id.get(booked_id)
+            if not booked:
+                continue
+            for bd, bs, be in _get_meetings(booked):
+                for ld, ls, le in lab_mtgs:
+                    if ld == bd and times_overlap(ls, le, bs, be):
+                        return True
+        return False
+
+    def eligible_tas(lab, rr):
+        """TAs that can fill one more seat for this (lab, role) slot right now."""
+        role    = roles_map.get(rr["role_id"], {})
+        se_val  = role.get("se_value", 1.0)
+        already = ta_per_slot.get((lab["id"], rr["role_id"]), set())
+        result  = []
         for ta in tas:
-            ta_course_bools = []
-            for cn, lab_roles in course_lab_roles.items():
-                cb = model.NewBoolVar(f"tc_{ta['id']}_{cn}")
-                for lab_id, role_id in lab_roles:
-                    key = (lab_id, role_id, ta["id"])
-                    if key in x:
-                        model.Add(cb >= x[key])
-                ta_course_bools.append(cb)
-            if len(ta_course_bools) > 1:
-                excess = model.NewIntVar(0, len(ta_course_bools) - 1, f"exc_{ta['id']}")
-                model.Add(excess >= sum(ta_course_bools) - 1)
-                obj_terms.append(excess * -SPLIT_W)
+            tid = ta["id"]
+            if tid in already:
+                continue
+            if static_conflict(ta, lab):
+                continue
+            if ta_used_se[tid] + se_val > ta.get("max_se", 2.0) + 0.001:
+                continue
+            if double_booked(tid, lab):
+                continue
+            result.append(ta)
+        return result
 
-    if obj_terms:
-        model.Maximize(sum(obj_terms))
+    def score(ta, lab, rr):
+        """Higher is better. Mirrors original objective weights."""
+        s = 1000   # filling the slot at all
+        if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
+            s += 1
+        # split penalty: ta already assigned to a *different* course name
+        courses = ta_courses[ta["id"]]
+        cn = lab.get("name", "")
+        if courses and cn not in courses:
+            s -= 200
+        return s
 
-    # ── constraint 2: SE cap ──
-    SE_SCALE = 100
-    for ta in tas:
-        max_se = int(ta.get("max_se", 2.0) * SE_SCALE)
-        outside_se = sum(int(d.get("se_value", 0) * SE_SCALE)
-                         for d in ta.get("outside_duties", []))
-        se_terms = []
-        for lab in labs:
-            for rr in lab.get("roles", []):
-                key = (lab["id"], rr["role_id"], ta["id"])
-                if key in x:
-                    se_val = int(roles_map.get(rr["role_id"], {}).get("se_value", 1.0) * SE_SCALE)
-                    se_terms.append(x[key] * se_val)
-        if se_terms:
-            model.Add(sum(se_terms) + outside_se <= max_se)
+    # ── build work list: one entry per unfilled seat ──────────────────────────
+    slots = []
+    for lab in labs:
+        for rr in lab.get("roles", []):
+            count        = rr.get("count", 1)
+            locked_count = len(ta_per_slot.get((lab["id"], rr["role_id"]), set()))
+            for _ in range(count - locked_count):
+                slots.append((lab, rr))
 
-    # ── constraint 3: no double-booking ──
-    for ta in tas:
-        for i, lab1 in enumerate(labs):
-            for lab2 in labs[i + 1:]:
-                overlap = any(
-                    d1 == d2 and times_overlap(s1, e1, s2, e2)
-                    for d1, s1, e1 in _get_meetings(lab1)
-                    for d2, s2, e2 in _get_meetings(lab2)
-                )
-                if not overlap:
-                    continue
-                v1 = [x[(lab1["id"], rr["role_id"], ta["id"])]
-                      for rr in lab1.get("roles", [])
-                      if (lab1["id"], rr["role_id"], ta["id"]) in x]
-                v2 = [x[(lab2["id"], rr["role_id"], ta["id"])]
-                      for rr in lab2.get("roles", [])
-                      if (lab2["id"], rr["role_id"], ta["id"]) in x]
-                if v1 and v2:
-                    model.Add(sum(v1) + sum(v2) <= 1)
+    # Sort by number of currently eligible TAs ascending (fail-first heuristic).
+    slots.sort(key=lambda s: len(eligible_tas(s[0], s[1])))
 
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 30
-    status = solver.Solve(model)
+    # ── greedy assignment ─────────────────────────────────────────────────────
+    result_assignments = list(locked_assignments)
 
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        new_assignments = [a for a in assignments_in if a.get("locked")]
-        for lab in labs:
-            for rr in lab.get("roles", []):
-                role_id = rr["role_id"]
-                for ta in tas:
-                    key = (lab["id"], role_id, ta["id"])
-                    if key in locked_set:
-                        continue
-                    if key in x and solver.Value(x[key]) == 1:
-                        new_assignments.append({
-                            "lab_id": lab["id"],
-                            "role_id": role_id,
-                            "ta_id": ta["id"],
-                            "locked": False,
-                        })
+    for lab, rr in slots:
+        candidates = eligible_tas(lab, rr)
+        if not candidates:
+            continue
+        best = max(candidates, key=lambda ta: score(ta, lab, rr))
+        role = roles_map.get(rr["role_id"], {})
 
-        # compute unfilled roles and unmet experience preferences
-        tas_map = {ta["id"]: ta for ta in tas}
-        unfilled = []
-        unfulfilled_exp = []
-        for lab in labs:
-            for rr in lab.get("roles", []):
-                role_id = rr["role_id"]
-                count = rr.get("count", 1)
-                pref_exp = rr.get("preferred_experienced", 0)
-                role_label = roles_map.get(role_id, {}).get("label", role_id)
-                role_assigns = [
-                    a for a in new_assignments
-                    if a["lab_id"] == lab["id"] and a["role_id"] == role_id
-                ]
-                assigned = len(role_assigns)
-                if assigned < count:
-                    unfilled.append({
-                        "lab_name": lab["name"],
-                        "role_label": role_label,
-                        "assigned": assigned,
-                        "required": count,
+        result_assignments.append({
+            "lab_id":  lab["id"],
+            "role_id": rr["role_id"],
+            "ta_id":   best["id"],
+            "locked":  False,
+        })
+
+        # update running state
+        ta_used_se[best["id"]]     += role.get("se_value", 1.0)
+        ta_booked_labs[best["id"]].add(lab["id"])
+        ta_courses[best["id"]].add(lab.get("name", ""))
+        ta_per_slot.setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
+
+    # ── diagnostics ──────────────────────────────────────────────────────────
+    tas_map = {ta["id"]: ta for ta in tas}
+    unfilled, unfulfilled_exp = [], []
+    for lab in labs:
+        for rr in lab.get("roles", []):
+            role_id    = rr["role_id"]
+            count      = rr.get("count", 1)
+            pref_exp   = rr.get("preferred_experienced", 0)
+            role_label = roles_map.get(role_id, {}).get("label", role_id)
+            role_asgn  = [a for a in result_assignments
+                          if a["lab_id"] == lab["id"] and a["role_id"] == role_id]
+            if len(role_asgn) < count:
+                unfilled.append({
+                    "lab_name":   lab["name"],
+                    "role_label": role_label,
+                    "assigned":   len(role_asgn),
+                    "required":   count,
+                })
+            if pref_exp > 0:
+                exp_n = sum(1 for a in role_asgn
+                            if tas_map.get(a["ta_id"], {}).get("experience") == "experienced")
+                if exp_n < pref_exp:
+                    unfulfilled_exp.append({
+                        "lab_name":      lab["name"],
+                        "role_label":    role_label,
+                        "exp_assigned":  exp_n,
+                        "exp_preferred": pref_exp,
                     })
-                if pref_exp > 0:
-                    exp_assigned = sum(
-                        1 for a in role_assigns
-                        if tas_map.get(a["ta_id"], {}).get("experience") == "experienced"
-                    )
-                    if exp_assigned < pref_exp:
-                        unfulfilled_exp.append({
-                            "lab_name": lab["name"],
-                            "role_label": role_label,
-                            "exp_assigned": exp_assigned,
-                            "exp_preferred": pref_exp,
-                        })
 
-        solve_status = "partial" if (unfilled or unfulfilled_exp) else (
-            "optimal" if status == cp_model.OPTIMAL else "feasible"
-        )
-        return {
-            "status": solve_status,
-            "assignments": new_assignments,
-            "diagnostics": {"unfilled_roles": unfilled, "unfulfilled_experience": unfulfilled_exp},
-        }
-    else:
-        return {
-            "status": "infeasible",
-            "assignments": [a for a in assignments_in if a.get("locked")],
-            "diagnostics": {"unfilled_roles": [], "error": "Locked assignments conflict with constraints."},
-        }
+    status = "partial" if (unfilled or unfulfilled_exp) else "feasible"
+    return {
+        "status":      status,
+        "assignments": result_assignments,
+        "diagnostics": {"unfilled_roles": unfilled, "unfulfilled_experience": unfulfilled_exp},
+    }
 
 
 # ── DOCX export ──────────────────────────────────────────────────────────────

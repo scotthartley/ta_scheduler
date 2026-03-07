@@ -33,8 +33,8 @@ Dependencies:
 | Package | Version |
 |---|---|
 | flask | ≥ 3.0.0 |
-| ortools | ≥ 9.9.0 |
 | python-docx | ≥ 1.1.0 |
+| pywebview | ≥ 5.0.0 |
 
 ## Running
 
@@ -108,14 +108,14 @@ assignments:  [{lab_id, role_id, ta_id, locked}]
 
 ## Solver details
 
-The CP-SAT solver enforces these hard constraints:
+The solver is a greedy algorithm with a fail-first heuristic (no external dependencies). It enforces these hard constraints:
 
 1. **Role count** — assignments per role ≤ configured count
 2. **SE cap** — total SE assigned to a TA ≤ their `max_se` (including outside duties)
 3. **No double-booking** — a TA cannot be assigned to two labs with overlapping meeting times
 4. **Availability** — a TA cannot be assigned to a lab that conflicts with their grad courses or other commitments
 
-The objective maximizes filled slots (weight 1000) with a soft preference for experience matching.
+Slots with the fewest eligible TAs are filled first. The scoring function maximizes filled slots (weight 1000), prefers experience-matched TAs (+1), and penalizes split assignments across courses (-200).
 
 ## License
 
