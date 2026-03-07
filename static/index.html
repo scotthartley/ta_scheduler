@@ -159,6 +159,8 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 #schedule-workspace.active, #meeting-workspace.active { display: flex; }
 
 .sched-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.od-section-hdr { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.od-section-hdr h4 { margin: 0; font-size: 14px; }
 .sched-controls button { padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border);
                            background: var(--panel); cursor: pointer; font-size: 13px; }
 .sched-controls button:hover { background: var(--gray-lt); }
@@ -318,6 +320,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
     </div>
     <div id="diagnostics" style="display:none;"></div>
     <div class="sched-table-wrap"><div id="sched-table"></div></div>
+    <div id="outside-duties-section"></div>
   </div>
 
   <!-- MEETING FINDER WORKSPACE -->
@@ -774,34 +777,6 @@ function renderTAForm(item, form) {
   seInp.type='number'; seInp.step='0.5'; seInp.min='0'; seInp.value=item.max_se||2.0;
   seInp.oninput = () => { item.max_se=parseFloat(seInp.value)||0; markDirty(); };
   seL.appendChild(seInp); seG.appendChild(seL); form.appendChild(seG);
-
-  // Outside duties
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Outside Duties</label>'));
-  form.appendChild(el('p','help-text','Duties that count toward SE but have no fixed time'));
-  const odDiv = el('div','sublist');
-  (item.outside_duties||[]).forEach((od,i) => {
-    const r = el('div','sublist-item');
-    const nameInp = document.createElement('input'); nameInp.type='text';
-    nameInp.value=od.label||''; nameInp.style.flex='1'; nameInp.style.fontSize='12px';
-    nameInp.placeholder='Label';
-    nameInp.oninput = () => { od.label=nameInp.value; markDirty(); };
-    const seInp2 = document.createElement('input'); seInp2.type='number';
-    seInp2.step='0.5'; seInp2.min='0'; seInp2.value=od.se_value||0;
-    seInp2.style.width='48px'; seInp2.style.fontSize='12px';
-    seInp2.oninput = () => { od.se_value=parseFloat(seInp2.value)||0; markDirty(); };
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { item.outside_duties.splice(i,1); markDirty(); renderItemForm(); };
-    r.append(nameInp, el('span',null,'SE:'), seInp2, rm);
-    odDiv.appendChild(r);
-  });
-  const addOD = el('button','btn-sm','+ Add Duty');
-  addOD.onclick = () => {
-    item.outside_duties = item.outside_duties||[];
-    item.outside_duties.push({label:'Duty',se_value:0.5});
-    markDirty(); renderItemForm();
-  };
-  odDiv.appendChild(addOD);
-  form.appendChild(odDiv);
 
   // Grad courses
   form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Grad Courses</label>`));
@@ -1354,6 +1329,7 @@ function renderSchedule(diag, status) {
   tbl.innerHTML = '';
   if (S.schedView === 'lab') renderLabView(tbl);
   else renderTAView(tbl);
+  renderOutsideDuties();
 }
 
 function renderLabView(container) {
@@ -1480,6 +1456,92 @@ function renderTAView(container) {
 
   table.appendChild(tbody);
   container.appendChild(table);
+}
+
+// ── Outside Duties table ──
+function renderOutsideDuties() {
+  const sec = $id('outside-duties-section');
+  if (!sec) return;
+  sec.innerHTML = '';
+
+  const hdr = el('div','od-section-hdr');
+  hdr.appendChild(el('h4',null,'Outside Duties'));
+  const addBtn = el('button','btn-sm','+ Add Duty');
+  addBtn.onclick = openAddDutyModal;
+  hdr.appendChild(addBtn);
+  sec.appendChild(hdr);
+  sec.appendChild(el('p','help-text','Duties that count toward a TA\'s SE but have no fixed meeting time'));
+
+  const rows = [];
+  S.data.tas.forEach(ta => (ta.outside_duties||[]).forEach((od,i) => rows.push({ta,od,i})));
+
+  if (!rows.length) return;
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['TA','Duty','SE',''].forEach(h => thr.appendChild(el('th',null,h)));
+  thead.appendChild(thr); table.appendChild(thead);
+
+  const tbody = el('tbody');
+  rows.forEach(({ta, od, i}) => {
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+
+    const nameTd = el('td');
+    const nameInp = document.createElement('input'); nameInp.type='text';
+    nameInp.value = od.label||''; nameInp.style.cssText='font-size:13px;width:100%;';
+    nameInp.oninput = () => { od.label=nameInp.value; markDirty(); };
+    nameTd.appendChild(nameInp); tr.appendChild(nameTd);
+
+    const seTd = el('td');
+    const seInp = document.createElement('input'); seInp.type='number';
+    seInp.step='0.5'; seInp.min='0'; seInp.value=od.se_value||0;
+    seInp.style.cssText='width:60px;font-size:13px;';
+    seInp.oninput = () => { od.se_value=parseFloat(seInp.value)||0; markDirty(); };
+    seTd.appendChild(seInp); tr.appendChild(seTd);
+
+    const rmTd = el('td');
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { ta.outside_duties.splice(i,1); markDirty(); renderOutsideDuties(); };
+    rmTd.appendChild(rm); tr.appendChild(rmTd);
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  sec.appendChild(table);
+}
+
+function openAddDutyModal() {
+  if (!S.data.tas.length) { alert('No TAs defined.'); return; }
+  const html = `
+    <div class="modal-box">
+      <h2>Add Outside Duty</h2>
+      <div class="form-group"><label>TA<br><select id="od-ta-sel" style="width:100%;margin-top:4px;"></select></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="od-label" type="text" placeholder="e.g. Grading" style="width:100%;margin-top:4px;"></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>SE value<br><input id="od-se" type="number" step="0.5" min="0" value="0.5" style="width:80px;margin-top:4px;"></label></div>
+      <div class="modal-footer">
+        <button class="btn-sm" onclick="closeModal()">Cancel</button>
+        <button class="btn-sm btn-primary" onclick="confirmAddDuty()">Add</button>
+      </div>
+    </div>`;
+  showModal(html);
+  const sel = $id('od-ta-sel');
+  S.data.tas.forEach(ta => {
+    const o = document.createElement('option'); o.value=ta.id; o.textContent=ta.name;
+    sel.appendChild(o);
+  });
+}
+
+function confirmAddDuty() {
+  const ta = S.data.tas.find(t => t.id === $id('od-ta-sel').value);
+  if (!ta) return;
+  const label = $id('od-label').value.trim() || 'Duty';
+  const se_value = parseFloat($id('od-se').value) || 0;
+  ta.outside_duties = ta.outside_duties || [];
+  ta.outside_duties.push({label, se_value});
+  markDirty();
+  closeModal();
+  renderOutsideDuties();
 }
 
 // ── Assignment modal ──
