@@ -1,0 +1,31 @@
+{
+  "assignments": [],
+  "grad_courses": [
+    {
+      "id": "_gq5ic5rt",
+      "name": "New Course",
+      "day": 3,
+      "start_min": 660,
+      "end_min": 720
+    }
+  ],
+  "labs": [],
+  "roles": [
+    {
+      "id": "primary",
+      "label": "Primary",
+      "se_value": 1
+    },
+    {
+      "id": "instrumentation",
+      "label": "Instrumentation",
+      "se_value": 0.5
+    },
+    {
+      "id": "secondary",
+      "label": "Secondary",
+      "se_value": 0.5
+    }
+  ],
+  "tas": []
+}

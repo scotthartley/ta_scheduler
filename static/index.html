@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TA Scheduler</title>
+<style>
+/* ── reset & tokens ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --blue:    #3b82f6;
+  --blue-lt: #dbeafe;
+  --green:   #10b981;
+  --amber:   #f59e0b;
+  --amber-lt:#fef3c7;
+  --red:     #ef4444;
+  --gray:    #6b7280;
+  --gray-lt: #f3f4f6;
+  --border:  #e5e7eb;
+  --text:    #111827;
+  --text2:   #6b7280;
+  --panel:   #ffffff;
+  --HOUR_H:  80;         /* px per hour (JS reads this) */
+}
+body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px;
+       color: var(--text); background: var(--gray-lt); height: 100vh;
+       display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── header ─────────────────────────────────────────────────── */
+header { display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+         background: #1e3a5f; color: #fff; flex-shrink: 0; }
+header h1 { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+header .spacer { flex: 1; }
+header button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
+                border-radius: 5px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+header button:hover { background: rgba(255,255,255,.25); }
+#save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #000; }
+
+/* ── tabs ───────────────────────────────────────────────────── */
+nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
+           background: #1e3a5f; flex-shrink: 0; }
+.tab-btn { background: rgba(255,255,255,.12); color: rgba(255,255,255,.75);
+           border: none; border-radius: 6px 6px 0 0; padding: 7px 16px;
+           cursor: pointer; font-size: 13px; font-weight: 500; transition: .15s; }
+.tab-btn:hover { background: rgba(255,255,255,.22); color: #fff; }
+.tab-btn.active { background: var(--gray-lt); color: var(--text); }
+
+/* ── workspace ──────────────────────────────────────────────── */
+#workspace { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+/* grid tabs layout */
+#grid-workspace { display: flex; flex: 1; overflow: hidden; }
+
+/* ── left panel ─────────────────────────────────────────────── */
+.left-panel { width: 270px; flex-shrink: 0; border-right: 1px solid var(--border);
+              background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
+.panel-section { padding: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.panel-section-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.panel-section-header span { font-weight: 600; font-size: 13px; flex: 1; }
+.btn-sm { font-size: 12px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border);
+           background: var(--panel); cursor: pointer; }
+.btn-sm:hover { background: var(--gray-lt); }
+.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-primary:hover { background: #2563eb; }
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger:hover { background: #dc2626; }
+
+#item-list { overflow-y: auto; flex: 1; }
+.item-row { padding: 7px 12px; cursor: pointer; border-left: 3px solid transparent;
+             display: flex; align-items: center; gap: 6px; }
+.item-row:hover { background: var(--gray-lt); }
+.item-row.selected { background: var(--blue-lt); border-left-color: var(--blue); }
+.item-row .item-name { flex: 1; font-size: 13px; }
+.item-row .item-badge { font-size: 11px; color: var(--text2); }
+
+/* ── item form ──────────────────────────────────────────────── */
+#item-form { overflow-y: auto; padding: 10px; border-top: 1px solid var(--border);
+              flex-shrink: 0; max-height: 55%; background: #fafafa; }
+#item-form h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.form-group { margin-bottom: 8px; }
+.form-group label { display: block; font-size: 12px; color: var(--text2);
+                     margin-bottom: 2px; font-weight: 500; }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 13px; background: var(--panel); }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--blue); }
+.form-row { display: flex; gap: 6px; }
+.form-row .form-group { flex: 1; }
+.form-actions { display: flex; gap: 6px; margin-top: 10px; }
+.help-text { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.sublist { margin-top: 4px; }
+.sublist-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+                 font-size: 12px; padding: 3px 4px; background: var(--panel);
+                 border: 1px solid var(--border); border-radius: 4px; }
+.sublist-item .sl-label { flex: 1; }
+.sublist-item button { font-size: 11px; padding: 1px 5px; }
+.role-check-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+                   padding: 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
+.role-check-row label { font-size: 12px; flex: 1; }
+.count-input { width: 40px !important; }
+.checkbox-group { display: flex; flex-direction: column; gap: 4px; }
+.checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+
+/* ── right panel / grid ─────────────────────────────────────── */
+.right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
+.grid-placeholder { flex: 1; display: flex; align-items: center; justify-content: center;
+                     color: var(--text2); font-size: 13px; }
+
+.grid-outer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.day-header-spacer { width: 52px; flex-shrink: 0; }
+.day-header { flex: 1; text-align: center; font-size: 12px; font-weight: 600;
+               padding: 5px; border-left: 1px solid var(--border); color: var(--text2); }
+
+.grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.day-headers-sticky { display: flex; position: sticky; top: 0; z-index: 5;
+                       background: var(--panel); border-bottom: 1px solid var(--border); }
+.grid-body { display: flex; position: relative; }
+.time-labels { width: 52px; flex-shrink: 0; position: relative; }
+.time-label { position: absolute; right: 6px; font-size: 10px; color: var(--text2);
+               transform: translateY(-50%); white-space: nowrap; }
+.days-area { flex: 1; display: flex; position: relative; }
+.day-col { flex: 1; position: relative; border-left: 1px solid var(--border);
+            cursor: crosshair; user-select: none; }
+.hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid #e5e7eb;
+              pointer-events: none; }
+.halfhour-line { position: absolute; left: 0; right: 0; border-top: 1px dashed #f0f0f0;
+                  pointer-events: none; }
+
+/* ── blocks ─────────────────────────────────────────────────── */
+.block { position: absolute; left: 2px; right: 2px; border-radius: 4px;
+          font-size: 10px; padding: 2px 4px; pointer-events: none; }
+.block-editable { pointer-events: all; cursor: grab; user-select: none; }
+.block-editable:active { cursor: grabbing; }
+.block-lab     { background: #dbeafe; border: 1px solid var(--blue); color: #1e40af; }
+.block-course  { background: var(--amber-lt); border: 1px solid var(--amber); color: #92400e; }
+.block-commit  { background: #f3e8ff; border: 1px solid #a855f7; color: #6b21a8; }
+.block-preview { background: rgba(59,130,246,.25); border: 2px dashed var(--blue);
+                  pointer-events: none; z-index: 10; }
+.block-ghost   { opacity: .45; pointer-events: none; z-index: 20; }
+.block-label { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.block-time  { opacity: .75; font-size: 9px; }
+.block-resize-handle-top { position: absolute; top: 0; left: 0; right: 0; height: 6px;
+                             cursor: ns-resize; border-radius: 3px 3px 0 0;
+                             background: rgba(0,0,0,.12); }
+.block-resize-handle     { position: absolute; bottom: 0; left: 0; right: 0; height: 6px;
+                             cursor: ns-resize; border-radius: 0 0 3px 3px;
+                             background: rgba(0,0,0,.12); }
+.block-delete { position: absolute; top: 1px; right: 3px; font-size: 12px; line-height: 1;
+                 cursor: pointer; opacity: 0; transition: opacity .1s; }
+.block-editable:hover .block-delete { opacity: .45; }
+.block-delete:hover { opacity: 1 !important; color: var(--red); }
+
+/* ── meeting finder grid ─────────────────────────────────────── */
+.meeting-cell { position: absolute; left: 0; right: 0; pointer-events: none; }
+
+/* ── schedule workspace ──────────────────────────────────────── */
+#schedule-workspace, #meeting-workspace {
+  flex: 1; overflow: auto; padding: 16px; display: none; flex-direction: column; gap: 12px; }
+#schedule-workspace.active, #meeting-workspace.active { display: flex; }
+
+.sched-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sched-controls button { padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border);
+                           background: var(--panel); cursor: pointer; font-size: 13px; }
+.sched-controls button:hover { background: var(--gray-lt); }
+.btn-run { background: var(--blue) !important; color: #fff !important; border-color: var(--blue) !important; }
+.btn-run:hover { background: #2563eb !important; }
+.view-toggle { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.view-toggle button { border: none; border-radius: 0; border-right: 1px solid var(--border); }
+.view-toggle button:last-child { border-right: none; }
+.view-toggle button.active { background: var(--blue); color: #fff; }
+
+#diagnostics { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px; }
+#diagnostics h4 { color: var(--red); margin-bottom: 8px; }
+#diagnostics ul { padding-left: 16px; font-size: 13px; }
+#diagnostics li { margin-bottom: 4px; }
+
+.sched-table-wrap { overflow-x: auto; }
+.sched-table { border-collapse: collapse; min-width: 600px; width: 100%; }
+.sched-table th, .sched-table td { border: 1px solid var(--border); padding: 6px 10px;
+                                     font-size: 13px; text-align: left; }
+.sched-table th { background: var(--gray-lt); font-weight: 600; }
+.sched-table .lab-header { background: #eff6ff; font-weight: 700; }
+.sched-table .ta-header  { background: #f0fdf4; font-weight: 700; }
+.role-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ta-chip { display: inline-flex; align-items: center; gap: 3px; background: var(--blue-lt);
+            color: #1e40af; border: 1px solid #93c5fd; border-radius: 3px;
+            padding: 2px 6px; font-size: 12px; }
+.ta-chip.locked { background: #dcfce7; color: #166534; border-color: #86efac; }
+.ta-chip .lock-btn { cursor: pointer; opacity: .6; font-size: 11px; }
+.ta-chip .lock-btn:hover { opacity: 1; }
+.ta-chip .rm-btn { cursor: pointer; color: var(--red); font-size: 13px; line-height: 1;
+                    margin-left: 1px; }
+.add-ta-btn { background: none; border: 1px dashed #93c5fd; border-radius: 3px;
+               padding: 2px 6px; font-size: 12px; cursor: pointer; color: var(--blue); }
+.add-ta-btn:hover { background: var(--blue-lt); }
+.ta-row-lab { display: inline-flex; align-items: center; gap: 4px; background: #eff6ff;
+               border: 1px solid #93c5fd; border-radius: 3px; padding: 2px 6px;
+               font-size: 12px; color: #1e40af; margin: 2px; }
+
+/* meeting finder */
+.meeting-outer { display: flex; flex-direction: column; gap: 8px; }
+.meeting-legend { display: flex; gap: 16px; font-size: 12px; align-items: center; }
+.legend-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.meeting-grid-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.meeting-body { display: flex; }
+.meeting-day-col { flex: 1; position: relative; border-left: 1px solid var(--border); }
+.meeting-day-col:first-child { border-left: none; }
+
+/* ── modal ───────────────────────────────────────────────────── */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100;
+                   display: flex; align-items: center; justify-content: center; }
+.modal-box { background: var(--panel); border-radius: 8px; padding: 20px; min-width: 340px;
+              max-width: 90vw; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.modal-box h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+.modal-box h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.assign-ta-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border);
+                   border-radius: 5px; margin-bottom: 10px; }
+.assign-ta-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+                  border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+.assign-ta-row:last-child { border-bottom: none; }
+.assign-ta-row:hover { background: var(--gray-lt); }
+.assign-ta-row .exp-badge { font-size: 10px; padding: 1px 5px; border-radius: 10px;
+                              background: #dcfce7; color: #166534; }
+.assign-ta-row .exp-badge.inexp { background: #fef3c7; color: #92400e; }
+.assign-ta-row .se-info { font-size: 11px; color: var(--text2); margin-left: auto; }
+
+/* ── status bar ──────────────────────────────────────────────── */
+#status-bar { flex-shrink: 0; padding: 3px 14px; background: #f1f5f9;
+              border-top: 1px solid var(--border); font-size: 11px;
+              color: var(--text2); white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; }
+
+/* ── print ───────────────────────────────────────────────────── */
+@media print {
+  header, nav.tabs, .left-panel, .sched-controls, #diagnostics { display: none !important; }
+  #schedule-workspace { display: block !important; padding: 0; }
+  .sched-table { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TA Scheduler</h1>
+  <div class="spacer"></div>
+  <button id="save-btn" onclick="saveData()">Save</button>
+  <button onclick="saveAsData()">Save As…</button>
+  <button onclick="openNative()">Open…</button>
+  <button onclick="exportTemplate()">Export Template</button>
+  <button onclick="exportDocx()">Export DOCX</button>
+  <button onclick="openRolesModal()">⚙ Roles</button>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="courses" onclick="switchTab('courses')">Graduate Courses</button>
+  <button class="tab-btn" data-tab="tas"     onclick="switchTab('tas')">TAs</button>
+  <button class="tab-btn" data-tab="labs"    onclick="switchTab('labs')">Lab Sections</button>
+  <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
+  <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')">Meeting Finder</button>
+</nav>
+
+<div id="workspace">
+
+  <!-- GRID WORKSPACE (Courses / TAs / Labs) -->
+  <div id="grid-workspace" style="display:flex;flex:1;overflow:hidden;">
+    <!-- Left panel -->
+    <div class="left-panel">
+      <div class="panel-section">
+        <div class="panel-section-header">
+          <span id="panel-title">Graduate Courses</span>
+          <button class="btn-sm btn-primary" onclick="createNewItem()">+ New</button>
+        </div>
+      </div>
+      <div id="item-list"></div>
+      <div id="item-form" style="display:none;"></div>
+    </div>
+    <!-- Right panel -->
+    <div class="right-panel">
+      <div id="grid-placeholder" class="grid-placeholder">
+        Select or create an item to begin
+      </div>
+      <div id="grid-outer" class="grid-outer" style="display:none;">
+        <div class="grid-scroll" id="grid-scroll">
+          <div class="day-headers-sticky">
+            <div class="day-header-spacer"></div>
+            <div class="day-header">Mon</div>
+            <div class="day-header">Tue</div>
+            <div class="day-header">Wed</div>
+            <div class="day-header">Thu</div>
+            <div class="day-header">Fri</div>
+          </div>
+          <div class="grid-body">
+            <div class="time-labels" id="time-labels"></div>
+            <div class="days-area" id="days-area">
+              <div class="day-col" data-day="0" id="day-col-0"></div>
+              <div class="day-col" data-day="1" id="day-col-1"></div>
+              <div class="day-col" data-day="2" id="day-col-2"></div>
+              <div class="day-col" data-day="3" id="day-col-3"></div>
+              <div class="day-col" data-day="4" id="day-col-4"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCHEDULE WORKSPACE -->
+  <div id="schedule-workspace">
+    <div class="sched-controls">
+      <button class="btn-run" onclick="runSolver()">▶ Run Solver</button>
+      <div class="view-toggle">
+        <button id="view-lab-btn" class="active" onclick="setSchedView('lab')">Lab View</button>
+        <button id="view-ta-btn"  onclick="setSchedView('ta')">TA View</button>
+      </div>
+      <button onclick="clearAssignments()">Clear Unlocked</button>
+      <button onclick="window.print()">Print</button>
+    </div>
+    <div id="diagnostics" style="display:none;"></div>
+    <div class="sched-table-wrap"><div id="sched-table"></div></div>
+  </div>
+
+  <!-- MEETING FINDER WORKSPACE -->
+  <div id="meeting-workspace">
+    <div class="meeting-outer">
+      <div>
+        <strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.
+      </div>
+      <div class="meeting-legend">
+        <span><span class="legend-swatch" style="background:#bbf7d0;"></span> All free</span>
+        <span><span class="legend-swatch" style="background:#fde68a;"></span> Some busy</span>
+        <span><span class="legend-swatch" style="background:#fca5a5;"></span> All busy</span>
+      </div>
+      <div class="meeting-grid-wrap">
+        <div class="day-headers" style="display:flex;">
+          <div class="day-header-spacer"></div>
+          <div class="day-header">Mon</div>
+          <div class="day-header">Tue</div>
+          <div class="day-header">Wed</div>
+          <div class="day-header">Thu</div>
+          <div class="day-header">Fri</div>
+        </div>
+        <div class="grid-body" id="meeting-body">
+          <div class="time-labels" id="meeting-time-labels"></div>
+          <div class="days-area" id="meeting-days-area">
+            <div class="meeting-day-col" id="meet-day-0"></div>
+            <div class="meeting-day-col" id="meet-day-1"></div>
+            <div class="meeting-day-col" id="meet-day-2"></div>
+            <div class="meeting-day-col" id="meet-day-3"></div>
+            <div class="meeting-day-col" id="meet-day-4"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #workspace -->
+
+<div id="status-bar"></div>
+
+<!-- modal container -->
+<div id="modal-container"></div>
+
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ════════════════════════════════════════════════════════════════
+const GRID_START = 480;   // 8:00 AM in minutes
+const GRID_END   = 1080;  // 6:00 PM in minutes
+const GRID_MINS  = GRID_END - GRID_START;
+const HOUR_H     = 80;    // px per hour
+const GRID_H     = (GRID_MINS / 60) * HOUR_H;  // 800 px
+const PX_PER_MIN = GRID_H / GRID_MINS;
+const SNAP       = 5;     // minute snap
+const DAYS       = ['Mon','Tue','Wed','Thu','Fri'];
+
+// ════════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════════
+const S = {
+  data: { roles:[], grad_courses:[], labs:[], tas:[], assignments:[] },
+  tab: 'courses',
+  selId: null,
+  drag: null,
+  schedView: 'lab',
+  dirty: false,
+};
+
+// ════════════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════════════
+function uid() { return '_' + Math.random().toString(36).slice(2,10); }
+
+function minToY(m)  { return (m - GRID_START) * PX_PER_MIN; }
+function yToMin(y)  { return y / PX_PER_MIN + GRID_START; }
+function snap(m)    { return Math.round(m / SNAP) * SNAP; }
+function clamp(m)   { return Math.max(GRID_START, Math.min(GRID_END, m)); }
+
+function fmtTime(m) {
+  const h = Math.floor(m/60), mn = m%60;
+  const ampm = h>=12?'PM':'AM', h12 = h>12?h-12:(h===0?12:h);
+  return `${h12}:${mn.toString().padStart(2,'0')} ${ampm}`;
+}
+function fmtRange(s,e) { return `${fmtTime(s)}–${fmtTime(e)}`; }
+function overlap(s1,e1,s2,e2) { return s1<e2 && e1>s2; }
+
+function markDirty() {
+  S.dirty = true;
+  document.getElementById('save-btn').classList.add('dirty');
+}
+function markClean() {
+  S.dirty = false;
+  document.getElementById('save-btn').classList.remove('dirty');
+}
+
+function $id(id) { return document.getElementById(id); }
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+// ════════════════════════════════════════════════════════════════
+// API
+// ════════════════════════════════════════════════════════════════
+let currentFilePath = '';
+
+function updateStatusBar() {
+  $id('status-bar').textContent = currentFilePath ? '\uD83D\uDCC4 ' + currentFilePath : '';
+}
+
+async function loadData() {
+  try {
+    const [dataRes, pathRes] = await Promise.all([
+      fetch('/api/data'),
+      fetch('/api/file-path'),
+    ]);
+    S.data = await dataRes.json();
+    currentFilePath = (await pathRes.json()).path || '';
+    updateStatusBar();
+    renderAll();
+    markClean();
+  } catch(e) { alert('Failed to load data from server: ' + e); }
+}
+
+async function saveData() {
+  try {
+    await fetch('/api/data', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(S.data)
+    });
+    markClean();
+  } catch(e) { alert('Save failed: ' + e); }
+}
+
+async function saveAsData() {
+  try {
+    const r = await fetch('/api/saveas', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(S.data)
+    });
+    const result = await r.json();
+    if (result.cancelled) return;
+    currentFilePath = result.path;
+    updateStatusBar();
+    markClean();
+  } catch(e) { alert('Save As failed: ' + e); }
+}
+
+async function openNative() {
+  try {
+    const r = await fetch('/api/open-dialog', { method:'POST' });
+    const result = await r.json();
+    if (result.cancelled) return;
+    if (result.error) { alert('Could not open file:\n' + result.error); return; }
+    S.data = result.data;
+    S.selId = null;
+    currentFilePath = result.path;
+    updateStatusBar();
+    renderAll();
+    markClean();
+  } catch(e) { alert('Open failed: ' + e); }
+}
+
+
+function exportTemplate() {
+  const tpl = {
+    roles: S.data.roles,
+    grad_courses: S.data.grad_courses,
+    labs: S.data.labs,
+    tas: [], assignments: []
+  };
+  downloadJSON(tpl, 'ta_schedule_template.json');
+}
+
+function downloadJSON(obj, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));
+  a.download = name; a.click();
+}
+
+async function exportDocx() {
+  try {
+    const r = await fetch('/api/export/docx', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(S.data)
+    });
+    if (!r.ok) { alert('Export failed'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ta_schedule.docx'; a.click();
+  } catch(e) { alert('Export failed: ' + e); }
+}
+
+async function runSolver() {
+  const btn = document.querySelector('.btn-run');
+  btn.textContent = '⏳ Solving…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/schedule', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(S.data)
+    });
+    const result = await r.json();
+    if (result.status === 'error') {
+      alert('Solver error:\n' + result.message);
+    } else {
+      S.data.assignments = result.assignments;
+      markDirty();
+      renderSchedule(result.diagnostics, result.status);
+    }
+  } catch(e) { alert('Solver failed: ' + e); }
+  btn.textContent = '▶ Run Solver'; btn.disabled = false;
+}
+
+// ════════════════════════════════════════════════════════════════
+// TAB MANAGEMENT
+// ════════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  S.tab = tab; S.selId = null;
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
+
+  const isGrid = ['courses','tas','labs'].includes(tab);
+  $id('grid-workspace').style.display     = isGrid    ? 'flex'  : 'none';
+  $id('schedule-workspace').classList.toggle('active', tab==='schedule');
+  $id('meeting-workspace').classList.toggle('active',  tab==='meeting');
+
+  if (isGrid) {
+    renderLeftPanel(); showGridPlaceholder();
+  } else if (tab === 'schedule') {
+    renderSchedule({}, null);
+  } else if (tab === 'meeting') {
+    renderMeetingFinder();
+  }
+}
+
+function renderAll() {
+  if (['courses','tas','labs'].includes(S.tab)) {
+    renderLeftPanel();
+    if (S.selId) { renderGrid(); renderItemForm(); } else showGridPlaceholder();
+  } else if (S.tab === 'schedule') {
+    renderSchedule({}, null);
+  } else if (S.tab === 'meeting') {
+    renderMeetingFinder();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// LEFT PANEL
+// ════════════════════════════════════════════════════════════════
+function getItems() {
+  if (S.tab === 'courses') return S.data.grad_courses;
+  if (S.tab === 'tas')     return S.data.tas;
+  if (S.tab === 'labs')    return S.data.labs;
+  return [];
+}
+
+function renderLeftPanel() {
+  const titles = {courses:'Graduate Courses', tas:'TAs', labs:'Lab Sections'};
+  $id('panel-title').textContent = titles[S.tab] || '';
+  const list = $id('item-list');
+  list.innerHTML = '';
+  getItems().forEach(item => {
+    const row = el('div', 'item-row' + (item.id===S.selId?' selected':''));
+    row.onclick = () => selectItem(item.id);
+    const name = el('span','item-name', escHtml(item.name || '(unnamed)'));
+    row.appendChild(name);
+    if (S.tab === 'courses' && item.day !== undefined && item.day !== null) {
+      row.appendChild(el('span','item-badge', DAYS[item.day]));
+    } else if (S.tab === 'tas') {
+      row.appendChild(el('span','item-badge', item.experience==='experienced'?'exp':'inexp'));
+    } else if (S.tab === 'labs' && item.day !== undefined && item.day !== null) {
+      row.appendChild(el('span','item-badge', DAYS[item.day]));
+    }
+    list.appendChild(row);
+  });
+}
+
+function selectItem(id) {
+  S.selId = id;
+  renderLeftPanel();
+  renderGrid();
+  renderItemForm();
+  $id('grid-placeholder').style.display = 'none';
+  $id('grid-outer').style.display = 'flex';
+  $id('item-form').style.display = 'block';
+}
+
+function showGridPlaceholder() {
+  $id('grid-placeholder').style.display = 'flex';
+  $id('grid-outer').style.display = 'none';
+  $id('item-form').style.display = 'none';
+}
+
+function createNewItem() {
+  let item;
+  if (S.tab === 'courses') {
+    item = {id:uid(), name:'New Course', day:0, start_min:540, end_min:660};
+    S.data.grad_courses.push(item);
+  } else if (S.tab === 'tas') {
+    item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0,
+            grad_course_ids:[], outside_duties:[], other_commitments:[]};
+    S.data.tas.push(item);
+  } else if (S.tab === 'labs') {
+    item = {id:uid(), name:'New Lab', day:0, start_min:540, end_min:660,
+            roles: S.data.roles.map(r=>({role_id:r.id, count:1, required_experienced:false}))};
+    S.data.labs.push(item);
+  }
+  markDirty();
+  renderLeftPanel();
+  selectItem(item.id);
+}
+
+function getSelectedItem() {
+  return getItems().find(i => i.id === S.selId) || null;
+}
+
+function deleteCurrentItem() {
+  if (!S.selId) return;
+  if (!confirm('Delete this item?')) return;
+  if (S.tab === 'courses') {
+    S.data.grad_courses = S.data.grad_courses.filter(i => i.id !== S.selId);
+    // remove references from TAs
+    S.data.tas.forEach(ta => {
+      ta.grad_course_ids = (ta.grad_course_ids||[]).filter(id => id !== S.selId);
+    });
+  } else if (S.tab === 'tas') {
+    S.data.tas = S.data.tas.filter(i => i.id !== S.selId);
+    S.data.assignments = S.data.assignments.filter(a => a.ta_id !== S.selId);
+  } else if (S.tab === 'labs') {
+    S.data.labs = S.data.labs.filter(i => i.id !== S.selId);
+    S.data.assignments = S.data.assignments.filter(a => a.lab_id !== S.selId);
+  }
+  S.selId = null;
+  markDirty();
+  renderLeftPanel();
+  showGridPlaceholder();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ITEM FORMS
+// ════════════════════════════════════════════════════════════════
+function renderItemForm() {
+  const form = $id('item-form');
+  const item = getSelectedItem();
+  if (!item) { form.style.display='none'; return; }
+  form.style.display = 'block';
+
+  if (S.tab === 'courses') renderCourseForm(item, form);
+  else if (S.tab === 'tas') renderTAForm(item, form);
+  else if (S.tab === 'labs') renderLabForm(item, form);
+}
+
+// ── helpers shared by all forms ──
+function daySelect(val, onChange) {
+  const s = document.createElement('select');
+  DAYS.forEach((d,i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = ['Monday','Tuesday','Wednesday','Thursday','Friday'][i];
+    if (i === val) o.selected = true;
+    s.appendChild(o);
+  });
+  s.onchange = () => onChange(parseInt(s.value));
+  return s;
+}
+function timeSelect(val, onChange) {
+  const s = document.createElement('select');
+  for (let m = GRID_START; m <= GRID_END; m += 15) {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = fmtTime(m);
+    if (m === val) o.selected = true;
+    s.appendChild(o);
+  }
+  s.onchange = () => onChange(parseInt(s.value));
+  return s;
+}
+function textInput(val, onChange, placeholder) {
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.value = val||''; if(placeholder) inp.placeholder=placeholder;
+  inp.oninput = () => onChange(inp.value);
+  return inp;
+}
+function fgRow(label, inp) {
+  const g = el('div','form-group');
+  const l = el('label'); l.textContent = label; l.appendChild(inp);
+  g.appendChild(l); return g;
+}
+function fgLabel(label) {
+  const g = el('div','form-group');
+  const l = el('label'); l.textContent = label; g.appendChild(l); return {g,l};
+}
+function formActions(onDel) {
+  const d = el('div','form-actions');
+  const db = el('button','btn-sm btn-danger','Delete');
+  db.onclick = onDel;
+  d.appendChild(db);
+  return d;
+}
+
+// ── Course form ──
+function renderCourseForm(item, form) {
+  form.innerHTML = '';
+  const h = el('h3',null,'Edit Course'); form.appendChild(h);
+
+  form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
+
+  const dayG = el('div','form-group');
+  const dayL = el('label'); dayL.textContent = 'Day';
+  dayL.appendChild(daySelect(item.day, v => { item.day=v; markDirty(); renderGrid(); }));
+  dayG.appendChild(dayL); form.appendChild(dayG);
+
+  const row = el('div','form-row');
+  const startG = el('div','form-group');
+  const startL = el('label'); startL.textContent = 'Start';
+  startL.appendChild(timeSelect(item.start_min, v => { item.start_min=v; markDirty(); renderGrid(); }));
+  startG.appendChild(startL); row.appendChild(startG);
+
+  const endG = el('div','form-group');
+  const endL = el('label'); endL.textContent = 'End';
+  endL.appendChild(timeSelect(item.end_min, v => { item.end_min=v; markDirty(); renderGrid(); }));
+  endG.appendChild(endL); row.appendChild(endG);
+  form.appendChild(row);
+
+  form.appendChild(formActions(deleteCurrentItem));
+}
+
+// ── TA form ──
+function renderTAForm(item, form) {
+  form.innerHTML = '';
+  const h = el('h3',null,'Edit TA'); form.appendChild(h);
+
+  form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
+
+  // Experience
+  const expG = el('div','form-group');
+  const expL = el('label'); expL.textContent = 'Experience';
+  const expS = document.createElement('select');
+  [{v:'experienced',t:'Experienced'},{v:'inexperienced',t:'Inexperienced'}].forEach(opt => {
+    const o = document.createElement('option');
+    o.value=opt.v; o.textContent=opt.t; if(item.experience===opt.v) o.selected=true;
+    expS.appendChild(o);
+  });
+  expS.onchange = () => { item.experience=expS.value; markDirty(); renderLeftPanel(); };
+  expL.appendChild(expS); expG.appendChild(expL); form.appendChild(expG);
+
+  // Max SE
+  const seG = el('div','form-group');
+  const seL = el('label'); seL.textContent = 'Max SE';
+  const seInp = document.createElement('input');
+  seInp.type='number'; seInp.step='0.5'; seInp.min='0'; seInp.value=item.max_se||2.0;
+  seInp.oninput = () => { item.max_se=parseFloat(seInp.value)||0; markDirty(); };
+  seL.appendChild(seInp); seG.appendChild(seL); form.appendChild(seG);
+
+  // Grad courses
+  form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;">Grad Courses</label>`));
+  const gcDiv = el('div','checkbox-group');
+  S.data.grad_courses.forEach(gc => {
+    const row = el('div','checkbox-row');
+    const cb = document.createElement('input'); cb.type='checkbox';
+    cb.checked = (item.grad_course_ids||[]).includes(gc.id);
+    cb.onchange = () => {
+      item.grad_course_ids = item.grad_course_ids||[];
+      if (cb.checked) item.grad_course_ids.push(gc.id);
+      else item.grad_course_ids = item.grad_course_ids.filter(id=>id!==gc.id);
+      markDirty(); renderGrid();
+    };
+    row.appendChild(cb);
+    row.appendChild(el('span',null,escHtml(gc.name) + (gc.day!==undefined?` (${DAYS[gc.day]})`:'') ));
+    gcDiv.appendChild(row);
+  });
+  if (!S.data.grad_courses.length) gcDiv.appendChild(el('span','help-text','No courses defined'));
+  form.appendChild(gcDiv);
+
+  // Outside duties
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Outside Duties</label>'));
+  form.appendChild(el('p','help-text','Duties that count toward SE but have no fixed time'));
+  const odDiv = el('div','sublist');
+  (item.outside_duties||[]).forEach((od,i) => {
+    const r = el('div','sublist-item');
+    const nameInp = document.createElement('input'); nameInp.type='text';
+    nameInp.value=od.label||''; nameInp.style.flex='1'; nameInp.style.fontSize='12px';
+    nameInp.placeholder='Label';
+    nameInp.oninput = () => { od.label=nameInp.value; markDirty(); };
+    const seInp2 = document.createElement('input'); seInp2.type='number';
+    seInp2.step='0.5'; seInp2.min='0'; seInp2.value=od.se_value||0;
+    seInp2.style.width='48px'; seInp2.style.fontSize='12px';
+    seInp2.oninput = () => { od.se_value=parseFloat(seInp2.value)||0; markDirty(); };
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { item.outside_duties.splice(i,1); markDirty(); renderItemForm(); };
+    r.append(nameInp, el('span',null,'SE:'), seInp2, rm);
+    odDiv.appendChild(r);
+  });
+  const addOD = el('button','btn-sm','+ Add Duty');
+  addOD.onclick = () => {
+    item.outside_duties = item.outside_duties||[];
+    item.outside_duties.push({label:'Duty',se_value:0.5});
+    markDirty(); renderItemForm();
+  };
+  odDiv.appendChild(addOD);
+  form.appendChild(odDiv);
+
+  // Other commitments note
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Other Commitments</label>'));
+  form.appendChild(el('p','help-text','Draw on grid to add time blocks; click to remove'));
+  const ocDiv = el('div','sublist');
+  (item.other_commitments||[]).forEach((oc,i) => {
+    const r = el('div','sublist-item');
+    const lbl = document.createElement('input'); lbl.type='text';
+    lbl.value=oc.label||''; lbl.style.flex='1'; lbl.style.fontSize='12px';
+    lbl.placeholder='Label';
+    lbl.oninput = () => { oc.label=lbl.value; markDirty(); renderGrid(); };
+    const info = el('span','sl-label', ` ${DAYS[oc.day]} ${fmtRange(oc.start_min,oc.end_min)}`);
+    info.style.fontSize='11px'; info.style.color='var(--text2)';
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { item.other_commitments.splice(i,1); markDirty(); renderGrid(); renderItemForm(); };
+    r.append(lbl, info, rm);
+    ocDiv.appendChild(r);
+  });
+  form.appendChild(ocDiv);
+  form.appendChild(formActions(deleteCurrentItem));
+}
+
+// ── Lab form ──
+function renderLabForm(item, form) {
+  form.innerHTML = '';
+  form.appendChild(el('h3',null,'Edit Lab'));
+
+  form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
+
+  const dayG = el('div','form-group');
+  const dayL = el('label'); dayL.textContent='Day';
+  dayL.appendChild(daySelect(item.day, v => { item.day=v; markDirty(); renderGrid(); }));
+  dayG.appendChild(dayL); form.appendChild(dayG);
+
+  const row = el('div','form-row');
+  const sg = el('div','form-group');
+  const sl = el('label'); sl.textContent='Start';
+  sl.appendChild(timeSelect(item.start_min, v => { item.start_min=v; markDirty(); renderGrid(); }));
+  sg.appendChild(sl); row.appendChild(sg);
+  const eg = el('div','form-group');
+  const el2 = el('div'); const ell = document.createElement('label'); ell.textContent='End';
+  ell.appendChild(timeSelect(item.end_min, v => { item.end_min=v; markDirty(); renderGrid(); }));
+  eg.appendChild(ell); row.appendChild(eg);
+  form.appendChild(row);
+
+  // Roles
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Role Requirements</label>'));
+  const rolesDiv = el('div');
+  item.roles = item.roles||[];
+  S.data.roles.forEach(role => {
+    let rr = item.roles.find(r => r.role_id === role.id);
+    if (!rr) { rr={role_id:role.id,count:0,required_experienced:false}; item.roles.push(rr); }
+    const r = el('div','role-check-row');
+    const lbl = el('label',null,escHtml(role.label));
+
+    const cntInp = document.createElement('input');
+    cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
+    cntInp.value=rr.count; cntInp.className='count-input';
+    cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; markDirty(); };
+
+    const expCb = document.createElement('input'); expCb.type='checkbox';
+    expCb.checked=rr.required_experienced;
+    expCb.title='Require experienced TA';
+    expCb.onchange = () => { rr.required_experienced=expCb.checked; markDirty(); };
+
+    r.append(lbl, el('span',null,'×'), cntInp, expCb, el('span','help-text','exp'));
+    rolesDiv.appendChild(r);
+  });
+  form.appendChild(rolesDiv);
+  form.appendChild(formActions(deleteCurrentItem));
+}
+
+// ════════════════════════════════════════════════════════════════
+// GRID RENDERING
+// ════════════════════════════════════════════════════════════════
+function initGridLines() {
+  // Time labels
+  const tl = $id('time-labels');
+  tl.innerHTML = ''; tl.style.height = GRID_H + 'px'; tl.style.position='relative';
+  for (let h=8; h<=18; h++) {
+    const lbl = el('div','time-label', fmtTime(h*60));
+    lbl.style.top = minToY(h*60) + 'px';
+    tl.appendChild(lbl);
+  }
+  // Grid lines in each day column
+  for (let d=0; d<5; d++) {
+    const col = $id(`day-col-${d}`);
+    col.style.height = GRID_H + 'px';
+    // remove old lines
+    col.querySelectorAll('.hour-line,.halfhour-line').forEach(e=>e.remove());
+    for (let h=8; h<=18; h++) {
+      const ln = el('div','hour-line');
+      ln.style.top = minToY(h*60) + 'px';
+      col.appendChild(ln);
+    }
+    for (let h=8; h<18; h++) {
+      const ln = el('div','halfhour-line');
+      ln.style.top = minToY(h*60+30) + 'px';
+      col.appendChild(ln);
+    }
+  }
+}
+
+function renderGrid() {
+  initGridLines();
+  // Clear blocks
+  for (let d=0; d<5; d++) {
+    $id(`day-col-${d}`).querySelectorAll('.block').forEach(e=>e.remove());
+  }
+  const item = getSelectedItem();
+  if (!item) return;
+  getBlocksForItem(item).forEach(b => renderBlock(b));
+}
+
+function getBlocksForItem(item) {
+  const blocks = [];
+  if (S.tab === 'courses') {
+    if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
+      blocks.push({type:'lab', day:item.day, start:item.start_min, end:item.end_min,
+                   label:item.name, editable:true, itemRef:item, eraseType:'course-time'});
+    }
+  } else if (S.tab === 'labs') {
+    if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
+      blocks.push({type:'lab', day:item.day, start:item.start_min, end:item.end_min,
+                   label:item.name, editable:true, itemRef:item, eraseType:'lab-time'});
+    }
+  } else if (S.tab === 'tas') {
+    // Grad courses (non-editable)
+    (item.grad_course_ids||[]).forEach(gcId => {
+      const gc = S.data.grad_courses.find(c=>c.id===gcId);
+      if (gc && gc.day!==undefined && gc.start_min && gc.end_min) {
+        blocks.push({type:'course', day:gc.day, start:gc.start_min, end:gc.end_min,
+                     label:gc.name, editable:false});
+      }
+    });
+    // Other commitments (editable)
+    (item.other_commitments||[]).forEach((oc,i) => {
+      blocks.push({type:'commit', day:oc.day, start:oc.start_min, end:oc.end_min,
+                   label:oc.label||'Commitment', editable:true,
+                   eraseType:'commitment', commitIndex:i});
+    });
+  }
+  return blocks;
+}
+
+function renderBlock(b) {
+  const col = $id(`day-col-${b.day}`);
+  if (!col) return;
+  const top = minToY(Math.max(b.start, GRID_START));
+  const bot = minToY(Math.min(b.end,   GRID_END));
+  if (bot <= top) return;
+
+  const div = el('div', `block block-${b.type}${b.editable?' block-editable':''}`);
+  div.style.top    = top + 'px';
+  div.style.height = (bot - top) + 'px';
+  div.dataset.eraseType   = b.eraseType || '';
+  div.dataset.commitIndex = b.commitIndex ?? '';
+  div.dataset.day         = b.day;
+  div.dataset.startMin    = b.start;
+  div.dataset.endMin      = b.end;
+
+  if (b.editable) div.appendChild(el('div','block-resize-handle-top'));
+
+  div.appendChild(el('div','block-label', escHtml(b.label)));
+  if (b.end - b.start >= 30) {
+    div.appendChild(el('div','block-time', fmtRange(b.start, b.end)));
+  }
+
+  if (b.editable) {
+    const delBtn = el('span','block-delete','×');
+    delBtn.title = 'Delete';
+    delBtn.onmousedown = e => e.stopPropagation();
+    delBtn.onclick     = e => { e.stopPropagation(); eraseBlock(div); };
+    div.appendChild(delBtn);
+    div.appendChild(el('div','block-resize-handle'));
+  }
+
+  col.appendChild(div);
+}
+
+// ════════════════════════════════════════════════════════════════
+// GRID DRAG INTERACTION
+// ════════════════════════════════════════════════════════════════
+(function initGridInteraction() {
+  document.addEventListener('mousedown', onGridMouseDown);
+  document.addEventListener('mousemove', onGridMouseMove);
+  document.addEventListener('mouseup',   onGridMouseUp);
+})();
+
+function getYInCol(e, col) {
+  const rect = col.getBoundingClientRect();
+  return e.clientY - rect.top;
+}
+
+function colFromEvent(e) {
+  return e.target.closest?.('.day-col') || null;
+}
+
+function onGridMouseDown(e) {
+  if (!S.selId || !['courses','tas','labs'].includes(S.tab)) return;
+
+  // Priority 1: bottom resize handle
+  const resizeBot = e.target.closest?.('.block-resize-handle');
+  if (resizeBot && !resizeBot.classList.contains('block-resize-handle-top')) {
+    const block = resizeBot.closest('.block-editable');
+    const col   = block.closest('.day-col');
+    S.drag = {
+      mode: 'resize-end', block, col,
+      day:      parseInt(block.dataset.day),
+      startMin: parseInt(block.dataset.startMin),
+      curMin:   parseInt(block.dataset.endMin),
+    };
+    e.preventDefault(); return;
+  }
+
+  // Priority 2: top resize handle
+  const resizeTop = e.target.closest?.('.block-resize-handle-top');
+  if (resizeTop) {
+    const block = resizeTop.closest('.block-editable');
+    const col   = block.closest('.day-col');
+    S.drag = {
+      mode: 'resize-start', block, col,
+      day:    parseInt(block.dataset.day),
+      endMin: parseInt(block.dataset.endMin),
+      curMin: parseInt(block.dataset.startMin),
+    };
+    e.preventDefault(); return;
+  }
+
+  // Priority 3: block body → move
+  const block = e.target.closest?.('.block-editable');
+  if (block) {
+    const col      = block.closest('.day-col');
+    const day      = parseInt(block.dataset.day);
+    const startMin = parseInt(block.dataset.startMin);
+    const endMin   = parseInt(block.dataset.endMin);
+    const duration = endMin - startMin;
+    const blockRect  = block.getBoundingClientRect();
+    const offsetMin  = snap(Math.round((e.clientY - blockRect.top) / PX_PER_MIN));
+
+    block.style.opacity       = '0.25';
+    block.style.pointerEvents = 'none';
+
+    const ghost = block.cloneNode(true);
+    ghost.classList.add('block-ghost');
+    col.appendChild(ghost);
+
+    S.drag = {
+      mode: 'move', block, ghost,
+      eraseType:   block.dataset.eraseType,
+      commitIndex: block.dataset.commitIndex,
+      day, startMin, endMin, duration, offsetMin,
+      curDay: day, curStartMin: startMin,
+    };
+    e.preventDefault(); return;
+  }
+
+  // Priority 4: background → draw new block
+  const col = colFromEvent(e);
+  if (!col) return;
+
+  const day = parseInt(col.dataset.day);
+  const y   = getYInCol(e, col);
+  const min = clamp(snap(yToMin(y)));
+
+  const preview = el('div','block block-preview');
+  preview.style.top    = minToY(min) + 'px';
+  preview.style.height = '0px';
+  col.appendChild(preview);
+
+  S.drag = {mode:'draw', day, startMin:min, curMin:min, preview, col};
+  e.preventDefault();
+}
+
+function onGridMouseMove(e) {
+  if (!S.drag) return;
+
+  if (S.drag.mode === 'draw') {
+    const {col, startMin, preview} = S.drag;
+    const min = clamp(snap(yToMin(getYInCol(e, col))));
+    S.drag.curMin = min;
+    const lo = Math.min(startMin, min), hi = Math.max(startMin, min);
+    preview.style.top    = minToY(lo) + 'px';
+    preview.style.height = Math.max(0, minToY(hi) - minToY(lo)) + 'px';
+
+  } else if (S.drag.mode === 'resize-end') {
+    const {block, col, startMin} = S.drag;
+    const endMin = Math.max(startMin + 15, clamp(snap(yToMin(getYInCol(e, col)))));
+    S.drag.curMin = endMin;
+    block.style.height = (minToY(endMin) - minToY(startMin)) + 'px';
+    const t = block.querySelector('.block-time');
+    if (t) t.textContent = fmtRange(startMin, endMin);
+
+  } else if (S.drag.mode === 'resize-start') {
+    const {block, col, endMin} = S.drag;
+    const startMin = Math.min(endMin - 15, clamp(snap(yToMin(getYInCol(e, col)))));
+    S.drag.curMin = startMin;
+    block.style.top    = minToY(startMin) + 'px';
+    block.style.height = (minToY(endMin) - minToY(startMin)) + 'px';
+    const t = block.querySelector('.block-time');
+    if (t) t.textContent = fmtRange(startMin, endMin);
+
+  } else if (S.drag.mode === 'move') {
+    const {ghost, duration, offsetMin} = S.drag;
+    // Find the day-col under the cursor (ghost is pointer-events:none so it won't intercept)
+    const underEl = document.elementFromPoint(e.clientX, e.clientY);
+    const dayCol  = underEl?.closest?.('.day-col');
+    if (!dayCol) return;
+
+    const newDay      = parseInt(dayCol.dataset.day);
+    const newStartMin = clamp(snap(yToMin(getYInCol(e, dayCol)) - offsetMin));
+    const newEndMin   = newStartMin + duration;
+
+    if (newDay !== S.drag.curDay) {
+      $id(`day-col-${newDay}`).appendChild(ghost);
+      S.drag.curDay = newDay;
+    }
+    ghost.style.top    = minToY(newStartMin) + 'px';
+    ghost.style.height = (minToY(Math.min(newEndMin, GRID_END)) - minToY(newStartMin)) + 'px';
+    S.drag.curStartMin = newStartMin;
+  }
+}
+
+function onGridMouseUp(e) {
+  if (!S.drag) return;
+
+  if (S.drag.mode === 'draw') {
+    const {day, startMin, curMin, preview} = S.drag;
+    preview.remove();
+    const lo = Math.min(startMin, curMin), hi = Math.max(startMin, curMin);
+    if (hi - lo >= 15) handleBlockDraw(day, lo, hi);
+
+  } else if (S.drag.mode === 'resize-end') {
+    const {block, day, startMin, curMin} = S.drag;
+    applyBlockChange(block.dataset.eraseType, block.dataset.commitIndex,
+                     day, startMin, Math.max(startMin + 15, curMin));
+
+  } else if (S.drag.mode === 'resize-start') {
+    const {block, day, endMin, curMin} = S.drag;
+    applyBlockChange(block.dataset.eraseType, block.dataset.commitIndex,
+                     day, Math.min(endMin - 15, curMin), endMin);
+
+  } else if (S.drag.mode === 'move') {
+    const {block, ghost, curDay, curStartMin, duration, eraseType, commitIndex} = S.drag;
+    ghost.remove();
+    block.style.opacity = block.style.pointerEvents = '';
+    applyBlockChange(eraseType, commitIndex, curDay, curStartMin, curStartMin + duration);
+  }
+
+  S.drag = null;
+}
+
+function handleBlockDraw(day, startMin, endMin) {
+  const item = getSelectedItem(); if (!item) return;
+  if (S.tab === 'courses' || S.tab === 'labs') {
+    item.day = day; item.start_min = startMin; item.end_min = endMin;
+    markDirty(); renderGrid(); renderItemForm();
+  } else if (S.tab === 'tas') {
+    item.other_commitments = item.other_commitments||[];
+    item.other_commitments.push({label:'Commitment', day, start_min:startMin, end_min:endMin});
+    markDirty(); renderGrid(); renderItemForm();
+  }
+}
+
+function applyBlockChange(eraseType, commitIndex, day, startMin, endMin) {
+  const item = getSelectedItem(); if (!item) return;
+  if (eraseType === 'course-time' || eraseType === 'lab-time') {
+    item.day = day; item.start_min = startMin; item.end_min = endMin;
+  } else if (eraseType === 'commitment') {
+    const idx = parseInt(commitIndex);
+    if (!isNaN(idx) && item.other_commitments?.[idx]) {
+      item.other_commitments[idx].day       = day;
+      item.other_commitments[idx].start_min = startMin;
+      item.other_commitments[idx].end_min   = endMin;
+    }
+  }
+  markDirty(); renderGrid(); renderItemForm();
+}
+
+function eraseBlock(block) {
+  const item = getSelectedItem(); if (!item) return;
+  const type = block.dataset.eraseType;
+  if (type === 'course-time' || type === 'lab-time') {
+    item.day = null; item.start_min = null; item.end_min = null;
+  } else if (type === 'commitment') {
+    const idx = parseInt(block.dataset.commitIndex);
+    if (!isNaN(idx)) item.other_commitments.splice(idx, 1);
+  }
+  markDirty(); renderGrid(); renderItemForm();
+}
+
+// ════════════════════════════════════════════════════════════════
+// SCHEDULE TAB
+// ════════════════════════════════════════════════════════════════
+function setSchedView(v) {
+  S.schedView = v;
+  $id('view-lab-btn').classList.toggle('active', v==='lab');
+  $id('view-ta-btn').classList.toggle('active',  v==='ta');
+  renderSchedule({}, null);
+}
+
+function clearAssignments() {
+  S.data.assignments = S.data.assignments.filter(a => a.locked);
+  markDirty(); renderSchedule({}, null);
+}
+
+function renderSchedule(diag, status) {
+  diag = diag || {};
+  // Diagnostics
+  const diagDiv = $id('diagnostics');
+  const uncov = diag.uncoverable_labs || [];
+  const blocking = diag.blocking_grad_courses || [];
+  if (status === 'infeasible' && (uncov.length || blocking.length)) {
+    const labsMap = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
+    const gcMap   = Object.fromEntries(S.data.grad_courses.map(g=>[g.id,g]));
+    let html = '<h4>⚠ Infeasible Schedule</h4>';
+    if (uncov.length) {
+      html += '<p><strong>Uncoverable labs:</strong></p><ul>' +
+        uncov.map(id => `<li>${escHtml(labsMap[id]?.name||id)}</li>`).join('') + '</ul>';
+    }
+    if (blocking.length) {
+      html += '<p><strong>Blocking grad courses (most impact first):</strong></p><ul>' +
+        blocking.map(b => `<li>${escHtml(b.name)} — blocks ${b.blocked_ta_count} TA(s) from ${b.affected_lab_count} lab(s)</li>`).join('') + '</ul>';
+    }
+    diagDiv.innerHTML = html;
+    diagDiv.style.display = 'block';
+  } else {
+    diagDiv.style.display = 'none';
+  }
+
+  const tbl = $id('sched-table');
+  tbl.innerHTML = '';
+  if (S.schedView === 'lab') renderLabView(tbl);
+  else renderTAView(tbl);
+}
+
+function renderLabView(container) {
+  const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const tasMap   = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
+
+  if (!S.data.labs.length) {
+    container.appendChild(el('p','help-text','No labs defined'));
+    return;
+  }
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['Lab','Day/Time','Role','Count','Assigned TAs'].forEach(h => {
+    const th = el('th',null,h); thr.appendChild(th);
+  });
+  thead.appendChild(thr); table.appendChild(thead);
+  const tbody = el('tbody');
+
+  S.data.labs.forEach(lab => {
+    // Lab header row
+    const hrow = el('tr','lab-header');
+    const hcell = el('td'); hcell.colSpan=5;
+    hcell.innerHTML = `<strong>${escHtml(lab.name)}</strong>`;
+    hrow.appendChild(hcell); tbody.appendChild(hrow);
+
+    const timeStr = lab.day!==null && lab.start_min
+      ? `${DAYS[lab.day]} ${fmtRange(lab.start_min, lab.end_min)}` : '—';
+
+    (lab.roles||[]).filter(rr=>rr.count>0).forEach(rr => {
+      const role = rolesMap[rr.role_id];
+      const labAssigns = S.data.assignments.filter(
+        a => a.lab_id===lab.id && a.role_id===rr.role_id
+      );
+      const tr = el('tr');
+      tr.appendChild(el('td'));
+      tr.appendChild(el('td',null,timeStr));
+      tr.appendChild(el('td',null,escHtml(role?.label||rr.role_id) + (rr.required_experienced?' ⭐':'')));
+      tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
+
+      const assignCell = el('td');
+      const roleDiv = el('div','role-cell');
+
+      labAssigns.forEach(a => {
+        const ta = tasMap[a.ta_id];
+        const chip = el('div', `ta-chip${a.locked?' locked':''}`);
+        chip.innerHTML = escHtml(ta?.name||a.ta_id);
+
+        const lockBtn = el('span','lock-btn', a.locked ? '🔒' : '🔓');
+        lockBtn.title = a.locked ? 'Unlock' : 'Lock';
+        lockBtn.onclick = () => { a.locked = !a.locked; markDirty(); renderSchedule({},null); };
+
+        const rmBtn = el('span','rm-btn','×');
+        rmBtn.title = 'Remove assignment';
+        rmBtn.onclick = () => {
+          S.data.assignments = S.data.assignments.filter(x => x!==a);
+          markDirty(); renderSchedule({},null);
+        };
+        chip.appendChild(lockBtn); chip.appendChild(rmBtn);
+        roleDiv.appendChild(chip);
+      });
+
+      // Add-TA button
+      const addBtn = el('button','add-ta-btn','+ TA');
+      addBtn.onclick = () => openAssignModal(lab, rr, rolesMap, tasMap);
+      roleDiv.appendChild(addBtn);
+      assignCell.appendChild(roleDiv);
+      tr.appendChild(assignCell);
+      tbody.appendChild(tr);
+    });
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function renderTAView(container) {
+  const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
+
+  if (!S.data.tas.length) {
+    container.appendChild(el('p','help-text','No TAs defined'));
+    return;
+  }
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['TA','Experience','Max SE','Used SE','Assigned Labs'].forEach(h => {
+    thr.appendChild(el('th',null,h));
+  });
+  thead.appendChild(thr); table.appendChild(thead);
+  const tbody = el('tbody');
+
+  S.data.tas.forEach(ta => {
+    const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
+    const usedSE = taAssigns.reduce((sum,a) => {
+      const lab = labsMap[a.lab_id];
+      const rr = lab?.roles?.find(r=>r.role_id===a.role_id);
+      const role = S.data.roles.find(r=>r.id===a.role_id);
+      return sum + (role?.se_value||0);
+    },0) + (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0);
+
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+    tr.appendChild(el('td',null,ta.experience==='experienced'?'Experienced':'Inexperienced'));
+    tr.appendChild(el('td',null,String(ta.max_se)));
+    tr.appendChild(el('td',null,usedSE.toFixed(1)));
+
+    const labsCell = el('td');
+    taAssigns.forEach(a => {
+      const lab  = labsMap[a.lab_id];
+      const role = rolesMap[a.role_id];
+      const chip = el('span','ta-row-lab');
+      chip.textContent = (lab?.name||a.lab_id) + ' / ' + (role?.label||a.role_id);
+      if (a.locked) chip.textContent += ' 🔒';
+      labsCell.appendChild(chip);
+    });
+    tr.appendChild(labsCell);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+// ── Assignment modal ──
+function openAssignModal(lab, rr, rolesMap, tasMap) {
+  const role = rolesMap[rr.role_id];
+  const existing = new Set(
+    S.data.assignments
+      .filter(a => a.lab_id===lab.id && a.role_id===rr.role_id)
+      .map(a => a.ta_id)
+  );
+
+  // Compute TA used SE
+  function usedSE(ta) {
+    return S.data.assignments
+      .filter(a => a.ta_id===ta.id)
+      .reduce((sum,a) => {
+        const r = S.data.roles.find(r2=>r2.id===a.role_id);
+        return sum + (r?.se_value||0);
+      }, (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0));
+  }
+
+  // Filter available TAs
+  const eligible = S.data.tas.filter(ta => {
+    if (rr.required_experienced && ta.experience !== 'experienced') return false;
+    // Check if would exceed SE
+    const addSE = role?.se_value||0;
+    if (usedSE(ta) + addSE > ta.max_se + 0.001) return false;
+    // Check time conflict
+    if (lab.day !== null && lab.start_min) {
+      for (const gcId of (ta.grad_course_ids||[])) {
+        const gc = S.data.grad_courses.find(c=>c.id===gcId);
+        if (gc && gc.day===lab.day && overlap(lab.start_min,lab.end_min,gc.start_min,gc.end_min)) return false;
+      }
+      for (const oc of (ta.other_commitments||[])) {
+        if (oc.day===lab.day && overlap(lab.start_min,lab.end_min,oc.start_min,oc.end_min)) return false;
+      }
+    }
+    return true;
+  });
+
+  const html = `
+    <div class="modal-box">
+      <h2>Assign TA — ${escHtml(lab.name)}</h2>
+      <h3>Role: ${escHtml(role?.label||rr.role_id)}</h3>
+      <div class="assign-ta-list" id="assign-ta-list"></div>
+      <div class="modal-footer">
+        <button class="btn-sm" onclick="closeModal()">Close</button>
+      </div>
+    </div>`;
+  showModal(html);
+
+  const listDiv = $id('assign-ta-list');
+  if (!eligible.length) {
+    listDiv.appendChild(el('div','help-text','No eligible TAs available'));
+    return;
+  }
+  eligible.forEach(ta => {
+    const row = el('div','assign-ta-row');
+    const isAssigned = existing.has(ta.id);
+    if (isAssigned) row.style.background = '#eff6ff';
+
+    const expBadge = el('span', `exp-badge${ta.experience!=='experienced'?' inexp':''}`,
+                        ta.experience==='experienced'?'exp':'inexp');
+    const name = el('span',null,escHtml(ta.name));
+    const seInfo = el('span','se-info',`SE: ${usedSE(ta).toFixed(1)}/${ta.max_se}`);
+    const checkmark = el('span',null, isAssigned ? ' ✓' : '');
+    checkmark.style.color = 'var(--green)';
+    row.append(expBadge, name, checkmark, seInfo);
+
+    row.onclick = () => {
+      if (isAssigned) {
+        S.data.assignments = S.data.assignments.filter(
+          a => !(a.lab_id===lab.id && a.role_id===rr.role_id && a.ta_id===ta.id)
+        );
+      } else {
+        S.data.assignments.push({lab_id:lab.id, role_id:rr.role_id, ta_id:ta.id, locked:false});
+      }
+      markDirty();
+      closeModal();
+      renderSchedule({},null);
+    };
+    listDiv.appendChild(row);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// MEETING FINDER
+// ════════════════════════════════════════════════════════════════
+function renderMeetingFinder() {
+  const numTAs = S.data.tas.length;
+  // Build unavailability grid: busy[day][minute] = count
+  const busy = Array.from({length:5}, () => new Uint8Array(GRID_MINS));
+
+  S.data.tas.forEach(ta => {
+    const mark = (day, s, e) => {
+      if (day < 0 || day > 4) return;
+      const lo = Math.max(0, s - GRID_START);
+      const hi = Math.min(GRID_MINS, e - GRID_START);
+      for (let m = lo; m < hi; m++) busy[day][m]++;
+    };
+    (ta.grad_course_ids||[]).forEach(id => {
+      const gc = S.data.grad_courses.find(c=>c.id===id);
+      if (gc) mark(gc.day, gc.start_min, gc.end_min);
+    });
+    (ta.other_commitments||[]).forEach(oc => mark(oc.day, oc.start_min, oc.end_min));
+  });
+
+  // Time labels
+  const tl = $id('meeting-time-labels');
+  tl.innerHTML = ''; tl.style.height = GRID_H + 'px'; tl.style.position='relative';
+  for (let h=8; h<=18; h++) {
+    const lbl = el('div','time-label', fmtTime(h*60));
+    lbl.style.top = minToY(h*60) + 'px';
+    tl.appendChild(lbl);
+  }
+
+  // Render each day column as heatmap
+  for (let d=0; d<5; d++) {
+    const col = $id(`meet-day-${d}`);
+    col.innerHTML = '';
+    col.style.height = GRID_H + 'px';
+
+    // Hour lines
+    for (let h=8; h<=18; h++) {
+      const ln = el('div','hour-line'); ln.style.top=minToY(h*60)+'px'; col.appendChild(ln);
+    }
+
+    if (!numTAs) continue;
+
+    // Merge consecutive minutes with same busyness into segments
+    let segStart = 0, segBusy = busy[d][0];
+    const flush = (s, e, b) => {
+      if (e <= s || !numTAs) return;
+      const frac = b / numTAs;
+      const color = frac === 0
+        ? `rgba(187,247,208,0.7)`
+        : frac < 1
+        ? `rgba(253,230,138,${0.4+0.5*frac})`
+        : `rgba(252,165,165,0.8)`;
+      const div = el('div','meeting-cell');
+      div.style.top    = minToY(GRID_START + s) + 'px';
+      div.style.height = (minToY(GRID_START + e) - minToY(GRID_START + s)) + 'px';
+      div.style.background = color;
+      div.title = `${fmtTime(GRID_START+s)}–${fmtTime(GRID_START+e)}: ${numTAs-b}/${numTAs} free`;
+      col.appendChild(div);
+    };
+    for (let m=1; m<GRID_MINS; m++) {
+      if (busy[d][m] !== segBusy) {
+        flush(segStart, m, segBusy);
+        segStart = m; segBusy = busy[d][m];
+      }
+    }
+    flush(segStart, GRID_MINS, segBusy);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ROLES MODAL
+// ════════════════════════════════════════════════════════════════
+function openRolesModal() {
+  showModal(buildRolesModalHTML());
+}
+
+function buildRolesModalHTML() {
+  return '<div class="modal-box" id="roles-modal-box"><h2>Role Types</h2>' +
+    '<div id="roles-list"></div>' +
+    '<div class="modal-footer">' +
+    '<button class="btn-sm btn-primary" onclick="addRole()">+ Add Role</button>' +
+    '<button class="btn-sm" onclick="closeModal()">Done</button>' +
+    '</div></div>';
+}
+
+function renderRolesList() {
+  const div = $id('roles-list');
+  if (!div) return;
+  div.innerHTML = '';
+  S.data.roles.forEach((role, i) => {
+    const r = el('div','sublist-item');
+
+    const idInp = document.createElement('input'); idInp.type='text';
+    idInp.value=role.id; idInp.placeholder='id'; idInp.style.width='80px'; idInp.style.fontSize='12px';
+    idInp.oninput = () => { role.id=idInp.value; markDirty(); };
+
+    const lblInp = document.createElement('input'); lblInp.type='text';
+    lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.style.flex='1'; lblInp.style.fontSize='12px';
+    lblInp.oninput = () => { role.label=lblInp.value; markDirty(); };
+
+    const seInp = document.createElement('input'); seInp.type='number';
+    seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value; seInp.style.width='52px'; seInp.style.fontSize='12px';
+    seInp.oninput = () => { role.se_value=parseFloat(seInp.value)||0; markDirty(); };
+
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { S.data.roles.splice(i,1); markDirty(); renderRolesList(); };
+
+    r.append(idInp, lblInp, el('span',null,'SE:'), seInp, rm);
+    div.appendChild(r);
+  });
+}
+
+function addRole() {
+  S.data.roles.push({id:uid(), label:'New Role', se_value:1.0});
+  markDirty(); renderRolesList();
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODAL HELPERS
+// ════════════════════════════════════════════════════════════════
+function showModal(html) {
+  const backdrop = el('div','modal-backdrop');
+  backdrop.innerHTML = html;
+  backdrop.onclick = e => { if (e.target===backdrop) closeModal(); };
+  $id('modal-container').appendChild(backdrop);
+  // If roles modal, render list
+  if ($id('roles-list')) renderRolesList();
+}
+function closeModal() {
+  const mc = $id('modal-container');
+  if (mc.lastChild) mc.removeChild(mc.lastChild);
+}
+
+// ════════════════════════════════════════════════════════════════
+// MISC
+// ════════════════════════════════════════════════════════════════
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); saveData(); }
+  if (e.key==='Escape') closeModal();
+});
+
+// ════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════
+loadData();
+</script>
+</body>
+</html>
