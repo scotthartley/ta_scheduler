@@ -1926,19 +1926,19 @@ async function importClassList() {
 
 function renderImportGradList() {
   const div = $id('import-grad-list'); if (!div) return;
-  div.innerHTML = '';
-  (S._importGrad || []).forEach((c, i) => {
-    const row = el('div'); row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
-    const cb = document.createElement('input'); cb.type='checkbox';
-    cb.defaultChecked = S._importGradChk.has(i);
-    cb.onchange = () => { if (cb.checked) S._importGradChk.add(i); else S._importGradChk.delete(i); };
+  div.innerHTML = (S._importGrad || []).map((c, i) => {
+    const chk = S._importGradChk.has(i) ? ' checked' : '';
+    const dname = c.section ? `${escHtml(c.name)} ${escHtml(c.section)}` : escHtml(c.name);
     const meetStr = (c.meetings?.length ? c.meetings : [{day:c.day, start_min:c.start_min, end_min:c.end_min}])
       .map(m => `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`).join(', ');
-    const lbl = el('label'); lbl.style.cursor='pointer';
-    lbl.appendChild(cb);
-    const dname = c.section ? `${c.name} ${c.section}` : c.name;
-    lbl.appendChild(document.createTextNode(` ${escHtml(dname)} — ${meetStr}`));
-    row.appendChild(lbl); div.appendChild(row);
+    return `<div style="padding:4px 0;border-bottom:1px solid #eee;">
+      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+        <input type="checkbox" data-grad-idx="${i}"${chk}> ${dname} — ${meetStr}
+      </label></div>`;
+  }).join('');
+  div.querySelectorAll('input[data-grad-idx]').forEach(cb => {
+    const i = parseInt(cb.dataset.gradIdx);
+    cb.onchange = () => { if (cb.checked) S._importGradChk.add(i); else S._importGradChk.delete(i); };
   });
 }
 
@@ -1949,19 +1949,18 @@ function importSelectAllGrad(checked) {
 
 function renderImportLabList() {
   const div = $id('import-lab-list'); if (!div) return;
-  div.innerHTML = '';
-  (S._importCourses || []).forEach(course => {
+  div.innerHTML = (S._importCourses || []).map(course => {
     const key = `${course.subject} ${course.number}`;
-    const row = el('div'); row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
-    const cb = document.createElement('input'); cb.type='checkbox';
-    cb.defaultChecked = S._importChecked.has(key);
+    const chk = S._importChecked.has(key) ? ' checked' : '';
+    return `<div style="padding:4px 0;border-bottom:1px solid #eee;">
+      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+        <input type="checkbox" data-lab-key="${escHtml(key)}"${chk}>
+        ${escHtml(key)} — ${escHtml(course.title)} (${course.sections.length} section(s))
+      </label></div>`;
+  }).join('');
+  div.querySelectorAll('input[data-lab-key]').forEach(cb => {
+    const key = cb.dataset.labKey;
     cb.onchange = () => { if (cb.checked) S._importChecked.add(key); else S._importChecked.delete(key); };
-    const lbl = el('label'); lbl.style.cursor='pointer';
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(
-      ` ${key} — ${escHtml(course.title)} (${course.sections.length} section(s))`
-    ));
-    row.appendChild(lbl); div.appendChild(row);
   });
 }
 
