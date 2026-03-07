@@ -397,6 +397,10 @@ const S = {
 // UTILS
 // ════════════════════════════════════════════════════════════════
 function uid() { return '_' + Math.random().toString(36).slice(2,10); }
+function displayName(item) {
+  const n = item?.name || '(unnamed)';
+  return item?.section ? `${n} ${item.section}` : n;
+}
 
 function minToY(m)  { return (m - GRID_START) * PX_PER_MIN; }
 function yToMin(y)  { return y / PX_PER_MIN + GRID_START; }
@@ -580,7 +584,7 @@ function renderLeftPanel() {
   getItems().forEach(item => {
     const row = el('div', 'item-row' + (item.id===S.selId?' selected':''));
     row.onclick = () => selectItem(item.id);
-    const name = el('span','item-name', escHtml(item.name || '(unnamed)'));
+    const name = el('span','item-name', escHtml(displayName(item)));
     row.appendChild(name);
     if (S.tab === 'courses' && item.day !== undefined && item.day !== null) {
       const badge = item.meetings?.length > 1 ? item.meetings.map(m=>'MTWRF'[m.day]).join('') : DAYS[item.day];
@@ -614,14 +618,14 @@ function showGridPlaceholder() {
 function createNewItem() {
   let item;
   if (S.tab === 'courses') {
-    item = {id:uid(), name:'New Course', day:0, start_min:540, end_min:660};
+    item = {id:uid(), name:'New Course', section:'', day:0, start_min:540, end_min:660};
     S.data.grad_courses.push(item);
   } else if (S.tab === 'tas') {
     item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0,
             grad_course_ids:[], outside_duties:[], other_commitments:[]};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
-    item = {id:uid(), name:'New Lab', day:0, start_min:540, end_min:660,
+    item = {id:uid(), name:'New Lab', section:'', day:0, start_min:540, end_min:660,
             roles: S.data.roles.map(r=>({role_id:r.id, count:1, preferred_experienced:0}))};
     S.data.labs.push(item);
   }
@@ -720,7 +724,17 @@ function formActions(onDel) {
 function renderCourseForm(item, form) {
   form.innerHTML = '';
   form.appendChild(el('h3',null,'Edit Course'));
-  form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
+  const cnRow = el('div','form-row');
+  const cnG = el('div','form-group'); cnG.style.flex='1';
+  const cnL = el('label'); cnL.textContent='Name';
+  cnL.appendChild(textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); }));
+  cnG.appendChild(cnL); cnRow.appendChild(cnG);
+  const csG = el('div','form-group'); csG.style.width='72px';
+  const csL = el('label'); csL.textContent='Section';
+  const csInp = textInput(item.section||'', v => { item.section=v; markDirty(); renderLeftPanel(); });
+  csInp.style.width='100%';
+  csL.appendChild(csInp); csG.appendChild(csL); cnRow.appendChild(csG);
+  form.appendChild(cnRow);
 
   form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Meeting Times</label>'));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
@@ -826,7 +840,17 @@ function renderLabForm(item, form) {
   form.innerHTML = '';
   form.appendChild(el('h3',null,'Edit Lab'));
 
-  form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
+  const lnRow = el('div','form-row');
+  const lnG = el('div','form-group'); lnG.style.flex='1';
+  const lnL = el('label'); lnL.textContent='Name';
+  lnL.appendChild(textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); }));
+  lnG.appendChild(lnL); lnRow.appendChild(lnG);
+  const lsG = el('div','form-group'); lsG.style.width='72px';
+  const lsL = el('label'); lsL.textContent='Section';
+  const lsInp = textInput(item.section||'', v => { item.section=v; markDirty(); renderLeftPanel(); });
+  lsInp.style.width='100%';
+  lsL.appendChild(lsInp); lsG.appendChild(lsL); lnRow.appendChild(lsG);
+  form.appendChild(lnRow);
 
   form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Meeting Times</label>'));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
@@ -979,7 +1003,7 @@ function getBlocksForItem(item) {
     meetings.forEach((m, i) => {
       if (m.day === null || m.day === undefined || !m.start_min) return;
       blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
-                   label:item.name, editable:true, eraseType:'course-meeting', commitIndex:i});
+                   label:displayName(item), editable:true, eraseType:'course-meeting', commitIndex:i});
     });
   } else if (S.tab === 'labs') {
     const meetings = item.meetings?.length
@@ -989,7 +1013,7 @@ function getBlocksForItem(item) {
     meetings.forEach((m, i) => {
       if (m.day === null || m.day === undefined || !m.start_min) return;
       blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
-                   label:item.name, editable:true, eraseType:'lab-meeting', commitIndex:i});
+                   label:displayName(item), editable:true, eraseType:'lab-meeting', commitIndex:i});
     });
   } else if (S.tab === 'tas') {
     // Grad courses (non-editable) — show all meeting days
@@ -1353,7 +1377,7 @@ function renderLabView(container) {
     // Lab header row
     const hrow = el('tr','lab-header');
     const hcell = el('td'); hcell.colSpan=5;
-    hcell.innerHTML = `<strong>${escHtml(lab.name)}</strong>`;
+    hcell.innerHTML = `<strong>${escHtml(displayName(lab))}</strong>`;
     hrow.appendChild(hcell); tbody.appendChild(hrow);
 
     const timeStr = lab.day!==null && lab.start_min
@@ -1446,7 +1470,7 @@ function renderTAView(container) {
       const lab  = labsMap[a.lab_id];
       const role = rolesMap[a.role_id];
       const chip = el('span','ta-row-lab');
-      chip.textContent = (lab?.name||a.lab_id) + ' / ' + (role?.label||a.role_id);
+      chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
       if (a.locked) chip.textContent += ' 🔒';
       labsCell.appendChild(chip);
     });
@@ -1605,7 +1629,7 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
 
   const html = `
     <div class="modal-box">
-      <h2>Assign TA — ${escHtml(lab.name)}</h2>
+      <h2>Assign TA — ${escHtml(displayName(lab))}</h2>
       <h3>Role: ${escHtml(role?.label||rr.role_id)}</h3>
       <div class="assign-ta-list" id="assign-ta-list"></div>
       <div class="modal-footer">
@@ -1705,7 +1729,7 @@ function renderMeetingFinder() {
         renderMeetingFinder();
       };
       lbl.appendChild(cb);
-      lbl.appendChild(document.createTextNode(lab.name));
+      lbl.appendChild(document.createTextNode(displayName(lab)));
       wrap.appendChild(lbl);
     });
     filterDiv.appendChild(wrap);
@@ -1912,7 +1936,8 @@ function renderImportGradList() {
       .map(m => `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`).join(', ');
     const lbl = el('label'); lbl.style.cursor='pointer';
     lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(` ${escHtml(c.name)} — ${meetStr}`));
+    const dname = c.section ? `${c.name} ${c.section}` : c.name;
+    lbl.appendChild(document.createTextNode(` ${escHtml(dname)} — ${meetStr}`));
     row.appendChild(lbl); div.appendChild(row);
   });
 }
@@ -1948,14 +1973,14 @@ function importLabSelectAll(checked) {
 function confirmImportAll() {
   (S._importGrad || []).forEach((c, i) => {
     if (!S._importGradChk.has(i)) return;
-    S.data.grad_courses.push({id: uid(), name: c.name, day: c.day,
+    S.data.grad_courses.push({id: uid(), name: c.name, section: c.section || '', day: c.day,
       start_min: c.start_min, end_min: c.end_min, meetings: c.meetings || [], exams: c.exams || []});
   });
   (S._importCourses || []).forEach(course => {
     const key = `${course.subject} ${course.number}`;
     if (!S._importChecked.has(key)) return;
     course.sections.forEach(sec => {
-      S.data.labs.push({id: uid(), name: sec.name, day: sec.day,
+      S.data.labs.push({id: uid(), name: sec.name, section: sec.section || '', day: sec.day,
         start_min: sec.start_min, end_min: sec.end_min,
         meetings: sec.meetings || [], exams: sec.exams || [], roles: []});
     });

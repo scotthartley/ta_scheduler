@@ -235,12 +235,14 @@ def import_csv_route():
                     for day in days:
                         target.append({"day": day, "start_min": s_min, "end_min": e_min})
 
-                base_name = f"{subject} {number} {section}"
+                course_name = f"{subject} {number}"
+                section_label = section.strip()
 
                 if level == "Graduate":
                     if regular:
                         grad_courses.append({
-                            "name": base_name,
+                            "name": course_name,
+                            "section": section_label,
                             "day": regular[0]["day"],
                             "start_min": regular[0]["start_min"],
                             "end_min": regular[0]["end_min"],
@@ -248,13 +250,14 @@ def import_csv_route():
                             "exams": exams,
                         })
                 elif level == "Undergraduate":
-                    key = f"{subject} {number}"
+                    key = course_name
                     if key not in undergrad:
                         undergrad[key] = {"subject": subject, "number": number,
                                           "title": title, "sections": []}
                     if regular:
                         undergrad[key]["sections"].append({
-                            "name": base_name,
+                            "name": course_name,
+                            "section": section_label,
                             "day": regular[0]["day"],
                             "start_min": regular[0]["start_min"],
                             "end_min": regular[0]["end_min"],
@@ -399,6 +402,32 @@ def solve(data):
             exp_count = model.NewIntVar(0, pref_exp, f"exp_{lab['id']}_{role_id}")
             model.Add(exp_count <= sum(exp_vars))
             obj_terms.append(exp_count)
+    # ── soft penalty: minimize split assignments ──
+    # A "split" is a TA assigned to labs from more than one distinct course name.
+    # For each TA, count distinct course names assigned; penalize each name beyond the first.
+    SPLIT_W = 200
+    from collections import defaultdict
+    course_lab_roles = defaultdict(list)  # course_name -> [(lab_id, role_id)]
+    for lab in labs:
+        cn = lab.get("name", "")
+        for rr in lab.get("roles", []):
+            course_lab_roles[cn].append((lab["id"], rr["role_id"]))
+
+    if len(course_lab_roles) > 1:
+        for ta in tas:
+            ta_course_bools = []
+            for cn, lab_roles in course_lab_roles.items():
+                cb = model.NewBoolVar(f"tc_{ta['id']}_{cn}")
+                for lab_id, role_id in lab_roles:
+                    key = (lab_id, role_id, ta["id"])
+                    if key in x:
+                        model.Add(cb >= x[key])
+                ta_course_bools.append(cb)
+            if len(ta_course_bools) > 1:
+                excess = model.NewIntVar(0, len(ta_course_bools) - 1, f"exc_{ta['id']}")
+                model.Add(excess >= sum(ta_course_bools) - 1)
+                obj_terms.append(excess * -SPLIT_W)
+
     if obj_terms:
         model.Maximize(sum(obj_terms))
 
