@@ -1930,7 +1930,7 @@ function renderImportGradList() {
   (S._importGrad || []).forEach((c, i) => {
     const row = el('div'); row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
     const cb = document.createElement('input'); cb.type='checkbox';
-    cb.checked = S._importGradChk.has(i);
+    cb.defaultChecked = S._importGradChk.has(i);
     cb.onchange = () => { if (cb.checked) S._importGradChk.add(i); else S._importGradChk.delete(i); };
     const meetStr = (c.meetings?.length ? c.meetings : [{day:c.day, start_min:c.start_min, end_min:c.end_min}])
       .map(m => `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`).join(', ');
@@ -1954,7 +1954,7 @@ function renderImportLabList() {
     const key = `${course.subject} ${course.number}`;
     const row = el('div'); row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
     const cb = document.createElement('input'); cb.type='checkbox';
-    cb.checked = S._importChecked.has(key);
+    cb.defaultChecked = S._importChecked.has(key);
     cb.onchange = () => { if (cb.checked) S._importChecked.add(key); else S._importChecked.delete(key); };
     const lbl = el('label'); lbl.style.cursor='pointer';
     lbl.appendChild(cb);
