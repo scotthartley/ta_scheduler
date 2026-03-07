@@ -3,7 +3,8 @@ import io
 import json
 import os
 import re
-import subprocess
+import socket
+import threading
 import traceback
 
 from flask import Flask, jsonify, make_response, request, send_file
@@ -12,6 +13,9 @@ app = Flask(__name__, static_folder="static")
 
 # None until the user opens or saves a file.
 _data_file = None
+
+# Set to the pywebview window once it's created, or None if running headless.
+_window = None
 
 EMPTY_DATA = {
     "roles": [{"id": "role-primary-ta", "label": "Primary TA", "se_value": 1.0}],
@@ -43,17 +47,17 @@ def save_data_to_file(data):
         json.dump(data, f, indent=2)
 
 
-def _osascript_dialog(script):
-    """Run an AppleScript file-dialog and return the chosen path, or None."""
-    try:
-        r = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=120,
-        )
-        if r.returncode == 0:
-            return r.stdout.strip() or None
-    except Exception:
-        pass
+def _file_dialog(dialog_type, directory=None, save_filename="", file_types=()):
+    """Show a native file dialog via pywebview and return the chosen path, or None."""
+    if _window is None:
+        return None
+    import webview
+    kwargs = dict(directory=directory or _default_dir(), file_types=file_types)
+    if dialog_type == webview.SAVE_DIALOG:
+        kwargs["save_filename"] = save_filename
+    result = _window.create_file_dialog(dialog_type, **kwargs)
+    if result and len(result) > 0:
+        return result[0]
     return None
 
 
@@ -147,17 +151,13 @@ def _default_dir():
 
 @app.route("/api/saveas", methods=["POST"])
 def save_as():
+    import webview
     data = request.get_json()
     current = get_data_file()
     default_name = os.path.basename(current) if current else "schedule.json"
-    script = (
-        f'set f to choose file name '
-        f'with prompt "Save Schedule As" '
-        f'default name "{default_name}" '
-        f'default location POSIX file "{_default_dir()}"\n'
-        f'return POSIX path of f'
-    )
-    path = _osascript_dialog(script)
+    path = _file_dialog(webview.SAVE_DIALOG,
+                        save_filename=default_name,
+                        file_types=("JSON files (*.json)", "All files (*.*)"))
     if path is None:
         return jsonify({"cancelled": True})
     if not path.endswith(".json"):
@@ -169,13 +169,9 @@ def save_as():
 
 @app.route("/api/open-dialog", methods=["POST"])
 def open_dialog():
-    script = (
-        f'set f to choose file '
-        f'with prompt "Open Schedule" '
-        f'default location POSIX file "{_default_dir()}"\n'
-        f'return POSIX path of f'
-    )
-    path = _osascript_dialog(script)
+    import webview
+    path = _file_dialog(webview.OPEN_DIALOG,
+                        file_types=("JSON files (*.json)", "All files (*.*)"))
     if path is None:
         return jsonify({"cancelled": True})
     try:
@@ -189,13 +185,9 @@ def open_dialog():
 
 @app.route("/api/import-csv", methods=["POST"])
 def import_csv_route():
-    script = (
-        f'set f to choose file '
-        f'with prompt "CSV file from Miami Course List" '
-        f'default location POSIX file "{_default_dir()}"\n'
-        f'return POSIX path of f'
-    )
-    path = _osascript_dialog(script)
+    import webview
+    path = _file_dialog(webview.OPEN_DIALOG,
+                        file_types=("CSV files (*.csv)", "All files (*.*)"))
     if path is None:
         return jsonify({"cancelled": True})
 
@@ -621,6 +613,50 @@ def generate_docx(data):
     return doc
 
 
+def _find_free_port():
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+def _wait_for_flask(port, timeout=10):
+    import time
+    import urllib.request
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}/", timeout=1)
+            return True
+        except Exception:
+            time.sleep(0.05)
+    return False
+
+
 if __name__ == "__main__":
     os.makedirs("static", exist_ok=True)
-    app.run(debug=True, port=5050)
+
+    try:
+        import webview
+    except ImportError:
+        # pywebview not installed — fall back to plain Flask + browser
+        import webbrowser
+        webbrowser.open("http://localhost:5050")
+        app.run(debug=False, port=5050)
+    else:
+        port = _find_free_port()
+
+        flask_thread = threading.Thread(
+            target=lambda: app.run(host="127.0.0.1", port=port, debug=False),
+            daemon=True,
+        )
+        flask_thread.start()
+        _wait_for_flask(port)
+
+        _window = webview.create_window(
+            "TA Scheduler",
+            f"http://127.0.0.1:{port}/",
+            width=1500,
+            height=960,
+            min_size=(900, 600),
+        )
+        webview.start()
