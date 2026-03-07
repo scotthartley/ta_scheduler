@@ -982,6 +982,36 @@ function normalizeMeetings(item) {
   }
 }
 
+function layoutOverlaps(blocks) {
+  // Assign _lane and _totalLanes to each block so overlapping blocks
+  // are shown side-by-side rather than stacked on top of each other.
+  if (blocks.length <= 1) return;
+  blocks.sort((a, b) => a.start - b.start);
+
+  // Greedy lane assignment: put each block in the first lane whose
+  // last occupant has already ended.
+  const laneEnd = []; // end-time of last block in each lane
+  for (const b of blocks) {
+    let lane = laneEnd.findIndex(e => e <= b.start);
+    if (lane === -1) lane = laneEnd.length;
+    laneEnd[lane] = b.end;
+    b._lane = lane;
+  }
+
+  if (laneEnd.length <= 1) return; // no actual overlaps
+
+  // For each block, count how many lanes are simultaneously active
+  // during its time span (determines how wide each sub-column is).
+  for (const b of blocks) {
+    let maxLane = b._lane;
+    for (const o of blocks) {
+      if (o._lane > maxLane && o.start < b.end && o.end > b.start)
+        maxLane = o._lane;
+    }
+    b._totalLanes = maxLane + 1;
+  }
+}
+
 function renderGrid() {
   initGridLines();
   // Clear blocks
@@ -990,7 +1020,14 @@ function renderGrid() {
   }
   const item = getSelectedItem();
   if (!item) return;
-  getBlocksForItem(item).forEach(b => renderBlock(b));
+  const blocks = getBlocksForItem(item);
+
+  // Compute side-by-side layout for each day independently.
+  const byDay = {};
+  for (const b of blocks) (byDay[b.day] = byDay[b.day] || []).push(b);
+  for (const dayBlocks of Object.values(byDay)) layoutOverlaps(dayBlocks);
+
+  blocks.forEach(b => renderBlock(b));
 }
 
 function getBlocksForItem(item) {
@@ -1047,6 +1084,11 @@ function renderBlock(b) {
   const div = el('div', `block block-${b.type}${b.editable?' block-editable':''}`);
   div.style.top    = top + 'px';
   div.style.height = (bot - top) + 'px';
+  if (b._totalLanes > 1) {
+    const pct = 100 / b._totalLanes;
+    div.style.left  = `calc(${b._lane * pct}% + 1px)`;
+    div.style.right = `calc(${(b._totalLanes - b._lane - 1) * pct}% + 1px)`;
+  }
   div.dataset.eraseType   = b.eraseType || '';
   div.dataset.commitIndex = b.commitIndex ?? '';
   div.dataset.day         = b.day;
