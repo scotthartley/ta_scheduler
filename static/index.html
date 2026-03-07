@@ -329,6 +329,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
       <div>
         <strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.
       </div>
+      <div id="meeting-filter"></div>
       <div class="meeting-legend">
         <span><span class="legend-swatch" style="background:#bbf7d0;"></span> All free</span>
         <span><span class="legend-swatch" style="background:#fde68a;"></span> Some busy</span>
@@ -1674,11 +1675,57 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
 // MEETING FINDER
 // ════════════════════════════════════════════════════════════════
 function renderMeetingFinder() {
-  const numTAs = S.data.tas.length;
+  // ── Lab section filter ──────────────────────────────────────
+  const labsWithAssignments = S.data.labs.filter(lab =>
+    S.data.assignments.some(a => a.lab_id === lab.id)
+  );
+  const validIds = new Set(labsWithAssignments.map(l => l.id));
+
+  if (!S.meetingLabFilter) {
+    S.meetingLabFilter = new Set(validIds); // first render: all checked
+  } else {
+    for (const id of [...S.meetingLabFilter]) { // prune stale IDs
+      if (!validIds.has(id)) S.meetingLabFilter.delete(id);
+    }
+  }
+
+  const filterDiv = $id('meeting-filter');
+  filterDiv.innerHTML = '';
+  if (labsWithAssignments.length) {
+    const wrap = el('div');
+    wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 14px;padding:4px 0;';
+    labsWithAssignments.forEach(lab => {
+      const lbl = el('label');
+      lbl.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;';
+      const cb = document.createElement('input'); cb.type = 'checkbox';
+      cb.checked = S.meetingLabFilter.has(lab.id);
+      cb.onchange = () => {
+        if (cb.checked) S.meetingLabFilter.add(lab.id);
+        else S.meetingLabFilter.delete(lab.id);
+        renderMeetingFinder();
+      };
+      lbl.appendChild(cb);
+      lbl.appendChild(document.createTextNode(lab.name));
+      wrap.appendChild(lbl);
+    });
+    filterDiv.appendChild(wrap);
+  } else {
+    filterDiv.appendChild(el('p','help-text','No lab sections with assignments yet'));
+  }
+
+  // ── Determine filtered TA set ────────────────────────────────
+  const taIds = new Set(
+    S.data.assignments
+      .filter(a => S.meetingLabFilter.has(a.lab_id))
+      .map(a => a.ta_id)
+  );
+  const filteredTAs = S.data.tas.filter(ta => taIds.has(ta.id));
+  const numTAs = filteredTAs.length;
+
   // Build unavailability grid: busy[day][minute] = count
   const busy = Array.from({length:5}, () => new Uint8Array(GRID_MINS));
 
-  S.data.tas.forEach(ta => {
+  filteredTAs.forEach(ta => {
     const mark = (day, s, e) => {
       if (day < 0 || day > 4) return;
       const lo = Math.max(0, s - GRID_START);
@@ -1687,7 +1734,10 @@ function renderMeetingFinder() {
     };
     (ta.grad_course_ids||[]).forEach(id => {
       const gc = S.data.grad_courses.find(c=>c.id===id);
-      if (gc) mark(gc.day, gc.start_min, gc.end_min);
+      if (!gc) return;
+      const meetings = gc.meetings?.length
+        ? gc.meetings : [{day:gc.day, start_min:gc.start_min, end_min:gc.end_min}];
+      meetings.forEach(m => mark(m.day, m.start_min, m.end_min));
     });
     (ta.other_commitments||[]).forEach(oc => mark(oc.day, oc.start_min, oc.end_min));
   });
