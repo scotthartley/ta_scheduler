@@ -269,6 +269,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
       <div class="panel-section">
         <div class="panel-section-header">
           <span id="panel-title">Graduate Courses</span>
+          <button id="import-csv-btn" class="btn-sm" onclick="importCSV()" style="display:none;">↓ Import CSV</button>
           <button class="btn-sm btn-primary" onclick="createNewItem()">+ New</button>
         </div>
       </div>
@@ -586,6 +587,7 @@ function getItems() {
 function renderLeftPanel() {
   const titles = {courses:'Graduate Courses', tas:'TAs', labs:'Lab Sections'};
   $id('panel-title').textContent = titles[S.tab] || '';
+  $id('import-csv-btn').style.display = (S.tab === 'courses' || S.tab === 'labs') ? '' : 'none';
   const list = $id('item-list');
   list.innerHTML = '';
   getItems().forEach(item => {
@@ -594,11 +596,13 @@ function renderLeftPanel() {
     const name = el('span','item-name', escHtml(item.name || '(unnamed)'));
     row.appendChild(name);
     if (S.tab === 'courses' && item.day !== undefined && item.day !== null) {
-      row.appendChild(el('span','item-badge', DAYS[item.day]));
+      const badge = item.meetings?.length > 1 ? item.meetings.map(m=>'MTWRF'[m.day]).join('') : DAYS[item.day];
+      row.appendChild(el('span','item-badge', badge));
     } else if (S.tab === 'tas') {
       row.appendChild(el('span','item-badge', item.experience==='experienced'?'exp':'inexp'));
     } else if (S.tab === 'labs' && item.day !== undefined && item.day !== null) {
-      row.appendChild(el('span','item-badge', DAYS[item.day]));
+      const badge = item.meetings?.length > 1 ? item.meetings.map(m=>'MTWRF'[m.day]).join('') : DAYS[item.day];
+      row.appendChild(el('span','item-badge', badge));
     }
     list.appendChild(row);
   });
@@ -631,7 +635,7 @@ function createNewItem() {
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
     item = {id:uid(), name:'New Lab', day:0, start_min:540, end_min:660,
-            roles: S.data.roles.map(r=>({role_id:r.id, count:1, required_experienced:false}))};
+            roles: S.data.roles.map(r=>({role_id:r.id, count:1, preferred_experienced:0}))};
     S.data.labs.push(item);
   }
   markDirty();
@@ -793,7 +797,9 @@ function renderTAForm(item, form) {
       markDirty(); renderGrid();
     };
     row.appendChild(cb);
-    row.appendChild(el('span',null,escHtml(gc.name) + (gc.day!==undefined?` (${DAYS[gc.day]})`:'') ));
+    const gcDayStr = gc.meetings?.length > 1 ? ' ('+gc.meetings.map(m=>'MTWRF'[m.day]).join('')+')'
+      : gc.day !== undefined ? ` (${DAYS[gc.day]})` : '';
+    row.appendChild(el('span',null,escHtml(gc.name) + gcDayStr));
     gcDiv.appendChild(row);
   });
   if (!S.data.grad_courses.length) gcDiv.appendChild(el('span','help-text','No courses defined'));
@@ -881,7 +887,7 @@ function renderLabForm(item, form) {
   rolesLbl.appendChild(manageBtn);
   rolesHdr.appendChild(rolesLbl);
   form.appendChild(rolesHdr);
-  form.appendChild(el('p','help-text','Number of TAs needed per role. "Exp" = experienced TA required.'));
+  form.appendChild(el('p','help-text','Count = TAs needed. Exp pref = how many should be experienced (soft preference).'));
 
   const rolesDiv = el('div');
   item.roles = item.roles||[];
@@ -895,7 +901,7 @@ function renderLabForm(item, form) {
   } else {
     S.data.roles.forEach(role => {
       let rr = item.roles.find(r => r.role_id === role.id);
-      if (!rr) { rr={role_id:role.id,count:0,required_experienced:false}; item.roles.push(rr); }
+      if (!rr) { rr={role_id:role.id,count:0,preferred_experienced:0}; item.roles.push(rr); }
       const r = el('div','role-check-row');
 
       const lbl = document.createElement('label');
@@ -909,12 +915,14 @@ function renderLabForm(item, form) {
       cntInp.title='Number of TAs needed';
       cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; markDirty(); };
 
-      const expCb = document.createElement('input'); expCb.type='checkbox';
-      expCb.checked=rr.required_experienced;
-      expCb.title='Require experienced TA';
-      expCb.onchange = () => { rr.required_experienced=expCb.checked; markDirty(); };
+      const expInp = document.createElement('input'); expInp.type='number';
+      expInp.min='0'; expInp.max=rr.count||10;
+      expInp.value=rr.preferred_experienced||0; expInp.className='count-input';
+      expInp.title='Preferred number of experienced TAs (soft)';
+      expInp.oninput = () => { rr.preferred_experienced=parseInt(expInp.value)||0; markDirty(); };
+      cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; expInp.max=rr.count; markDirty(); };
 
-      r.append(lbl, el('span',null,'×'), cntInp, expCb, el('span','help-text','Exp'));
+      r.append(lbl, el('span',null,'×'), cntInp, el('span','help-text','exp pref:'), expInp);
       rolesDiv.appendChild(r);
     });
   }
@@ -967,23 +975,38 @@ function renderGrid() {
 function getBlocksForItem(item) {
   const blocks = [];
   if (S.tab === 'courses') {
-    if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
+    if (item.meetings?.length > 1) {
+      item.meetings.forEach(m => {
+        if (m.day === null || m.day === undefined || !m.start_min) return;
+        blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
+                     label:item.name, editable:false});
+      });
+    } else if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
       blocks.push({type:'lab', day:item.day, start:item.start_min, end:item.end_min,
                    label:item.name, editable:true, itemRef:item, eraseType:'course-time'});
     }
   } else if (S.tab === 'labs') {
-    if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
+    if (item.meetings?.length > 1) {
+      item.meetings.forEach(m => {
+        if (m.day === null || m.day === undefined || !m.start_min) return;
+        blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
+                     label:item.name, editable:false});
+      });
+    } else if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
       blocks.push({type:'lab', day:item.day, start:item.start_min, end:item.end_min,
                    label:item.name, editable:true, itemRef:item, eraseType:'lab-time'});
     }
   } else if (S.tab === 'tas') {
-    // Grad courses (non-editable)
+    // Grad courses (non-editable) — show all meeting days
     (item.grad_course_ids||[]).forEach(gcId => {
       const gc = S.data.grad_courses.find(c=>c.id===gcId);
-      if (gc && gc.day!==undefined && gc.start_min && gc.end_min) {
-        blocks.push({type:'course', day:gc.day, start:gc.start_min, end:gc.end_min,
+      if (!gc) return;
+      const gcMeetings = gc.meetings?.length ? gc.meetings
+        : (gc.day !== undefined && gc.start_min ? [{day:gc.day, start_min:gc.start_min, end_min:gc.end_min}] : []);
+      gcMeetings.forEach(m => {
+        blocks.push({type:'course', day:m.day, start:m.start_min, end:m.end_min,
                      label:gc.name, editable:false});
-      }
+      });
     });
     // Other commitments (editable)
     (item.other_commitments||[]).forEach((oc,i) => {
@@ -1275,9 +1298,17 @@ function renderSchedule(diag, status) {
     diagDiv.style.cssText = '';
     diagDiv.innerHTML = html;
     diagDiv.style.display = 'block';
-  } else if (status === 'partial' && unfilled.length) {
-    let html = '<h4 style="color:#92400e;">⚠ Partial Schedule — Some roles could not be fully filled</h4><ul>' +
-      unfilled.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
+  } else if (status === 'partial') {
+    const unfulfilled_exp = diag.unfulfilled_experience || [];
+    let html = '<h4 style="color:#92400e;">⚠ Partial Schedule</h4>';
+    if (unfilled.length) {
+      html += '<p><strong>Slots not fully filled:</strong></p><ul>' +
+        unfilled.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
+    }
+    if (unfulfilled_exp.length) {
+      html += '<p><strong>Experience preferences not fully met:</strong></p><ul>' +
+        unfulfilled_exp.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.exp_assigned}/${u.exp_preferred} experienced</li>`).join('') + '</ul>';
+    }
     diagDiv.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;';
     diagDiv.innerHTML = html;
     diagDiv.style.display = 'block';
@@ -1326,7 +1357,10 @@ function renderLabView(container) {
       const tr = el('tr');
       tr.appendChild(el('td'));
       tr.appendChild(el('td',null,timeStr));
-      tr.appendChild(el('td',null,escHtml(role?.label||rr.role_id) + (rr.required_experienced?' ⭐':'')));
+      const roleLabel = escHtml(role?.label||rr.role_id) +
+        (rr.preferred_experienced>0 ? ` <span style="color:var(--text2);font-size:11px;">(${rr.preferred_experienced} exp pref)</span>` : '');
+      const roleTd = el('td'); roleTd.innerHTML = roleLabel;
+      tr.appendChild(roleTd);
       tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
 
       const assignCell = el('td');
@@ -1435,7 +1469,6 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
 
   // Filter available TAs
   const eligible = S.data.tas.filter(ta => {
-    if (rr.required_experienced && ta.experience !== 'experienced') return false;
     // Check if would exceed SE
     const addSE = role?.se_value||0;
     if (usedSE(ta) + addSE > ta.max_se + 0.001) return false;
@@ -1487,7 +1520,7 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
           a => !(a.lab_id===lab.id && a.role_id===rr.role_id && a.ta_id===ta.id)
         );
       } else {
-        S.data.assignments.push({lab_id:lab.id, role_id:rr.role_id, ta_id:ta.id, locked:false});
+        S.data.assignments.push({lab_id:lab.id, role_id:rr.role_id, ta_id:ta.id, locked:true});
       }
       markDirty();
       closeModal();
@@ -1591,10 +1624,6 @@ function renderRolesList() {
   S.data.roles.forEach((role, i) => {
     const r = el('div','sublist-item');
 
-    const idInp = document.createElement('input'); idInp.type='text';
-    idInp.value=role.id; idInp.placeholder='id'; idInp.style.width='80px'; idInp.style.fontSize='12px';
-    idInp.oninput = () => { role.id=idInp.value; markDirty(); };
-
     const lblInp = document.createElement('input'); lblInp.type='text';
     lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.style.flex='1'; lblInp.style.fontSize='12px';
     lblInp.oninput = () => { role.label=lblInp.value; markDirty(); };
@@ -1606,7 +1635,7 @@ function renderRolesList() {
     const rm = el('button','btn-sm btn-danger','×');
     rm.onclick = () => { S.data.roles.splice(i,1); markDirty(); renderRolesList(); };
 
-    r.append(idInp, lblInp, el('span',null,'SE:'), seInp, rm);
+    r.append(lblInp, el('span',null,'SE:'), seInp, rm);
     div.appendChild(r);
   });
 }
@@ -1626,12 +1655,125 @@ function showModal(html) {
   $id('modal-container').appendChild(backdrop);
   // If roles modal, render list
   if ($id('roles-list')) renderRolesList();
+  if ($id('import-lab-list')) renderImportLabList();
 }
 function closeModal() {
   const mc = $id('modal-container');
   if (mc.lastChild) mc.removeChild(mc.lastChild);
   // Re-render form in case roles were added/changed
   if (S.selId && ['courses','tas','labs'].includes(S.tab)) renderItemForm();
+}
+
+// ════════════════════════════════════════════════════════════════
+// CSV IMPORT
+// ════════════════════════════════════════════════════════════════
+async function importCSV() {
+  try {
+    const r = await fetch('/api/import-csv', { method: 'POST' });
+    const result = await r.json();
+    if (result.cancelled) return;
+    if (result.error) { alert('Import failed:\n' + result.error); return; }
+    if (S.tab === 'courses') {
+      showImportGradModal(result.grad_courses);
+    } else if (S.tab === 'labs') {
+      showImportLabModal(result.undergrad_courses);
+    }
+  } catch(e) { alert('Import failed: ' + e); }
+}
+
+function showImportGradModal(courses) {
+  if (!courses.length) { alert('No graduate courses with meeting times found.'); return; }
+  S._importPending = courses;
+  const listHtml = courses.map(c => {
+    const meetStr = (c.meetings || [{day:c.day, start_min:c.start_min, end_min:c.end_min}])
+      .map(m => `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`).join(', ');
+    return `<li>${escHtml(c.name)} — ${meetStr}</li>`;
+  }).join('');
+  showModal(`<div class="modal-box">
+    <h2>Import Graduate Courses</h2>
+    <p>Found <strong>${courses.length}</strong> course session(s) to import:</p>
+    <ul style="max-height:300px;overflow-y:auto;font-size:13px;">${listHtml}</ul>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn-sm btn-primary" onclick="confirmImportGrad()">Import All</button>
+    </div>
+  </div>`);
+}
+
+function confirmImportGrad() {
+  const courses = S._importPending || [];
+  courses.forEach(c => {
+    S.data.grad_courses.push({id: uid(), name: c.name, day: c.day,
+      start_min: c.start_min, end_min: c.end_min, meetings: c.meetings || [], exams: c.exams || []});
+  });
+  delete S._importPending;
+  markDirty(); closeModal(); renderLeftPanel();
+}
+
+function showImportLabModal(undergradCourses) {
+  if (!undergradCourses.length) { alert('No undergraduate courses found.'); return; }
+  S._importCourses = undergradCourses;
+  S._importChecked = new Set();
+  showModal(`<div class="modal-box" id="import-lab-box">
+    <h2>Import Lab Sections</h2>
+    <p>Select courses to import all sections:</p>
+    <div style="margin-bottom:8px;">
+      <button class="btn-sm" onclick="importLabSelectAll(true)">Select All</button>
+      <button class="btn-sm" onclick="importLabSelectAll(false)">Deselect All</button>
+    </div>
+    <div id="import-lab-list" style="max-height:350px;overflow-y:auto;font-size:13px;"></div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn-sm btn-primary" onclick="confirmImportLabs()">Import Selected</button>
+    </div>
+  </div>`);
+  renderImportLabList();
+}
+
+function renderImportLabList() {
+  const div = $id('import-lab-list');
+  if (!div) return;
+  div.innerHTML = '';
+  (S._importCourses || []).forEach(course => {
+    const key = `${course.subject} ${course.number}`;
+    const row = el('div', null);
+    row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = S._importChecked.has(key);
+    cb.onchange = () => {
+      if (cb.checked) S._importChecked.add(key); else S._importChecked.delete(key);
+    };
+    const lbl = el('label', null);
+    lbl.style.cursor = 'pointer';
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(
+      ` ${key} — ${escHtml(course.title)} (${course.sections.length} section(s))`
+    ));
+    row.appendChild(lbl);
+    div.appendChild(row);
+  });
+}
+
+function importLabSelectAll(checked) {
+  S._importChecked = new Set(checked ? (S._importCourses||[]).map(c=>`${c.subject} ${c.number}`) : []);
+  renderImportLabList();
+}
+
+function confirmImportLabs() {
+  (S._importCourses || []).forEach(course => {
+    const key = `${course.subject} ${course.number}`;
+    if (!S._importChecked.has(key)) return;
+    course.sections.forEach(sec => {
+      S.data.labs.push({
+        id: uid(), name: sec.name, day: sec.day,
+        start_min: sec.start_min, end_min: sec.end_min,
+        meetings: sec.meetings || [], exams: sec.exams || [], roles: [],
+      });
+    });
+  });
+  delete S._importCourses; delete S._importChecked;
+  markDirty(); closeModal(); renderLeftPanel();
 }
 
 // ════════════════════════════════════════════════════════════════

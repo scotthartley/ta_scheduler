@@ -1,6 +1,8 @@
+import csv
 import io
 import json
 import os
+import re
 import subprocess
 import traceback
 
@@ -11,7 +13,10 @@ app = Flask(__name__, static_folder="static")
 # None until the user opens or saves a file.
 _data_file = None
 
-EMPTY_DATA = {"roles": [], "grad_courses": [], "labs": [], "tas": [], "assignments": []}
+EMPTY_DATA = {
+    "roles": [{"id": "role-primary-ta", "label": "Primary TA", "se_value": 1.0}],
+    "grad_courses": [], "labs": [], "tas": [], "assignments": [],
+}
 
 
 def get_data_file():
@@ -56,11 +61,56 @@ def times_overlap(s1, e1, s2, e2):
     return s1 < e2 and e1 > s2
 
 
+def _get_meetings(item):
+    """Return list of (day, start_min, end_min) for all meetings of an item."""
+    if item.get("meetings"):
+        return [(m["day"], m["start_min"], m["end_min"]) for m in item["meetings"]]
+    day = item.get("day")
+    if day is not None:
+        return [(day, item.get("start_min", 0), item.get("end_min", 0))]
+    return []
+
+
 def fmt_time(minutes):
     h, m = divmod(int(minutes), 60)
     ampm = "PM" if h >= 12 else "AM"
     h12 = h - 12 if h > 12 else (12 if h == 0 else h)
     return f"{h12}:{m:02d} {ampm}"
+
+
+# ── CSV import helpers ────────────────────────────────────────────────────────
+
+def _parse_days(s):
+    """'MWF' → [0,2,4], 'TR' → [1,3]"""
+    DAY_MAP = {'M': 0, 'T': 1, 'W': 2, 'R': 3, 'F': 4}
+    return [DAY_MAP[c] for c in s if c in DAY_MAP]
+
+
+def _parse_time(t):
+    """'8:30am' → 510"""
+    m = re.match(r'(\d+):(\d+)\s*(am|pm)', t.strip(), re.IGNORECASE)
+    if not m:
+        return None
+    h, mn, p = int(m.group(1)), int(m.group(2)), m.group(3).lower()
+    if p == 'pm' and h != 12:
+        h += 12
+    elif p == 'am' and h == 12:
+        h = 0
+    return h * 60 + mn
+
+
+def _parse_time_range(t):
+    """'8:30am-9:25am' → (510, 565)"""
+    parts = t.split('-')
+    if len(parts) != 2:
+        return None, None
+    return _parse_time(parts[0].strip()), _parse_time(parts[1].strip())
+
+
+def _is_regular(date_str):
+    """True if date range spans multiple days (not a single exam date)."""
+    parts = date_str.strip().split('-')
+    return len(parts) == 2 and parts[0].strip() != parts[1].strip()
 
 
 # ── routes ───────────────────────────────────────────────────────────────────
@@ -137,6 +187,90 @@ def open_dialog():
     return jsonify({"path": path, "data": data})
 
 
+@app.route("/api/import-csv", methods=["POST"])
+def import_csv_route():
+    script = (
+        f'set f to choose file '
+        f'with prompt "Import Course CSV" '
+        f'default location POSIX file "{_default_dir()}"\n'
+        f'return POSIX path of f'
+    )
+    path = _osascript_dialog(script)
+    if path is None:
+        return jsonify({"cancelled": True})
+
+    DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+    grad_courses = []
+    undergrad = {}  # key: "SUBJ NUMBER" → {subject, number, title, sections:[]}
+
+    try:
+        with open(path, newline='', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                level = row.get("Course Level", "").strip()
+                subject = row.get("Subject", "").strip()
+                number = row.get("Number", "").strip()
+                section = row.get("Section", "").strip()
+                title = row.get("Title", "").strip()
+                days_raw = row.get("Meeting Days", "").strip()
+                times_raw = row.get("Meeting Times", "").strip()
+                dates_raw = row.get("Meeting Dates", "").strip()
+
+                if not days_raw or not times_raw:
+                    continue
+
+                slots_days = days_raw.split("|")
+                slots_times = times_raw.split("|")
+                slots_dates = dates_raw.split("|") if dates_raw else []
+
+                regular, exams = [], []
+                for i, d in enumerate(slots_days):
+                    t_str = slots_times[i].strip() if i < len(slots_times) else ""
+                    dt_str = slots_dates[i].strip() if i < len(slots_dates) else ""
+                    days = _parse_days(d.strip())
+                    s_min, e_min = _parse_time_range(t_str)
+                    if not days or s_min is None:
+                        continue
+                    target = regular if _is_regular(dt_str) else exams
+                    for day in days:
+                        target.append({"day": day, "start_min": s_min, "end_min": e_min})
+
+                base_name = f"{subject} {number} {section}"
+
+                if level == "Graduate":
+                    if regular:
+                        grad_courses.append({
+                            "name": base_name,
+                            "day": regular[0]["day"],
+                            "start_min": regular[0]["start_min"],
+                            "end_min": regular[0]["end_min"],
+                            "meetings": regular,
+                            "exams": exams,
+                        })
+                elif level == "Undergraduate":
+                    key = f"{subject} {number}"
+                    if key not in undergrad:
+                        undergrad[key] = {"subject": subject, "number": number,
+                                          "title": title, "sections": []}
+                    if regular:
+                        undergrad[key]["sections"].append({
+                            "name": base_name,
+                            "day": regular[0]["day"],
+                            "start_min": regular[0]["start_min"],
+                            "end_min": regular[0]["end_min"],
+                            "meetings": regular,
+                            "exams": exams,
+                        })
+
+        return jsonify({
+            "grad_courses": grad_courses,
+            "undergrad_courses": sorted(undergrad.values(),
+                                        key=lambda c: (c["subject"], c["number"])),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/api/schedule", methods=["POST"])
 def run_schedule():
     data = request.get_json()
@@ -198,30 +332,32 @@ def solve(data):
     for lab in labs:
         for rr in lab.get("roles", []):
             role_id = rr["role_id"]
-            req_exp = rr.get("required_experienced", False)
             for ta in tas:
                 key = (lab["id"], role_id, ta["id"])
 
-                # experience hard-exclude
-                if req_exp and ta.get("experience") != "experienced":
-                    x[key] = model.NewConstant(0)
-                    continue
-
                 # availability hard-exclude
                 unavail = False
+                lab_meetings = _get_meetings(lab)
                 for gc_id in ta.get("grad_course_ids", []):
                     gc = gc_map.get(gc_id)
-                    if gc and gc["day"] == lab.get("day") and times_overlap(
-                        lab["start_min"], lab["end_min"], gc["start_min"], gc["end_min"]
-                    ):
-                        unavail = True
+                    if not gc:
+                        continue
+                    for gc_day, gc_start, gc_end in _get_meetings(gc):
+                        for lab_day, lab_start, lab_end in lab_meetings:
+                            if gc_day == lab_day and times_overlap(lab_start, lab_end, gc_start, gc_end):
+                                unavail = True
+                                break
+                        if unavail:
+                            break
+                    if unavail:
                         break
                 if not unavail:
                     for oc in ta.get("other_commitments", []):
-                        if oc["day"] == lab.get("day") and times_overlap(
-                            lab["start_min"], lab["end_min"], oc["start_min"], oc["end_min"]
-                        ):
-                            unavail = True
+                        for lab_day, lab_start, lab_end in lab_meetings:
+                            if oc["day"] == lab_day and times_overlap(lab_start, lab_end, oc["start_min"], oc["end_min"]):
+                                unavail = True
+                                break
+                        if unavail:
                             break
                 if unavail:
                     x[key] = model.NewConstant(0)
@@ -243,8 +379,28 @@ def solve(data):
                        for ta in tas if (lab["id"], role_id, ta["id"]) in x]
             model.Add(sum(ta_vars) <= count)
 
-    if real_vars:
-        model.Maximize(sum(real_vars))
+    # ── objective: fill slots (high weight) + experience preference (low weight) ──
+    FILL_W = 1000
+    obj_terms = [v * FILL_W for v in real_vars]
+    for lab in labs:
+        for rr in lab.get("roles", []):
+            role_id = rr["role_id"]
+            pref_exp = rr.get("preferred_experienced", 0)
+            if pref_exp <= 0:
+                continue
+            exp_vars = [
+                x[(lab["id"], role_id, ta["id"])]
+                for ta in tas
+                if ta.get("experience") == "experienced"
+                and (lab["id"], role_id, ta["id"]) in x
+            ]
+            if not exp_vars:
+                continue
+            exp_count = model.NewIntVar(0, pref_exp, f"exp_{lab['id']}_{role_id}")
+            model.Add(exp_count <= sum(exp_vars))
+            obj_terms.append(exp_count)
+    if obj_terms:
+        model.Maximize(sum(obj_terms))
 
     # ── constraint 2: SE cap ──
     SE_SCALE = 100
@@ -266,12 +422,12 @@ def solve(data):
     for ta in tas:
         for i, lab1 in enumerate(labs):
             for lab2 in labs[i + 1:]:
-                if lab1.get("day") != lab2.get("day"):
-                    continue
-                if not times_overlap(
-                    lab1.get("start_min", 0), lab1.get("end_min", 0),
-                    lab2.get("start_min", 0), lab2.get("end_min", 0),
-                ):
+                overlap = any(
+                    d1 == d2 and times_overlap(s1, e1, s2, e2)
+                    for d1, s1, e1 in _get_meetings(lab1)
+                    for d2, s2, e2 in _get_meetings(lab2)
+                )
+                if not overlap:
                     continue
                 v1 = [x[(lab1["id"], rr["role_id"], ta["id"])]
                       for rr in lab1.get("roles", [])
@@ -303,32 +459,48 @@ def solve(data):
                             "locked": False,
                         })
 
-        # compute unfilled roles
+        # compute unfilled roles and unmet experience preferences
+        tas_map = {ta["id"]: ta for ta in tas}
         unfilled = []
+        unfulfilled_exp = []
         for lab in labs:
             for rr in lab.get("roles", []):
                 role_id = rr["role_id"]
                 count = rr.get("count", 1)
-                assigned = sum(
-                    1 for a in new_assignments
+                pref_exp = rr.get("preferred_experienced", 0)
+                role_label = roles_map.get(role_id, {}).get("label", role_id)
+                role_assigns = [
+                    a for a in new_assignments
                     if a["lab_id"] == lab["id"] and a["role_id"] == role_id
-                )
+                ]
+                assigned = len(role_assigns)
                 if assigned < count:
-                    role_label = roles_map.get(role_id, {}).get("label", role_id)
                     unfilled.append({
-                        "lab_id": lab["id"],
                         "lab_name": lab["name"],
-                        "role_id": role_id,
                         "role_label": role_label,
                         "assigned": assigned,
                         "required": count,
                     })
+                if pref_exp > 0:
+                    exp_assigned = sum(
+                        1 for a in role_assigns
+                        if tas_map.get(a["ta_id"], {}).get("experience") == "experienced"
+                    )
+                    if exp_assigned < pref_exp:
+                        unfulfilled_exp.append({
+                            "lab_name": lab["name"],
+                            "role_label": role_label,
+                            "exp_assigned": exp_assigned,
+                            "exp_preferred": pref_exp,
+                        })
 
-        solve_status = "partial" if unfilled else ("optimal" if status == cp_model.OPTIMAL else "feasible")
+        solve_status = "partial" if (unfilled or unfulfilled_exp) else (
+            "optimal" if status == cp_model.OPTIMAL else "feasible"
+        )
         return {
             "status": solve_status,
             "assignments": new_assignments,
-            "diagnostics": {"unfilled_roles": unfilled},
+            "diagnostics": {"unfilled_roles": unfilled, "unfulfilled_experience": unfulfilled_exp},
         }
     else:
         return {
