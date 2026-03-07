@@ -191,7 +191,7 @@ def open_dialog():
 def import_csv_route():
     script = (
         f'set f to choose file '
-        f'with prompt "Import Course CSV" '
+        f'with prompt "CSV file from Miami Course List" '
         f'default location POSIX file "{_default_dir()}"\n'
         f'return POSIX path of f'
     )
