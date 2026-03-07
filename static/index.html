@@ -804,7 +804,7 @@ function renderTAForm(item, form) {
   form.appendChild(odDiv);
 
   // Grad courses
-  form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;">Grad Courses</label>`));
+  form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Grad Courses</label>`));
   const gcDiv = el('div','checkbox-group');
   S.data.grad_courses.forEach(gc => {
     const row = el('div','checkbox-row');
@@ -826,7 +826,7 @@ function renderTAForm(item, form) {
   form.appendChild(gcDiv);
 
   // Other commitments note
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Other Commitments</label>'));
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Other Commitments</label>'));
   form.appendChild(el('p','help-text','Draw on grid to add time blocks; click to remove'));
   const ocDiv = el('div','sublist');
   (item.other_commitments||[]).forEach((oc,i) => {
