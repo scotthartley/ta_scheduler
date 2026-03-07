@@ -8,8 +8,10 @@ from flask import Flask, jsonify, make_response, request, send_file
 
 app = Flask(__name__, static_folder="static")
 
-# Mutable so "Save As…" / "Open…" can redirect all subsequent saves.
-_data_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+# None until the user opens or saves a file.
+_data_file = None
+
+EMPTY_DATA = {"roles": [], "grad_courses": [], "labs": [], "tas": [], "assignments": []}
 
 
 def get_data_file():
@@ -25,8 +27,8 @@ def set_data_file(path):
 
 def load_data():
     p = get_data_file()
-    if not os.path.exists(p):
-        return {"roles": [], "grad_courses": [], "labs": [], "tas": [], "assignments": []}
+    if not p or not os.path.exists(p):
+        return EMPTY_DATA
     with open(p) as f:
         return json.load(f)
 
@@ -85,15 +87,24 @@ def file_path():
     return jsonify({"path": get_data_file()})
 
 
+def _default_dir():
+    """Best guess for the initial directory in file dialogs."""
+    current = get_data_file()
+    if current:
+        return os.path.dirname(current)
+    return os.path.expanduser("~")
+
+
 @app.route("/api/saveas", methods=["POST"])
 def save_as():
     data = request.get_json()
     current = get_data_file()
+    default_name = os.path.basename(current) if current else "schedule.json"
     script = (
         f'set f to choose file name '
         f'with prompt "Save Schedule As" '
-        f'default name "{os.path.basename(current)}" '
-        f'default location POSIX file "{os.path.dirname(current)}"\n'
+        f'default name "{default_name}" '
+        f'default location POSIX file "{_default_dir()}"\n'
         f'return POSIX path of f'
     )
     path = _osascript_dialog(script)
@@ -108,12 +119,11 @@ def save_as():
 
 @app.route("/api/open-dialog", methods=["POST"])
 def open_dialog():
-    current = get_data_file()
     script = (
         f'set f to choose file '
         f'with prompt "Open Schedule" '
         f'of type {{"json", "JSON"}} '
-        f'default location POSIX file "{os.path.dirname(current)}"\n'
+        f'default location POSIX file "{_default_dir()}"\n'
         f'return POSIX path of f'
     )
     path = _osascript_dialog(script)

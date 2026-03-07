@@ -446,6 +446,7 @@ async function loadData() {
 }
 
 async function saveData() {
+  if (!currentFilePath) { await saveAsData(); return; }
   try {
     await fetch('/api/data', {
       method:'POST', headers:{'Content-Type':'application/json'},
