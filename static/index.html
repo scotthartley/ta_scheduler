@@ -22,17 +22,17 @@
   --panel:   #ffffff;
   --HOUR_H:  80;         /* px per hour (JS reads this) */
 }
-body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px;
+body { font-family: system-ui, -apple-system, sans-serif; font-size: 15px;
        color: var(--text); background: var(--gray-lt); height: 100vh;
        display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── header ─────────────────────────────────────────────────── */
 header { display: flex; align-items: center; gap: 12px; padding: 8px 16px;
          background: #1e3a5f; color: #fff; flex-shrink: 0; }
-header h1 { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+header h1 { font-size: 18px; font-weight: 700; letter-spacing: .5px; }
 header .spacer { flex: 1; }
 header button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
-                border-radius: 5px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+                border-radius: 5px; padding: 4px 10px; cursor: pointer; font-size: 14px; }
 header button:hover { background: rgba(255,255,255,.25); }
 #save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #000; }
 
@@ -41,7 +41,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
            background: #1e3a5f; flex-shrink: 0; }
 .tab-btn { background: rgba(255,255,255,.12); color: rgba(255,255,255,.75);
            border: none; border-radius: 6px 6px 0 0; padding: 7px 16px;
-           cursor: pointer; font-size: 13px; font-weight: 500; transition: .15s; }
+           cursor: pointer; font-size: 14px; font-weight: 500; transition: .15s; }
 .tab-btn:hover { background: rgba(255,255,255,.22); color: #fff; }
 .tab-btn.active { background: var(--gray-lt); color: var(--text); }
 
@@ -52,12 +52,12 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 #grid-workspace { display: flex; flex: 1; overflow: hidden; }
 
 /* ── left panel ─────────────────────────────────────────────── */
-.left-panel { width: 270px; flex-shrink: 0; border-right: 1px solid var(--border);
+.left-panel { width: 380px; flex-shrink: 0; border-right: 1px solid var(--border);
               background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
 .panel-section { padding: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .panel-section-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.panel-section-header span { font-weight: 600; font-size: 13px; flex: 1; }
-.btn-sm { font-size: 12px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border);
+.panel-section-header span { font-weight: 600; font-size: 15px; flex: 1; }
+.btn-sm { font-size: 13px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border);
            background: var(--panel); cursor: pointer; }
 .btn-sm:hover { background: var(--gray-lt); }
 .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
@@ -70,36 +70,36 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
              display: flex; align-items: center; gap: 6px; }
 .item-row:hover { background: var(--gray-lt); }
 .item-row.selected { background: var(--blue-lt); border-left-color: var(--blue); }
-.item-row .item-name { flex: 1; font-size: 13px; }
-.item-row .item-badge { font-size: 11px; color: var(--text2); }
+.item-row .item-name { flex: 1; font-size: 14px; }
+.item-row .item-badge { font-size: 12px; color: var(--text2); }
 
 /* ── item form ──────────────────────────────────────────────── */
 #item-form { overflow-y: auto; padding: 10px; border-top: 1px solid var(--border);
               flex-shrink: 0; max-height: 55%; background: #fafafa; }
-#item-form h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+#item-form h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .form-group { margin-bottom: 8px; }
-.form-group label { display: block; font-size: 12px; color: var(--text2);
+.form-group label { display: block; font-size: 13px; color: var(--text2);
                      margin-bottom: 2px; font-weight: 500; }
 .form-group input, .form-group select, .form-group textarea {
   width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px;
-  font-size: 13px; background: var(--panel); }
+  font-size: 14px; background: var(--panel); }
 .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--blue); }
 .form-row { display: flex; gap: 6px; }
 .form-row .form-group { flex: 1; }
 .form-actions { display: flex; gap: 6px; margin-top: 10px; }
-.help-text { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.help-text { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
 .sublist { margin-top: 4px; }
 .sublist-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
-                 font-size: 12px; padding: 3px 4px; background: var(--panel);
+                 font-size: 13px; padding: 3px 4px; background: var(--panel);
                  border: 1px solid var(--border); border-radius: 4px; }
 .sublist-item .sl-label { flex: 1; }
-.sublist-item button { font-size: 11px; padding: 1px 5px; }
+.sublist-item button { font-size: 12px; padding: 1px 5px; }
 .role-check-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
                    padding: 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
-.role-check-row label { font-size: 12px; flex: 1; }
+.role-check-row label { font-size: 13px; flex: 1; }
 .count-input { width: 40px !important; }
 .checkbox-group { display: flex; flex-direction: column; gap: 4px; }
-.checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 
 /* ── right panel / grid ─────────────────────────────────────── */
 .right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
@@ -108,7 +108,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 
 .grid-outer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .day-header-spacer { width: 52px; flex-shrink: 0; }
-.day-header { flex: 1; text-align: center; font-size: 12px; font-weight: 600;
+.day-header { flex: 1; text-align: center; font-size: 13px; font-weight: 600;
                padding: 5px; border-left: 1px solid var(--border); color: var(--text2); }
 
 .grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
@@ -116,7 +116,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
                        background: var(--panel); border-bottom: 1px solid var(--border); }
 .grid-body { display: flex; position: relative; }
 .time-labels { width: 52px; flex-shrink: 0; position: relative; }
-.time-label { position: absolute; right: 6px; font-size: 10px; color: var(--text2);
+.time-label { position: absolute; right: 6px; font-size: 11px; color: var(--text2);
                transform: translateY(-50%); white-space: nowrap; }
 .days-area { flex: 1; display: flex; position: relative; }
 .day-col { flex: 1; position: relative; border-left: 1px solid var(--border);
@@ -128,7 +128,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 
 /* ── blocks ─────────────────────────────────────────────────── */
 .block { position: absolute; left: 2px; right: 2px; border-radius: 4px;
-          font-size: 10px; padding: 2px 4px; pointer-events: none; }
+          font-size: 11px; padding: 2px 4px; pointer-events: none; }
 .block-editable { pointer-events: all; cursor: grab; user-select: none; }
 .block-editable:active { cursor: grabbing; }
 .block-lab     { background: #dbeafe; border: 1px solid var(--blue); color: #1e40af; }
@@ -138,7 +138,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
                   pointer-events: none; z-index: 10; }
 .block-ghost   { opacity: .45; pointer-events: none; z-index: 20; }
 .block-label { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.block-time  { opacity: .75; font-size: 9px; }
+.block-time  { opacity: .75; font-size: 10px; }
 .block-resize-handle-top { position: absolute; top: 0; left: 0; right: 0; height: 6px;
                              cursor: ns-resize; border-radius: 3px 3px 0 0;
                              background: rgba(0,0,0,.12); }
@@ -253,9 +253,9 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="courses" onclick="switchTab('courses')">Graduate Courses</button>
+  <button class="tab-btn active" data-tab="labs"    onclick="switchTab('labs')">Lab Sections</button>
+  <button class="tab-btn" data-tab="courses" onclick="switchTab('courses')">Graduate Courses</button>
   <button class="tab-btn" data-tab="tas"     onclick="switchTab('tas')">TAs</button>
-  <button class="tab-btn" data-tab="labs"    onclick="switchTab('labs')">Lab Sections</button>
   <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
   <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')">Meeting Finder</button>
 </nav>
@@ -367,8 +367,8 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 // ════════════════════════════════════════════════════════════════
 // CONSTANTS
 // ════════════════════════════════════════════════════════════════
-const GRID_START = 480;   // 8:00 AM in minutes
-const GRID_END   = 1080;  // 6:00 PM in minutes
+const GRID_START = 420;   // 7:00 AM in minutes
+const GRID_END   = 1140;  // 7:00 PM in minutes
 const GRID_MINS  = GRID_END - GRID_START;
 const HOUR_H     = 80;    // px per hour
 const GRID_H     = (GRID_MINS / 60) * HOUR_H;  // 800 px
@@ -381,7 +381,7 @@ const DAYS       = ['Mon','Tue','Wed','Thu','Fri'];
 // ════════════════════════════════════════════════════════════════
 const S = {
   data: { roles:[], grad_courses:[], labs:[], tas:[], assignments:[] },
-  tab: 'courses',
+  tab: 'labs',
   selId: null,
   drag: null,
   schedView: 'lab',
@@ -937,7 +937,7 @@ function initGridLines() {
   // Time labels
   const tl = $id('time-labels');
   tl.innerHTML = ''; tl.style.height = GRID_H + 'px'; tl.style.position='relative';
-  for (let h=8; h<=18; h++) {
+  for (let h=7; h<=19; h++) {
     const lbl = el('div','time-label', fmtTime(h*60));
     lbl.style.top = minToY(h*60) + 'px';
     tl.appendChild(lbl);
@@ -948,7 +948,7 @@ function initGridLines() {
     col.style.height = GRID_H + 'px';
     // remove old lines
     col.querySelectorAll('.hour-line,.halfhour-line').forEach(e=>e.remove());
-    for (let h=8; h<=18; h++) {
+    for (let h=7; h<=19; h++) {
       const ln = el('div','hour-line');
       ln.style.top = minToY(h*60) + 'px';
       col.appendChild(ln);
@@ -1555,7 +1555,7 @@ function renderMeetingFinder() {
   // Time labels
   const tl = $id('meeting-time-labels');
   tl.innerHTML = ''; tl.style.height = GRID_H + 'px'; tl.style.position='relative';
-  for (let h=8; h<=18; h++) {
+  for (let h=7; h<=19; h++) {
     const lbl = el('div','time-label', fmtTime(h*60));
     lbl.style.top = minToY(h*60) + 'px';
     tl.appendChild(lbl);
@@ -1568,7 +1568,7 @@ function renderMeetingFinder() {
     col.style.height = GRID_H + 'px';
 
     // Hour lines
-    for (let h=8; h<=18; h++) {
+    for (let h=7; h<=19; h++) {
       const ln = el('div','hour-line'); ln.style.top=minToY(h*60)+'px'; col.appendChild(ln);
     }
 
