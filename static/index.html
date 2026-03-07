@@ -1820,9 +1820,9 @@ async function importClassList() {
       alert('No courses with meeting times found.'); return;
     }
     S._importGrad    = grad;
-    S._importGradChk = new Set(grad.map((_,i) => i));          // all checked by default
+    S._importGradChk = new Set(grad.map((_,i) => i));  // all checked by default
     S._importCourses = undergrad;
-    S._importChecked = new Set(undergrad.map(c => `${c.subject} ${c.number}`)); // all checked
+    S._importChecked = new Set();                       // none checked by default
     showModal(`<div class="modal-box">
       <h2>Import Class List</h2>
       ${grad.length ? `
