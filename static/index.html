@@ -868,28 +868,52 @@ function renderLabForm(item, form) {
   form.appendChild(row);
 
   // Roles
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Role Requirements</label>'));
+  const rolesHdr = el('div','form-group');
+  const rolesLbl = el('label'); rolesLbl.style.fontWeight='600'; rolesLbl.style.fontSize='12px';
+  rolesLbl.textContent = 'Role Requirements';
+  const manageBtn = el('button','btn-sm', '⚙ Manage Roles');
+  manageBtn.style.marginLeft = '8px';
+  manageBtn.onclick = openRolesModal;
+  rolesLbl.appendChild(manageBtn);
+  rolesHdr.appendChild(rolesLbl);
+  form.appendChild(rolesHdr);
+  form.appendChild(el('p','help-text','Number of TAs needed per role. "Exp" = experienced TA required.'));
+
   const rolesDiv = el('div');
   item.roles = item.roles||[];
-  S.data.roles.forEach(role => {
-    let rr = item.roles.find(r => r.role_id === role.id);
-    if (!rr) { rr={role_id:role.id,count:0,required_experienced:false}; item.roles.push(rr); }
-    const r = el('div','role-check-row');
-    const lbl = el('label',null,escHtml(role.label));
 
-    const cntInp = document.createElement('input');
-    cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
-    cntInp.value=rr.count; cntInp.className='count-input';
-    cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; markDirty(); };
+  if (!S.data.roles.length) {
+    const msg = el('p','help-text','No role types defined yet. ');
+    const addBtn = el('button','btn-sm','⚙ Add Roles');
+    addBtn.onclick = openRolesModal;
+    msg.appendChild(addBtn);
+    rolesDiv.appendChild(msg);
+  } else {
+    S.data.roles.forEach(role => {
+      let rr = item.roles.find(r => r.role_id === role.id);
+      if (!rr) { rr={role_id:role.id,count:0,required_experienced:false}; item.roles.push(rr); }
+      const r = el('div','role-check-row');
 
-    const expCb = document.createElement('input'); expCb.type='checkbox';
-    expCb.checked=rr.required_experienced;
-    expCb.title='Require experienced TA';
-    expCb.onchange = () => { rr.required_experienced=expCb.checked; markDirty(); };
+      const lbl = document.createElement('label');
+      lbl.style.flex = '1';
+      lbl.innerHTML = escHtml(role.label) +
+        `<span style="color:var(--text2);font-size:11px;margin-left:4px;">(${role.se_value} SE)</span>`;
 
-    r.append(lbl, el('span',null,'×'), cntInp, expCb, el('span','help-text','exp'));
-    rolesDiv.appendChild(r);
-  });
+      const cntInp = document.createElement('input');
+      cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
+      cntInp.value=rr.count; cntInp.className='count-input';
+      cntInp.title='Number of TAs needed';
+      cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; markDirty(); };
+
+      const expCb = document.createElement('input'); expCb.type='checkbox';
+      expCb.checked=rr.required_experienced;
+      expCb.title='Require experienced TA';
+      expCb.onchange = () => { rr.required_experienced=expCb.checked; markDirty(); };
+
+      r.append(lbl, el('span',null,'×'), cntInp, expCb, el('span','help-text','Exp'));
+      rolesDiv.appendChild(r);
+    });
+  }
   form.appendChild(rolesDiv);
   form.appendChild(formActions(deleteCurrentItem));
 }
@@ -1597,6 +1621,8 @@ function showModal(html) {
 function closeModal() {
   const mc = $id('modal-container');
   if (mc.lastChild) mc.removeChild(mc.lastChild);
+  // Re-render form in case roles were added/changed
+  if (S.selId && ['courses','tas','labs'].includes(S.tab)) renderItemForm();
 }
 
 // ════════════════════════════════════════════════════════════════
