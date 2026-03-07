@@ -1,6 +1,8 @@
 # TA Scheduler
 
-A single-user desktop web app for scheduling graduate teaching assistants (TAs) across lab sections. Built for macOS, it runs entirely locally — no cloud, no database, no build step.
+A single-user desktop web app for scheduling graduate teaching assistants (TAs) across lab sections. Runs entirely locally — no cloud, no database, no build step.
+
+The app runs on any OS, but the native file dialogs (Open, Save As, Import CSV) use `osascript` and require macOS. On other platforms those buttons won't work; the rest of the app functions normally.
 
 > **Note:** This README was written by [Claude Code](https://claude.ai/claude-code), Anthropic's AI coding assistant, which also contributed substantially to the codebase.
 
@@ -17,8 +19,8 @@ A single-user desktop web app for scheduling graduate teaching assistants (TAs) 
 
 ## Requirements
 
-- macOS (file dialogs use `osascript`)
 - Python 3.9+
+- macOS for native file dialogs (Open, Save As, Import CSV use `osascript`)
 
 ## Installation
 
