@@ -2,25 +2,23 @@
 
 A single-user desktop web app for scheduling graduate teaching assistants (TAs) across lab sections. Runs entirely locally — no cloud, no database, no build step.
 
-The app runs on any OS, but the native file dialogs (Open, Save As, Import CSV) use `osascript` and require macOS. On other platforms those buttons won't work; the rest of the app functions normally.
-
 > **Note:** This README was written by [Claude Code](https://claude.ai/claude-code), Anthropic's AI coding assistant, which also contributed substantially to the codebase.
 
 ## Features
 
 - **Visual weekly grid** — drag to draw, resize, and move time blocks for courses, labs, and TA commitments (7 AM – 7 PM, Mon–Fri)
-- **CP-SAT solver** — automatically assigns TAs to lab roles while respecting section equivalent (SE) caps, availability, and scheduling conflicts; locked manual assignments are always preserved
+- **Automatic solver** — assigns TAs to lab roles while respecting section equivalent (SE) caps, availability, and scheduling conflicts; locked manual assignments are always preserved
 - **CSV import** — paste in a department course export to bulk-import graduate courses and lab sections, including multi-day meetings (MWF, TR, etc.)
 - **Conflict-override assignment** — manually force-assign a TA despite a conflict, with the reason clearly shown
 - **DOCX export** — generate a formatted schedule document
 - **Roles system** — define custom TA role types (e.g. Primary TA, Grader) with configurable SE values and experience preferences
 - **Meeting Finder** — visualize collective TA availability across the week
-- **Single JSON file** persistence — open and save schedule files via native macOS dialogs
+- **Single JSON file** persistence — open and save schedule files via native file dialogs
 
 ## Requirements
 
 - Python 3.9+
-- macOS for native file dialogs (Open, Save As, Import CSV use `osascript`)
+- macOS, Windows, or Linux (pywebview provides native file dialogs on all platforms)
 
 ## Installation
 
