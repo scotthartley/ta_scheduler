@@ -247,7 +247,6 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
   <button id="save-btn" onclick="saveData()">Save</button>
   <button onclick="saveAsData()">Save As…</button>
   <button onclick="openNative()">Open…</button>
-  <button onclick="exportTemplate()">Export Template</button>
   <button onclick="exportDocx()">Export DOCX</button>
   <button onclick="openRolesModal()">⚙ Roles</button>
 </header>
@@ -491,21 +490,6 @@ async function openNative() {
 }
 
 
-function exportTemplate() {
-  const tpl = {
-    roles: S.data.roles,
-    grad_courses: S.data.grad_courses,
-    labs: S.data.labs,
-    tas: [], assignments: []
-  };
-  downloadJSON(tpl, 'ta_schedule_template.json');
-}
-
-function downloadJSON(obj, name) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));
-  a.download = name; a.click();
-}
 
 async function exportDocx() {
   try {
