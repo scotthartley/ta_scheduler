@@ -249,6 +249,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
   <button id="save-btn" onclick="saveData()">Save</button>
   <button onclick="saveAsData()">Save As…</button>
   <button onclick="openNative()">Open…</button>
+  <button onclick="importClassList()">Import Class List</button>
   <button onclick="exportDocx()">Export DOCX</button>
   <button onclick="openRolesModal()">⚙ Roles</button>
 </header>
@@ -270,7 +271,6 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
       <div class="panel-section">
         <div class="panel-section-header">
           <span id="panel-title">Graduate Courses</span>
-          <button id="import-csv-btn" class="btn-sm" onclick="importCSV()" style="display:none;">↓ Import CSV</button>
           <button class="btn-sm btn-primary" onclick="createNewItem()">+ New</button>
         </div>
       </div>
@@ -574,7 +574,6 @@ function getItems() {
 function renderLeftPanel() {
   const titles = {courses:'Graduate Courses', tas:'TAs', labs:'Lab Sections'};
   $id('panel-title').textContent = titles[S.tab] || '';
-  $id('import-csv-btn').style.display = (S.tab === 'courses' || S.tab === 'labs') ? '' : 'none';
   const list = $id('item-list');
   list.innerHTML = '';
   getItems().forEach(item => {
@@ -1796,6 +1795,7 @@ function showModal(html) {
   $id('modal-container').appendChild(backdrop);
   // If roles modal, render list
   if ($id('roles-list')) renderRolesList();
+  if ($id('import-grad-list')) renderImportGradList();
   if ($id('import-lab-list')) renderImportLabList();
 }
 function closeModal() {
@@ -1808,91 +1808,85 @@ function closeModal() {
 // ════════════════════════════════════════════════════════════════
 // CSV IMPORT
 // ════════════════════════════════════════════════════════════════
-async function importCSV() {
+async function importClassList() {
   try {
     const r = await fetch('/api/import-csv', { method: 'POST' });
     const result = await r.json();
     if (result.cancelled) return;
     if (result.error) { alert('Import failed:\n' + result.error); return; }
-    if (S.tab === 'courses') {
-      showImportGradModal(result.grad_courses);
-    } else if (S.tab === 'labs') {
-      showImportLabModal(result.undergrad_courses);
+    const grad = result.grad_courses || [];
+    const undergrad = result.undergrad_courses || [];
+    if (!grad.length && !undergrad.length) {
+      alert('No courses with meeting times found.'); return;
     }
+    S._importGrad    = grad;
+    S._importGradChk = new Set(grad.map((_,i) => i));          // all checked by default
+    S._importCourses = undergrad;
+    S._importChecked = new Set(undergrad.map(c => `${c.subject} ${c.number}`)); // all checked
+    showModal(`<div class="modal-box">
+      <h2>Import Class List</h2>
+      ${grad.length ? `
+        <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Graduate Courses (${grad.length})</h3>
+        <div style="margin-bottom:6px;">
+          <button class="btn-sm" onclick="importSelectAllGrad(true)">Select All</button>
+          <button class="btn-sm" onclick="importSelectAllGrad(false)">Deselect All</button>
+        </div>
+        <div id="import-grad-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
+      ` : ''}
+      ${undergrad.length ? `
+        <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Lab Sections</h3>
+        <p style="font-size:12px;color:var(--text2);margin:0 0 6px;">Select courses to import all sections:</p>
+        <div style="margin-bottom:6px;">
+          <button class="btn-sm" onclick="importLabSelectAll(true)">Select All</button>
+          <button class="btn-sm" onclick="importLabSelectAll(false)">Deselect All</button>
+        </div>
+        <div id="import-lab-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
+      ` : ''}
+      <div class="modal-footer">
+        <button class="btn-sm" onclick="closeModal()">Cancel</button>
+        <button class="btn-sm btn-primary" onclick="confirmImportAll()">Import Selected</button>
+      </div>
+    </div>`);
   } catch(e) { alert('Import failed: ' + e); }
 }
 
-function showImportGradModal(courses) {
-  if (!courses.length) { alert('No graduate courses with meeting times found.'); return; }
-  S._importPending = courses;
-  const listHtml = courses.map(c => {
-    const meetStr = (c.meetings || [{day:c.day, start_min:c.start_min, end_min:c.end_min}])
+function renderImportGradList() {
+  const div = $id('import-grad-list'); if (!div) return;
+  div.innerHTML = '';
+  (S._importGrad || []).forEach((c, i) => {
+    const row = el('div'); row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
+    const cb = document.createElement('input'); cb.type='checkbox';
+    cb.checked = S._importGradChk.has(i);
+    cb.onchange = () => { if (cb.checked) S._importGradChk.add(i); else S._importGradChk.delete(i); };
+    const meetStr = (c.meetings?.length ? c.meetings : [{day:c.day, start_min:c.start_min, end_min:c.end_min}])
       .map(m => `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`).join(', ');
-    return `<li>${escHtml(c.name)} — ${meetStr}</li>`;
-  }).join('');
-  showModal(`<div class="modal-box">
-    <h2>Import Graduate Courses</h2>
-    <p>Found <strong>${courses.length}</strong> course session(s) to import:</p>
-    <ul style="max-height:300px;overflow-y:auto;font-size:13px;">${listHtml}</ul>
-    <div class="modal-footer">
-      <button class="btn-sm" onclick="closeModal()">Cancel</button>
-      <button class="btn-sm btn-primary" onclick="confirmImportGrad()">Import All</button>
-    </div>
-  </div>`);
-}
-
-function confirmImportGrad() {
-  const courses = S._importPending || [];
-  courses.forEach(c => {
-    S.data.grad_courses.push({id: uid(), name: c.name, day: c.day,
-      start_min: c.start_min, end_min: c.end_min, meetings: c.meetings || [], exams: c.exams || []});
+    const lbl = el('label'); lbl.style.cursor='pointer';
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(` ${escHtml(c.name)} — ${meetStr}`));
+    row.appendChild(lbl); div.appendChild(row);
   });
-  delete S._importPending;
-  markDirty(); closeModal(); renderLeftPanel();
 }
 
-function showImportLabModal(undergradCourses) {
-  if (!undergradCourses.length) { alert('No undergraduate courses found.'); return; }
-  S._importCourses = undergradCourses;
-  S._importChecked = new Set();
-  showModal(`<div class="modal-box" id="import-lab-box">
-    <h2>Import Lab Sections</h2>
-    <p>Select courses to import all sections:</p>
-    <div style="margin-bottom:8px;">
-      <button class="btn-sm" onclick="importLabSelectAll(true)">Select All</button>
-      <button class="btn-sm" onclick="importLabSelectAll(false)">Deselect All</button>
-    </div>
-    <div id="import-lab-list" style="max-height:350px;overflow-y:auto;font-size:13px;"></div>
-    <div class="modal-footer">
-      <button class="btn-sm" onclick="closeModal()">Cancel</button>
-      <button class="btn-sm btn-primary" onclick="confirmImportLabs()">Import Selected</button>
-    </div>
-  </div>`);
-  renderImportLabList();
+function importSelectAllGrad(checked) {
+  S._importGradChk = new Set(checked ? (S._importGrad||[]).map((_,i)=>i) : []);
+  renderImportGradList();
 }
 
 function renderImportLabList() {
-  const div = $id('import-lab-list');
-  if (!div) return;
+  const div = $id('import-lab-list'); if (!div) return;
   div.innerHTML = '';
   (S._importCourses || []).forEach(course => {
     const key = `${course.subject} ${course.number}`;
-    const row = el('div', null);
-    row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
+    const row = el('div'); row.style.cssText = 'padding:4px 0;border-bottom:1px solid #eee;';
+    const cb = document.createElement('input'); cb.type='checkbox';
     cb.checked = S._importChecked.has(key);
-    cb.onchange = () => {
-      if (cb.checked) S._importChecked.add(key); else S._importChecked.delete(key);
-    };
-    const lbl = el('label', null);
-    lbl.style.cursor = 'pointer';
+    cb.onchange = () => { if (cb.checked) S._importChecked.add(key); else S._importChecked.delete(key); };
+    const lbl = el('label'); lbl.style.cursor='pointer';
     lbl.appendChild(cb);
     lbl.appendChild(document.createTextNode(
       ` ${key} — ${escHtml(course.title)} (${course.sections.length} section(s))`
     ));
-    row.appendChild(lbl);
-    div.appendChild(row);
+    row.appendChild(lbl); div.appendChild(row);
   });
 }
 
@@ -1901,18 +1895,22 @@ function importLabSelectAll(checked) {
   renderImportLabList();
 }
 
-function confirmImportLabs() {
+function confirmImportAll() {
+  (S._importGrad || []).forEach((c, i) => {
+    if (!S._importGradChk.has(i)) return;
+    S.data.grad_courses.push({id: uid(), name: c.name, day: c.day,
+      start_min: c.start_min, end_min: c.end_min, meetings: c.meetings || [], exams: c.exams || []});
+  });
   (S._importCourses || []).forEach(course => {
     const key = `${course.subject} ${course.number}`;
     if (!S._importChecked.has(key)) return;
     course.sections.forEach(sec => {
-      S.data.labs.push({
-        id: uid(), name: sec.name, day: sec.day,
+      S.data.labs.push({id: uid(), name: sec.name, day: sec.day,
         start_min: sec.start_min, end_min: sec.end_min,
-        meetings: sec.meetings || [], exams: sec.exams || [], roles: [],
-      });
+        meetings: sec.meetings || [], exams: sec.exams || [], roles: []});
     });
   });
+  delete S._importGrad; delete S._importGradChk;
   delete S._importCourses; delete S._importChecked;
   markDirty(); closeModal(); renderLeftPanel();
 }
