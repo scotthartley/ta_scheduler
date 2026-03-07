@@ -808,7 +808,7 @@ function renderTAForm(item, form) {
     row.appendChild(cb);
     const gcDayStr = gc.meetings?.length > 1 ? ' ('+gc.meetings.map(m=>'MTWRF'[m.day]).join('')+')'
       : gc.day !== undefined ? ` (${DAYS[gc.day]})` : '';
-    row.appendChild(el('span',null,escHtml(gc.name) + gcDayStr));
+    row.appendChild(el('span',null,escHtml(displayName(gc)) + gcDayStr));
     gcDiv.appendChild(row);
   });
   if (!S.data.grad_courses.length) gcDiv.appendChild(el('span','help-text','No courses defined'));
