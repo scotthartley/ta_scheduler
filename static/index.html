@@ -111,10 +111,10 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 .day-header { flex: 1; text-align: center; font-size: 13px; font-weight: 600;
                padding: 5px; border-left: 1px solid var(--border); color: var(--text2); }
 
-.grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-left: 4px; }
 .day-headers-sticky { display: flex; position: sticky; top: 0; z-index: 5;
                        background: var(--panel); border-bottom: 1px solid var(--border); }
-.grid-body { display: flex; position: relative; }
+.grid-body { display: flex; position: relative; padding-top: 8px; }
 .time-labels { width: 52px; flex-shrink: 0; position: relative; }
 .time-label { position: absolute; right: 6px; font-size: 11px; color: var(--text2);
                transform: translateY(-50%); white-space: nowrap; }
@@ -370,7 +370,7 @@ nav.tabs { display: flex; gap: 2px; padding: 6px 12px 0;
 const GRID_START = 420;   // 7:00 AM in minutes
 const GRID_END   = 1140;  // 7:00 PM in minutes
 const GRID_MINS  = GRID_END - GRID_START;
-const HOUR_H     = 80;    // px per hour
+const HOUR_H     = 60;    // px per hour
 const GRID_H     = (GRID_MINS / 60) * HOUR_H;  // 800 px
 const PX_PER_MIN = GRID_H / GRID_MINS;
 const SNAP       = 5;     // minute snap
@@ -732,26 +732,34 @@ function formActions(onDel) {
 // ── Course form ──
 function renderCourseForm(item, form) {
   form.innerHTML = '';
-  const h = el('h3',null,'Edit Course'); form.appendChild(h);
-
+  form.appendChild(el('h3',null,'Edit Course'));
   form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
 
-  const dayG = el('div','form-group');
-  const dayL = el('label'); dayL.textContent = 'Day';
-  dayL.appendChild(daySelect(item.day, v => { item.day=v; markDirty(); renderGrid(); }));
-  dayG.appendChild(dayL); form.appendChild(dayG);
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Meeting Times</label>'));
+  form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
 
-  const row = el('div','form-row');
-  const startG = el('div','form-group');
-  const startL = el('label'); startL.textContent = 'Start';
-  startL.appendChild(timeSelect(item.start_min, v => { item.start_min=v; markDirty(); renderGrid(); }));
-  startG.appendChild(startL); row.appendChild(startG);
+  const meetings = item.meetings?.length
+    ? item.meetings
+    : (item.day !== null && item.day !== undefined && item.start_min
+        ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
 
-  const endG = el('div','form-group');
-  const endL = el('label'); endL.textContent = 'End';
-  endL.appendChild(timeSelect(item.end_min, v => { item.end_min=v; markDirty(); renderGrid(); }));
-  endG.appendChild(endL); row.appendChild(endG);
-  form.appendChild(row);
+  const mtgDiv = el('div','sublist');
+  meetings.forEach((m, i) => {
+    const r = el('div','sublist-item');
+    const info = el('span','sl-label', `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
+    info.style.flex = '1';
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => {
+      normalizeMeetings(item);
+      item.meetings.splice(i, 1);
+      syncTopLevel(item);
+      markDirty(); renderGrid(); renderItemForm();
+    };
+    r.append(info, rm);
+    mtgDiv.appendChild(r);
+  });
+  if (!meetings.length) mtgDiv.appendChild(el('span','help-text','No times set'));
+  form.appendChild(mtgDiv);
 
   form.appendChild(formActions(deleteCurrentItem));
 }
@@ -783,28 +791,6 @@ function renderTAForm(item, form) {
   seInp.oninput = () => { item.max_se=parseFloat(seInp.value)||0; markDirty(); };
   seL.appendChild(seInp); seG.appendChild(seL); form.appendChild(seG);
 
-  // Grad courses
-  form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;">Grad Courses</label>`));
-  const gcDiv = el('div','checkbox-group');
-  S.data.grad_courses.forEach(gc => {
-    const row = el('div','checkbox-row');
-    const cb = document.createElement('input'); cb.type='checkbox';
-    cb.checked = (item.grad_course_ids||[]).includes(gc.id);
-    cb.onchange = () => {
-      item.grad_course_ids = item.grad_course_ids||[];
-      if (cb.checked) item.grad_course_ids.push(gc.id);
-      else item.grad_course_ids = item.grad_course_ids.filter(id=>id!==gc.id);
-      markDirty(); renderGrid();
-    };
-    row.appendChild(cb);
-    const gcDayStr = gc.meetings?.length > 1 ? ' ('+gc.meetings.map(m=>'MTWRF'[m.day]).join('')+')'
-      : gc.day !== undefined ? ` (${DAYS[gc.day]})` : '';
-    row.appendChild(el('span',null,escHtml(gc.name) + gcDayStr));
-    gcDiv.appendChild(row);
-  });
-  if (!S.data.grad_courses.length) gcDiv.appendChild(el('span','help-text','No courses defined'));
-  form.appendChild(gcDiv);
-
   // Outside duties
   form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Outside Duties</label>'));
   form.appendChild(el('p','help-text','Duties that count toward SE but have no fixed time'));
@@ -832,6 +818,28 @@ function renderTAForm(item, form) {
   };
   odDiv.appendChild(addOD);
   form.appendChild(odDiv);
+
+  // Grad courses
+  form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;">Grad Courses</label>`));
+  const gcDiv = el('div','checkbox-group');
+  S.data.grad_courses.forEach(gc => {
+    const row = el('div','checkbox-row');
+    const cb = document.createElement('input'); cb.type='checkbox';
+    cb.checked = (item.grad_course_ids||[]).includes(gc.id);
+    cb.onchange = () => {
+      item.grad_course_ids = item.grad_course_ids||[];
+      if (cb.checked) item.grad_course_ids.push(gc.id);
+      else item.grad_course_ids = item.grad_course_ids.filter(id=>id!==gc.id);
+      markDirty(); renderGrid();
+    };
+    row.appendChild(cb);
+    const gcDayStr = gc.meetings?.length > 1 ? ' ('+gc.meetings.map(m=>'MTWRF'[m.day]).join('')+')'
+      : gc.day !== undefined ? ` (${DAYS[gc.day]})` : '';
+    row.appendChild(el('span',null,escHtml(gc.name) + gcDayStr));
+    gcDiv.appendChild(row);
+  });
+  if (!S.data.grad_courses.length) gcDiv.appendChild(el('span','help-text','No courses defined'));
+  form.appendChild(gcDiv);
 
   // Other commitments note
   form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Other Commitments</label>'));
@@ -861,21 +869,31 @@ function renderLabForm(item, form) {
 
   form.appendChild(fgRow('Name', textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); })));
 
-  const dayG = el('div','form-group');
-  const dayL = el('label'); dayL.textContent='Day';
-  dayL.appendChild(daySelect(item.day, v => { item.day=v; markDirty(); renderGrid(); }));
-  dayG.appendChild(dayL); form.appendChild(dayG);
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Meeting Times</label>'));
+  form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
 
-  const row = el('div','form-row');
-  const sg = el('div','form-group');
-  const sl = el('label'); sl.textContent='Start';
-  sl.appendChild(timeSelect(item.start_min, v => { item.start_min=v; markDirty(); renderGrid(); }));
-  sg.appendChild(sl); row.appendChild(sg);
-  const eg = el('div','form-group');
-  const el2 = el('div'); const ell = document.createElement('label'); ell.textContent='End';
-  ell.appendChild(timeSelect(item.end_min, v => { item.end_min=v; markDirty(); renderGrid(); }));
-  eg.appendChild(ell); row.appendChild(eg);
-  form.appendChild(row);
+  const labMeetings = item.meetings?.length
+    ? item.meetings
+    : (item.day !== null && item.day !== undefined && item.start_min
+        ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
+
+  const labMtgDiv = el('div','sublist');
+  labMeetings.forEach((m, i) => {
+    const r = el('div','sublist-item');
+    const info = el('span','sl-label', `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
+    info.style.flex = '1';
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => {
+      normalizeMeetings(item);
+      item.meetings.splice(i, 1);
+      syncTopLevel(item);
+      markDirty(); renderGrid(); renderItemForm();
+    };
+    r.append(info, rm);
+    labMtgDiv.appendChild(r);
+  });
+  if (!labMeetings.length) labMtgDiv.appendChild(el('span','help-text','No times set'));
+  form.appendChild(labMtgDiv);
 
   // Roles
   const rolesHdr = el('div','form-group');
@@ -961,6 +979,26 @@ function initGridLines() {
   }
 }
 
+// Keep backward-compat top-level fields in sync with meetings[]
+function syncTopLevel(item) {
+  if (item.meetings?.length) {
+    item.day       = item.meetings[0].day;
+    item.start_min = item.meetings[0].start_min;
+    item.end_min   = item.meetings[0].end_min;
+  } else {
+    item.day = null; item.start_min = null; item.end_min = null;
+  }
+}
+
+// Normalize an item to always use meetings[] (migrates legacy top-level fields)
+function normalizeMeetings(item) {
+  if (!item.meetings?.length) {
+    item.meetings = (item.day !== null && item.day !== undefined && item.start_min)
+      ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}]
+      : [];
+  }
+}
+
 function renderGrid() {
   initGridLines();
   // Clear blocks
@@ -975,27 +1013,25 @@ function renderGrid() {
 function getBlocksForItem(item) {
   const blocks = [];
   if (S.tab === 'courses') {
-    if (item.meetings?.length > 1) {
-      item.meetings.forEach(m => {
-        if (m.day === null || m.day === undefined || !m.start_min) return;
-        blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
-                     label:item.name, editable:false});
-      });
-    } else if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
-      blocks.push({type:'lab', day:item.day, start:item.start_min, end:item.end_min,
-                   label:item.name, editable:true, itemRef:item, eraseType:'course-time'});
-    }
+    const meetings = item.meetings?.length
+      ? item.meetings
+      : (item.day !== null && item.day !== undefined && item.start_min
+          ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
+    meetings.forEach((m, i) => {
+      if (m.day === null || m.day === undefined || !m.start_min) return;
+      blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
+                   label:item.name, editable:true, eraseType:'course-meeting', commitIndex:i});
+    });
   } else if (S.tab === 'labs') {
-    if (item.meetings?.length > 1) {
-      item.meetings.forEach(m => {
-        if (m.day === null || m.day === undefined || !m.start_min) return;
-        blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
-                     label:item.name, editable:false});
-      });
-    } else if (item.day !== null && item.day !== undefined && item.start_min && item.end_min) {
-      blocks.push({type:'lab', day:item.day, start:item.start_min, end:item.end_min,
-                   label:item.name, editable:true, itemRef:item, eraseType:'lab-time'});
-    }
+    const meetings = item.meetings?.length
+      ? item.meetings
+      : (item.day !== null && item.day !== undefined && item.start_min
+          ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
+    meetings.forEach((m, i) => {
+      if (m.day === null || m.day === undefined || !m.start_min) return;
+      blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
+                   label:item.name, editable:true, eraseType:'lab-meeting', commitIndex:i});
+    });
   } else if (S.tab === 'tas') {
     // Grad courses (non-editable) — show all meeting days
     (item.grad_course_ids||[]).forEach(gcId => {
@@ -1228,7 +1264,9 @@ function onGridMouseUp(e) {
 function handleBlockDraw(day, startMin, endMin) {
   const item = getSelectedItem(); if (!item) return;
   if (S.tab === 'courses' || S.tab === 'labs') {
-    item.day = day; item.start_min = startMin; item.end_min = endMin;
+    normalizeMeetings(item);
+    item.meetings.push({day, start_min: startMin, end_min: endMin});
+    syncTopLevel(item);
     markDirty(); renderGrid(); renderItemForm();
   } else if (S.tab === 'tas') {
     item.other_commitments = item.other_commitments||[];
@@ -1239,7 +1277,14 @@ function handleBlockDraw(day, startMin, endMin) {
 
 function applyBlockChange(eraseType, commitIndex, day, startMin, endMin) {
   const item = getSelectedItem(); if (!item) return;
-  if (eraseType === 'course-time' || eraseType === 'lab-time') {
+  if (eraseType === 'course-meeting' || eraseType === 'lab-meeting') {
+    normalizeMeetings(item);
+    const idx = parseInt(commitIndex);
+    if (!isNaN(idx) && item.meetings[idx]) {
+      item.meetings[idx] = {day, start_min: startMin, end_min: endMin};
+    }
+    syncTopLevel(item);
+  } else if (eraseType === 'course-time' || eraseType === 'lab-time') {
     item.day = day; item.start_min = startMin; item.end_min = endMin;
   } else if (eraseType === 'commitment') {
     const idx = parseInt(commitIndex);
@@ -1255,7 +1300,12 @@ function applyBlockChange(eraseType, commitIndex, day, startMin, endMin) {
 function eraseBlock(block) {
   const item = getSelectedItem(); if (!item) return;
   const type = block.dataset.eraseType;
-  if (type === 'course-time' || type === 'lab-time') {
+  if (type === 'course-meeting' || type === 'lab-meeting') {
+    normalizeMeetings(item);
+    const idx = parseInt(block.dataset.commitIndex);
+    if (!isNaN(idx)) item.meetings.splice(idx, 1);
+    syncTopLevel(item);
+  } else if (type === 'course-time' || type === 'lab-time') {
     item.day = null; item.start_min = null; item.end_min = null;
   } else if (type === 'commitment') {
     const idx = parseInt(block.dataset.commitIndex);
@@ -1467,22 +1517,44 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
       }, (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0));
   }
 
-  // Filter available TAs
-  const eligible = S.data.tas.filter(ta => {
-    // Check if would exceed SE
-    const addSE = role?.se_value||0;
-    if (usedSE(ta) + addSE > ta.max_se + 0.001) return false;
-    // Check time conflict
-    if (lab.day !== null && lab.start_min) {
-      for (const gcId of (ta.grad_course_ids||[])) {
-        const gc = S.data.grad_courses.find(c=>c.id===gcId);
-        if (gc && gc.day===lab.day && overlap(lab.start_min,lab.end_min,gc.start_min,gc.end_min)) return false;
-      }
-      for (const oc of (ta.other_commitments||[])) {
-        if (oc.day===lab.day && overlap(lab.start_min,lab.end_min,oc.start_min,oc.end_min)) return false;
+  // Split TAs into eligible and conflicted
+  const eligible = [];
+  const conflicted = [];
+
+  const labMeetings = lab.meetings
+    ? lab.meetings.map(m => [m.day, m.start_min, m.end_min])
+    : (lab.day !== null && lab.start_min ? [[lab.day, lab.start_min, lab.end_min]] : []);
+
+  S.data.tas.forEach(ta => {
+    if (existing.has(ta.id)) return;
+    const reasons = [];
+    const addSE = role?.se_value || 0;
+    if (usedSE(ta) + addSE > ta.max_se + 0.001) {
+      reasons.push(`SE: ${(usedSE(ta)+addSE).toFixed(1)}/${ta.max_se} (over cap)`);
+    }
+    for (const gcId of (ta.grad_course_ids || [])) {
+      const gc = S.data.grad_courses.find(c => c.id === gcId);
+      if (!gc) continue;
+      const gcMeetings = gc.meetings
+        ? gc.meetings.map(m => [m.day, m.start_min, m.end_min])
+        : [[gc.day, gc.start_min, gc.end_min]];
+      for (const [ld, ls, le] of labMeetings) {
+        for (const [gd, gs, ge] of gcMeetings) {
+          if (ld === gd && overlap(ls, le, gs, ge)) {
+            reasons.push(`conflicts with ${gc.name}`);
+          }
+        }
       }
     }
-    return true;
+    for (const oc of (ta.other_commitments || [])) {
+      for (const [ld, ls, le] of labMeetings) {
+        if (oc.day === ld && overlap(ls, le, oc.start_min, oc.end_min)) {
+          reasons.push(`conflicts with commitment (${formatTime(oc.start_min)}–${formatTime(oc.end_min)})`);
+        }
+      }
+    }
+    if (reasons.length === 0) eligible.push(ta);
+    else conflicted.push({ ta, reasons });
   });
 
   const html = `
@@ -1497,14 +1569,11 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
   showModal(html);
 
   const listDiv = $id('assign-ta-list');
-  if (!eligible.length) {
-    listDiv.appendChild(el('div','help-text','No eligible TAs available'));
-    return;
-  }
-  eligible.forEach(ta => {
+
+  function makeRow(ta, isAssigned, reasons) {
     const row = el('div','assign-ta-row');
-    const isAssigned = existing.has(ta.id);
     if (isAssigned) row.style.background = '#eff6ff';
+    else if (reasons) row.style.background = '#fffbeb';
 
     const expBadge = el('span', `exp-badge${ta.experience!=='experienced'?' inexp':''}`,
                         ta.experience==='experienced'?'exp':'inexp');
@@ -1513,6 +1582,13 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
     const checkmark = el('span',null, isAssigned ? ' ✓' : '');
     checkmark.style.color = 'var(--green)';
     row.append(expBadge, name, checkmark, seInfo);
+
+    if (reasons) {
+      const reasonEl = el('div', 'help-text', '⚠ ' + reasons.join('; '));
+      reasonEl.style.cssText = 'color:#b45309;font-size:0.78em;margin-top:2px;';
+      row.appendChild(reasonEl);
+      row.style.flexWrap = 'wrap';
+    }
 
     row.onclick = () => {
       if (isAssigned) {
@@ -1526,8 +1602,27 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
       closeModal();
       renderSchedule();
     };
-    listDiv.appendChild(row);
+    return row;
+  }
+
+  // Already-assigned TAs (shown at top)
+  S.data.tas.filter(ta => existing.has(ta.id)).forEach(ta => {
+    listDiv.appendChild(makeRow(ta, true, null));
   });
+
+  if (!eligible.length && !conflicted.length) {
+    listDiv.appendChild(el('div','help-text','No TAs available'));
+    return;
+  }
+
+  eligible.forEach(ta => listDiv.appendChild(makeRow(ta, false, null)));
+
+  if (conflicted.length) {
+    const divider = el('div', null, '— or override conflict —');
+    divider.style.cssText = 'text-align:center;color:#9ca3af;font-size:0.82em;padding:6px 0 4px;';
+    listDiv.appendChild(divider);
+    conflicted.forEach(({ta, reasons}) => listDiv.appendChild(makeRow(ta, false, reasons)));
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
