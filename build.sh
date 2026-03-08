@@ -7,7 +7,9 @@ PYINSTALLER=/Users/hartlecs/venv/py_basic/bin/pyinstaller
 cd "$(dirname "$0")"
 
 echo "==> Cleaning previous build..."
-rm -rf build dist
+for d in build dist; do
+    [ -d "$d" ] && { chflags -R nouchg "$d"; rm -rf "$d"; }
+done
 
 echo "==> Building app bundle..."
 $PYINSTALLER ta_scheduler.spec

@@ -10,7 +10,11 @@ import traceback
 
 from flask import Flask, jsonify, make_response, request, send_file
 
-app = Flask(__name__, static_folder="static")
+# When frozen by PyInstaller, data files live under sys._MEIPASS.
+_BASE_DIR = getattr(__import__("sys"), "_MEIPASS",
+                    os.path.dirname(os.path.abspath(__file__)))
+
+app = Flask(__name__, static_folder=os.path.join(_BASE_DIR, "static"))
 
 # None until the user opens or saves a file.
 _data_file = None
@@ -125,7 +129,7 @@ def _is_regular(date_str):
 
 @app.route("/")
 def index():
-    return send_file("static/index.html")
+    return send_file(os.path.join(_BASE_DIR, "static", "index.html"))
 
 
 @app.route("/api/data", methods=["GET"])
@@ -589,7 +593,6 @@ def _wait_for_flask(port, timeout=10):
 
 
 if __name__ == "__main__":
-    os.makedirs("static", exist_ok=True)
 
     try:
         import webview
