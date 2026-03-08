@@ -18,7 +18,7 @@ Port 5050 is used because macOS AirPlay Receiver occupies 5000.
 
 ```
 ta_scheduler/          ← repo root (flat, no subdirectories)
-├── ta_scheduler.py             ← Flask backend + OR-Tools CP-SAT solver + python-docx export + CSV import
+├── ta_scheduler.py             ← Flask backend + greedy solver + python-docx export + CSV import
 ├── static/
 │   └── index.html     ← entire frontend (vanilla JS, no build tools, no dependencies)
 ├── requirements.txt
@@ -29,8 +29,8 @@ ta_scheduler/          ← repo root (flat, no subdirectories)
 
 ```
 flask>=3.0.0
-ortools>=9.9.0
 python-docx>=1.1.0
+pywebview>=5.0.0
 ```
 
 Install: `pip install -r requirements.txt`
@@ -41,7 +41,7 @@ Install: `pip install -r requirements.txt`
 - Flask serves `static/index.html` and a JSON REST API
 - All persistent data lives in a single `.json` file chosen by the user via macOS file dialogs (`osascript`)
 - No data file is required to start; the app begins with empty in-memory state
-- The CP-SAT solver runs synchronously on `/api/schedule`
+- The greedy solver runs synchronously on `/api/schedule`
 
 **Frontend (`static/index.html`):**
 - Single HTML file — all CSS, JS, and HTML in one file
@@ -75,15 +75,17 @@ assignments:  [{lab_id, role_id, ta_id, locked}]
 
 Lab Sections | Graduate Courses | TAs | Schedule | Meeting Finder
 
-## Solver (CP-SAT)
+## Solver (greedy)
 
-Hard constraints:
+Hard constraints (eligibility filters):
 1. Role count: assignments per role ≤ configured count
 2. SE cap: total SE assigned to a TA ≤ their max_se (including outside duties)
 3. No double-booking: a TA cannot be assigned to two labs whose meetings overlap on the same day (checks all meetings in `meetings[]`)
 4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments
 
-Objective: maximize filled slots (weight 1000) + experience preference soft goal.
+Scoring (higher is better): base 1000 for filling the slot + experience preference (+1) − split penalty for assigning to a different course name (−200) − load-balancing penalty (current SE × 500) + random tiebreak.
+
+Slots are processed in ascending order of eligible TA count (fail-first). The highest-scoring eligible TA is assigned to each slot.
 
 Locked assignments are always preserved; the solver fills remaining slots.
 
