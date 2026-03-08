@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import random
 import re
 import socket
 import threading
@@ -390,7 +391,7 @@ def solve(data):
         return result
 
     def score(ta, lab, rr):
-        """Higher is better. Mirrors original objective weights."""
+        """Higher is better."""
         s = 1000   # filling the slot at all
         if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
             s += 1
@@ -399,6 +400,10 @@ def solve(data):
         cn = lab.get("name", "")
         if courses and cn not in courses:
             s -= 200
+        # load-balancing: prefer TAs with less SE already assigned
+        s -= ta_used_se[ta["id"]] * 500
+        # random tiebreak
+        s += random.random()
         return s
 
     # ── build work list: one entry per unfilled seat ──────────────────────────
