@@ -516,10 +516,11 @@ def generate_docx(data):
     for ta in data.get("tas", []):
         doc.add_heading(ta["name"], 2)
         doc.add_paragraph(
-            f"{ta.get('experience','').capitalize()}, Max SE: {ta.get('max_se', 2.0)}"
+            f"{ta.get('experience','').capitalize()}, Max SE: {ta.get('max_se', 2.0):.1f}"
         )
         ta_asgn = [a for a in assignments if a["ta_id"] == ta["id"]]
-        if ta_asgn:
+        outside = ta.get("outside_duties", [])
+        if ta_asgn or outside:
             tbl = doc.add_table(rows=1, cols=4)
             tbl.style = "Table Grid"
             hdr = tbl.rows[0].cells
@@ -544,10 +545,18 @@ def generate_docx(data):
                     row[2].text = (
                         f"{day_short[d]} {fmt_time(lab['start_min'])}–{fmt_time(lab['end_min'])}"
                     )
-                row[3].text = str(se)
+                row[3].text = f"{se:.1f}"
+            for od in outside:
+                se = od.get("se_value", 0)
+                total_se += se
+                row = tbl.add_row().cells
+                row[0].text = od.get("label", "Outside Duty")
+                row[1].text = "Outside Duty"
+                row[2].text = "—"
+                row[3].text = f"{se:.1f}"
             tot = tbl.add_row().cells
             tot[0].text = "Total SE"
-            tot[3].text = f"{total_se} / {ta.get('max_se', 2.0)}"
+            tot[3].text = f"{total_se:.1f} / {ta.get('max_se', 2.0):.1f}"
         else:
             doc.add_paragraph("No assignments")
         doc.add_paragraph()
