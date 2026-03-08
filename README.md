@@ -44,6 +44,23 @@ Opens at [http://localhost:5050](http://localhost:5050). (Port 5050 is used beca
 
 No data file is required to start — the app begins with empty in-memory state. Use **Open…** to load an existing schedule or **Save** / **Save As…** to persist your work.
 
+## macOS app bundle
+
+To build a self-contained `TA Scheduler.dmg` (no Python installation required):
+
+```bash
+pip install pyinstaller
+brew install create-dmg
+bash build.sh
+```
+
+The DMG is written to `dist/`. Drag **TA Scheduler.app** to `/Applications` to install.
+
+> **Note:** The app is not code-signed. After installing, macOS may block it from launching. To remove the quarantine flag, run:
+> ```bash
+> xattr -cr "/Applications/TA Scheduler.app"
+> ```
+
 ## Usage overview
 
 ### Tabs
@@ -61,7 +78,7 @@ No data file is required to start — the app begins with empty in-memory state.
 1. **Import CSV** (Lab Sections or Graduate Courses tab) — import your department's course export to populate labs and grad courses automatically
 2. **Add TAs** — enter each TA's name, experience, max SE, enrolled grad courses, and any other time commitments
 3. **Configure roles** — use the **Roles** button to define role types and set counts/experience preferences on each lab
-4. **Run solver** — go to the Schedule tab and click **Run Solver**
+4. **Run solver** — go to the Schedule tab and click **Assign TAs**
 5. **Adjust manually** — lock, override, or tweak assignments as needed
 6. **Export** — download a formatted DOCX
 
@@ -80,7 +97,7 @@ When assigning a TA manually, the assignment modal shows eligible TAs at the top
 
 ```
 ta_scheduler/
-├── ta_scheduler.py             # Flask backend, CP-SAT solver, DOCX export, CSV import
+├── ta_scheduler.py             # Flask backend, greedy solver, DOCX export, CSV import
 ├── static/
 │   └── index.html     # Entire frontend (vanilla JS/CSS/HTML, no build tools)
 ├── requirements.txt
@@ -113,7 +130,7 @@ The solver is a greedy algorithm with a fail-first heuristic (no external depend
 3. **No double-booking** — a TA cannot be assigned to two labs with overlapping meeting times
 4. **Availability** — a TA cannot be assigned to a lab that conflicts with their grad courses or other commitments
 
-Slots with the fewest eligible TAs are filled first. The scoring function maximizes filled slots (weight 1000), prefers experience-matched TAs (+1), and penalizes split assignments across courses (-200).
+Slots with the fewest eligible TAs are filled first. The scoring function maximizes filled slots (weight 1000), prefers experience-matched TAs (+1), penalizes split assignments across courses (-200), penalizes already-loaded TAs (current SE × -500) to spread load evenly, and breaks ties randomly.
 
 ## License
 
