@@ -376,7 +376,7 @@ const HOUR_H     = 75;    // px per hour
 const GRID_H     = (GRID_MINS / 60) * HOUR_H;  // 800 px
 const PX_PER_MIN = GRID_H / GRID_MINS;
 const SNAP       = 5;     // minute snap
-const DAYS       = ['Mon','Tue','Wed','Thu','Fri'];
+const DAYS       = ['M','T','W','R','F'];
 
 // ════════════════════════════════════════════════════════════════
 // STATE
@@ -1413,22 +1413,31 @@ function renderLabView(container) {
   const tbody = el('tbody');
 
   S.data.labs.forEach(lab => {
-    // Lab header row
-    const hrow = el('tr','lab-header');
-    const hcell = el('td'); hcell.colSpan=5;
-    hcell.innerHTML = `<strong>${escHtml(displayName(lab))}</strong>`;
-    hrow.appendChild(hcell); tbody.appendChild(hrow);
-
     const timeStr = lab.day!==null && lab.start_min
       ? `${DAYS[lab.day]} ${fmtRange(lab.start_min, lab.end_min)}` : '—';
 
-    (lab.roles||[]).filter(rr=>rr.count>0).forEach(rr => {
+    const activeRoles = (lab.roles||[]).filter(rr=>rr.count>0);
+
+    if (!activeRoles.length) {
+      const hrow = el('tr','lab-header');
+      const hcell = el('td'); hcell.colSpan=5;
+      hcell.innerHTML = `<strong>${escHtml(displayName(lab))}</strong>`;
+      hrow.appendChild(hcell); tbody.appendChild(hrow);
+      return;
+    }
+
+    activeRoles.forEach((rr, idx) => {
       const role = rolesMap[rr.role_id];
       const labAssigns = S.data.assignments.filter(
         a => a.lab_id===lab.id && a.role_id===rr.role_id
       );
       const tr = el('tr');
-      tr.appendChild(el('td'));
+      if (idx === 0) {
+        const labTd = el('td');
+        labTd.innerHTML = `<strong>${escHtml(displayName(lab))}</strong>`;
+        if (activeRoles.length > 1) { labTd.rowSpan = activeRoles.length; labTd.style.verticalAlign = 'middle'; }
+        tr.appendChild(labTd);
+      }
       tr.appendChild(el('td',null,timeStr));
       const roleLabel = escHtml(role?.label||rr.role_id) +
         (rr.preferred_experienced>0 ? ` <span style="color:var(--text2);font-size:11px;">(${rr.preferred_experienced} exp pref)</span>` : '');
@@ -1501,7 +1510,7 @@ function renderTAView(container) {
     const tr = el('tr');
     tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
     tr.appendChild(el('td',null,ta.experience==='experienced'?'Experienced':'Inexperienced'));
-    tr.appendChild(el('td',null,String(ta.max_se)));
+    tr.appendChild(el('td',null,Number(ta.max_se).toFixed(1)));
     tr.appendChild(el('td',null,usedSE.toFixed(1)));
 
     const labsCell = el('td');
@@ -1639,7 +1648,7 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
     const reasons = [];
     const addSE = role?.se_value || 0;
     if (usedSE(ta) + addSE > ta.max_se + 0.001) {
-      reasons.push(`SE: ${(usedSE(ta)+addSE).toFixed(1)}/${ta.max_se} (over cap)`);
+      reasons.push(`SE: ${(usedSE(ta)+addSE).toFixed(1)}/${Number(ta.max_se).toFixed(1)} (over cap)`);
     }
     for (const gcId of (ta.grad_course_ids || [])) {
       const gc = S.data.grad_courses.find(c => c.id === gcId);
@@ -1658,7 +1667,7 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
     for (const oc of (ta.other_commitments || [])) {
       for (const [ld, ls, le] of labMeetings) {
         if (oc.day === ld && overlap(ls, le, oc.start_min, oc.end_min)) {
-          reasons.push(`conflicts with commitment (${formatTime(oc.start_min)}–${formatTime(oc.end_min)})`);
+          reasons.push(`conflicts with commitment (${fmtTime(oc.start_min)}–${fmtTime(oc.end_min)})`);
         }
       }
     }
@@ -1687,7 +1696,7 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
     const expBadge = el('span', `exp-badge${ta.experience!=='experienced'?' inexp':''}`,
                         ta.experience==='experienced'?'exp':'inexp');
     const name = el('span',null,escHtml(ta.name));
-    const seInfo = el('span','se-info',`SE: ${usedSE(ta).toFixed(1)}/${ta.max_se}`);
+    const seInfo = el('span','se-info',`SE: ${usedSE(ta).toFixed(1)}/${Number(ta.max_se).toFixed(1)}`);
     const checkmark = el('span',null, isAssigned ? ' ✓' : '');
     checkmark.style.color = 'var(--green)';
     row.append(expBadge, name, checkmark, seInfo);
