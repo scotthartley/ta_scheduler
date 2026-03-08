@@ -60,7 +60,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='TA Scheduler.app',
-    icon=None,
+    icon='ta_scheduler.icns',
     bundle_identifier='com.ta-scheduler',
     info_plist={
         'NSHighResolutionCapable': True,
