@@ -420,7 +420,9 @@ def solve(data):
                 slots.append((lab, rr))
 
     # Sort by number of currently eligible TAs ascending (fail-first heuristic).
-    slots.sort(key=lambda s: len(eligible_tas(s[0], s[1])))
+    # Break ties by SE cost descending — high-SE slots are harder to fill later.
+    slots.sort(key=lambda s: (len(eligible_tas(s[0], s[1])),
+                              -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0)))
 
     # ── greedy assignment ─────────────────────────────────────────────────────
     result_assignments = list(locked_assignments)
