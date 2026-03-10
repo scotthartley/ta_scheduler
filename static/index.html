@@ -206,6 +206,13 @@ nav.tabs { display: flex; gap: 0; padding: 8px 16px;
                border: 1px solid #93c5fd; border-radius: 3px; padding: 3px 8px;
                font-size: 15px; color: #1e40af; margin: 2px; }
 
+/* ── drag-and-drop chip reassignment ── */
+.ta-chip[draggable="true"]  { cursor: grab; }
+.ta-chip.dragging           { opacity: 0.45; }
+.role-chips-area.drag-over  { outline: 2px dashed var(--blue);
+                               background: var(--blue-lt);
+                               border-radius: 4px; }
+
 /* meeting finder */
 .meeting-outer { display: flex; flex-direction: column; gap: 8px; }
 .meeting-legend { display: flex; gap: 20px; font-size: 15px; align-items: center; }
@@ -406,6 +413,8 @@ const S = {
   schedDiag: {},
   schedStatus: null,
 };
+
+let _dragAssignment = null; // {assignment, sourceLabId?, sourceRoleId?, sourceTaId?}
 
 // ════════════════════════════════════════════════════════════════
 // UTILS
@@ -1489,7 +1498,37 @@ function renderLabView(container) {
           markDirty(); renderSchedule();
         };
         chip.appendChild(lockBtn); chip.appendChild(rmBtn);
+
+        chip.draggable = true;
+        chip.addEventListener('dragstart', e => {
+          if (e.target !== chip) { e.preventDefault(); return; }
+          _dragAssignment = { assignment: a, sourceLabId: lab.id, sourceRoleId: rr.role_id };
+          requestAnimationFrame(() => chip.classList.add('dragging'));
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', a.ta_id);
+        });
+        chip.addEventListener('dragend', () => { chip.classList.remove('dragging'); _dragAssignment = null; });
+
         roleDiv.appendChild(chip);
+      });
+
+      roleDiv.classList.add('role-chips-area');
+      roleDiv.dataset.labId = lab.id;
+      roleDiv.dataset.roleId = rr.role_id;
+      roleDiv.addEventListener('dragover',  e => { if (_dragAssignment) { e.preventDefault(); e.dataTransfer.dropEffect='move'; roleDiv.classList.add('drag-over'); } });
+      roleDiv.addEventListener('dragleave', e => { if (!roleDiv.contains(e.relatedTarget)) roleDiv.classList.remove('drag-over'); });
+      roleDiv.addEventListener('drop', e => {
+        e.preventDefault();
+        roleDiv.classList.remove('drag-over');
+        if (!_dragAssignment) return;
+        const { assignment: a, sourceLabId, sourceRoleId } = _dragAssignment;
+        const destLabId = roleDiv.dataset.labId, destRoleId = roleDiv.dataset.roleId;
+        if (sourceLabId === destLabId && sourceRoleId === destRoleId) return;
+        if (S.data.assignments.some(x => x.lab_id===destLabId && x.role_id===destRoleId && x.ta_id===a.ta_id)) return;
+        S.data.assignments = S.data.assignments.filter(x => x !== a);
+        S.data.assignments.push({ lab_id: destLabId, role_id: destRoleId, ta_id: a.ta_id, locked: true });
+        _dragAssignment = null;
+        markDirty(); renderSchedule();
       });
 
       // Add-TA button
@@ -1546,8 +1585,10 @@ function renderTAView(container) {
       const chip = el('span','ta-row-lab');
       chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
       if (a.locked) chip.textContent += ' 🔒';
+
       labsCell.appendChild(chip);
     });
+
     tr.appendChild(labsCell);
     tbody.appendChild(tr);
   });
