@@ -163,9 +163,15 @@ nav.tabs { display: flex; gap: 0; padding: 8px 16px;
 .meeting-cell { position: absolute; left: 0; right: 0; pointer-events: none; }
 
 /* ── schedule workspace ──────────────────────────────────────── */
-#schedule-workspace, #meeting-workspace {
+#schedule-workspace {
   flex: 1; overflow: auto; padding: 20px; display: none; flex-direction: column; gap: 15px; }
-#schedule-workspace.active, #meeting-workspace.active { display: flex; }
+#schedule-workspace.active { display: flex; }
+#meeting-workspace { flex: 1; overflow: hidden; display: none; flex-direction: row; }
+#meeting-workspace.active { display: flex; }
+.meeting-right { flex: 1; min-height: 0; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+.meeting-lab-row { padding: 9px 15px; display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.meeting-lab-row:hover { background: rgba(0,0,0,0.04); }
+.meeting-lab-row input[type=checkbox] { cursor: pointer; }
 
 .sched-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .od-section-hdr { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
@@ -217,7 +223,9 @@ nav.tabs { display: flex; gap: 0; padding: 8px 16px;
 .meeting-outer { display: flex; flex-direction: column; gap: 8px; }
 .meeting-legend { display: flex; gap: 20px; font-size: 15px; align-items: center; }
 .legend-swatch { width: 18px; height: 18px; border-radius: 3px; display: inline-block; }
-.meeting-grid-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.meeting-grid-wrap { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 6px;
+                     display: flex; flex-direction: column; overflow: hidden; }
+.meeting-grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
 .meeting-body { display: flex; }
 .meeting-day-col { flex: 1; position: relative; border-left: 1px solid var(--border); }
 .meeting-day-col:first-child { border-left: none; }
@@ -346,33 +354,46 @@ nav.tabs { display: flex; gap: 0; padding: 8px 16px;
 
   <!-- MEETING FINDER WORKSPACE -->
   <div id="meeting-workspace">
-    <div class="meeting-outer">
-      <div>
-        <strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.
+    <!-- Left panel: lab section checklist -->
+    <div class="left-panel">
+      <div class="panel-section">
+        <div class="panel-section-header">
+          <span style="font-weight:600;">Lab Sections</span>
+        </div>
+        <div style="display:flex;gap:6px;padding:0 15px 8px;">
+          <button class="btn-sm" onclick="meetingSelectAll()">Select All</button>
+          <button class="btn-sm" onclick="meetingDeselectAll()">Deselect All</button>
+        </div>
       </div>
-      <div id="meeting-filter"></div>
+      <div id="meeting-filter" style="overflow-y:auto;flex:1;"></div>
+    </div>
+    <!-- Right panel: legend + grid -->
+    <div class="meeting-right">
+      <div><strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.</div>
       <div class="meeting-legend">
         <span><span class="legend-swatch" style="background:#bbf7d0;"></span> All free</span>
         <span><span class="legend-swatch" style="background:#fde68a;"></span> Some busy</span>
         <span><span class="legend-swatch" style="background:#fca5a5;"></span> All busy</span>
       </div>
       <div class="meeting-grid-wrap">
-        <div class="day-headers" style="display:flex;">
-          <div class="day-header-spacer"></div>
-          <div class="day-header">Mon</div>
-          <div class="day-header">Tue</div>
-          <div class="day-header">Wed</div>
-          <div class="day-header">Thu</div>
-          <div class="day-header">Fri</div>
-        </div>
-        <div class="grid-body" id="meeting-body">
-          <div class="time-labels" id="meeting-time-labels"></div>
-          <div class="days-area" id="meeting-days-area">
-            <div class="meeting-day-col" id="meet-day-0"></div>
-            <div class="meeting-day-col" id="meet-day-1"></div>
-            <div class="meeting-day-col" id="meet-day-2"></div>
-            <div class="meeting-day-col" id="meet-day-3"></div>
-            <div class="meeting-day-col" id="meet-day-4"></div>
+        <div class="meeting-grid-scroll">
+          <div class="day-headers-sticky">
+            <div class="day-header-spacer"></div>
+            <div class="day-header">Mon</div>
+            <div class="day-header">Tue</div>
+            <div class="day-header">Wed</div>
+            <div class="day-header">Thu</div>
+            <div class="day-header">Fri</div>
+          </div>
+          <div class="grid-body" id="meeting-body">
+            <div class="time-labels" id="meeting-time-labels"></div>
+            <div class="days-area" id="meeting-days-area">
+              <div class="meeting-day-col" id="meet-day-0"></div>
+              <div class="meeting-day-col" id="meet-day-1"></div>
+              <div class="meeting-day-col" id="meet-day-2"></div>
+              <div class="meeting-day-col" id="meet-day-3"></div>
+              <div class="meeting-day-col" id="meet-day-4"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1814,6 +1835,20 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
 // ════════════════════════════════════════════════════════════════
 // MEETING FINDER
 // ════════════════════════════════════════════════════════════════
+function meetingSelectAll() {
+  const validIds = new Set(
+    S.data.labs
+      .filter(lab => S.data.assignments.some(a => a.lab_id === lab.id))
+      .map(l => l.id)
+  );
+  S.meetingLabFilter = new Set(validIds);
+  renderMeetingFinder();
+}
+function meetingDeselectAll() {
+  S.meetingLabFilter = new Set();
+  renderMeetingFinder();
+}
+
 function renderMeetingFinder() {
   // ── Lab section filter ──────────────────────────────────────
   const labsWithAssignments = S.data.labs.filter(lab =>
@@ -1832,11 +1867,8 @@ function renderMeetingFinder() {
   const filterDiv = $id('meeting-filter');
   filterDiv.innerHTML = '';
   if (labsWithAssignments.length) {
-    const wrap = el('div');
-    wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 14px;padding:4px 0;';
     labsWithAssignments.forEach(lab => {
-      const lbl = el('label');
-      lbl.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;';
+      const lbl = el('label', 'meeting-lab-row');
       const cb = document.createElement('input'); cb.type = 'checkbox';
       cb.checked = S.meetingLabFilter.has(lab.id);
       cb.onchange = () => {
@@ -1846,9 +1878,8 @@ function renderMeetingFinder() {
       };
       lbl.appendChild(cb);
       lbl.appendChild(document.createTextNode(displayName(lab)));
-      wrap.appendChild(lbl);
+      filterDiv.appendChild(lbl);
     });
-    filterDiv.appendChild(wrap);
   } else {
     filterDiv.appendChild(el('p','help-text','No lab sections with assignments yet'));
   }
@@ -1880,6 +1911,17 @@ function renderMeetingFinder() {
       meetings.forEach(m => mark(m.day, m.start_min, m.end_min));
     });
     (ta.other_commitments||[]).forEach(oc => mark(oc.day, oc.start_min, oc.end_min));
+    // Mark assigned lab sections
+    S.data.assignments
+      .filter(a => a.ta_id === ta.id)
+      .forEach(a => {
+        const lab = S.data.labs.find(l => l.id === a.lab_id);
+        if (!lab) return;
+        const meetings = lab.meetings?.length
+          ? lab.meetings
+          : [{day: lab.day, start_min: lab.start_min, end_min: lab.end_min}];
+        meetings.forEach(m => mark(m.day, m.start_min, m.end_min));
+      });
   });
 
   // Time labels
