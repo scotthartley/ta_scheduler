@@ -40,13 +40,14 @@ header button:hover { background: #E0E0E0; }
 #save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #fff; }
 
 /* ── tabs ───────────────────────────────────────────────────── */
-nav.tabs { display: flex; gap: 0; padding: 8px 16px;
+nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
            background: var(--toolbar-bg); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab-group { display: flex; gap: 0; }
 .tab-btn { background: transparent; color: var(--text2);
            border: 1px solid var(--border); border-right: none; border-radius: 0; padding: 5px 16px;
            cursor: pointer; font-size: 13px; font-weight: 600; transition: .15s; }
-.tab-btn:first-child { border-radius: 7px 0 0 7px; }
-.tab-btn:last-child  { border-right: 1px solid var(--border); border-radius: 0 7px 7px 0; }
+.tab-group .tab-btn:first-child { border-radius: 7px 0 0 7px; }
+.tab-group .tab-btn:last-child  { border-right: 1px solid var(--border); border-radius: 0 7px 7px 0; }
 .tab-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
 .tab-btn.active { background: #fff; color: var(--text);
                   box-shadow: 0 1px 3px rgba(0,0,0,0.12); position: relative; z-index: 1; }
@@ -284,11 +285,15 @@ nav.tabs { display: flex; gap: 0; padding: 8px 16px;
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="labs"    onclick="switchTab('labs')"     title="Define lab sections and their TA role requirements">Lab Sections</button>
-  <button class="tab-btn" data-tab="courses" onclick="switchTab('courses')"  title="Add graduate courses taken by TAs">Graduate Courses</button>
-  <button class="tab-btn" data-tab="tas"     onclick="switchTab('tas')"      title="Add TAs, set experience, SE load, and commitments">TAs</button>
-  <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule</button>
-  <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')"  title="Heatmap showing when assigned TAs are busy">Meeting Finder</button>
+  <div class="tab-group">
+    <button class="tab-btn active" data-tab="labs"    onclick="switchTab('labs')"     title="Define lab sections and their TA role requirements">Lab Sections</button>
+    <button class="tab-btn" data-tab="courses" onclick="switchTab('courses')"  title="Add graduate courses taken by TAs">Graduate Courses</button>
+    <button class="tab-btn" data-tab="tas"     onclick="switchTab('tas')"      title="Add TAs, set experience, SE load, and commitments">TAs</button>
+  </div>
+  <div class="tab-group">
+    <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule</button>
+    <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')"  title="Heatmap showing when assigned TAs are busy">Meeting Finder</button>
+  </div>
 </nav>
 
 <div id="workspace">
