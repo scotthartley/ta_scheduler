@@ -420,7 +420,7 @@ def solve(data):
         def score(ta, lab, rr):
             s = 1000
             if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
-                s += 1
+                s += 200
             courses = ta_courses[ta["id"]]
             cn = lab.get("name", "")
             if courses and cn not in courses:
