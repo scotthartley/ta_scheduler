@@ -307,6 +307,9 @@ def export_docx():
 
 # ── solver ───────────────────────────────────────────────────────────────────
 
+_SOLVER_ITERATIONS = 50
+
+
 def solve(data):
     roles_map = {r["id"]: r for r in data.get("roles", [])}
     labs      = data.get("labs", [])
@@ -317,33 +320,10 @@ def solve(data):
     if not labs or not tas:
         return {"status": "feasible", "assignments": assignments_in, "diagnostics": {}}
 
-    # ── initialise per-TA state from locked assignments ──────────────────────
     labs_by_id = {lab["id"]: lab for lab in labs}
-
-    ta_used_se        = {}   # ta_id -> float  (outside duties + assigned roles)
-    ta_booked_labs    = {}   # ta_id -> {lab_id, ...}  (for double-booking check)
-    ta_courses        = {}   # ta_id -> {course_name, ...}  (for split penalty)
-    ta_per_slot       = {}   # (lab_id, role_id) -> {ta_id, ...}
-
-    for ta in tas:
-        outside_se = sum(d.get("se_value", 0) for d in ta.get("outside_duties", []))
-        ta_used_se[ta["id"]]     = outside_se
-        ta_booked_labs[ta["id"]] = set()
-        ta_courses[ta["id"]]     = set()
-
     locked_assignments = [a for a in assignments_in if a.get("locked")]
-    for a in locked_assignments:
-        tid, lid, rid = a["ta_id"], a["lab_id"], a["role_id"]
-        lab  = labs_by_id.get(lid)
-        role = roles_map.get(rid, {})
-        if lab and tid in ta_used_se:
-            ta_used_se[tid]     += role.get("se_value", 1.0)
-            ta_booked_labs[tid].add(lid)
-            ta_courses[tid].add(lab.get("name", ""))
-        key = (lid, rid)
-        ta_per_slot.setdefault(key, set()).add(tid)
 
-    # ── helpers ───────────────────────────────────────────────────────────────
+    # ── helpers (no mutable state — safe across iterations) ────────────────
 
     def static_conflict(ta, lab):
         """True if ta has a fixed time conflict with lab (courses or commitments)."""
@@ -362,90 +342,140 @@ def solve(data):
                     return True
         return False
 
-    def double_booked(ta_id, lab):
-        """True if assigning ta to lab would clash with an already-assigned lab."""
-        lab_mtgs = _get_meetings(lab)
-        for booked_id in ta_booked_labs[ta_id]:
-            booked = labs_by_id.get(booked_id)
-            if not booked:
-                continue
-            for bd, bs, be in _get_meetings(booked):
-                for ld, ls, le in lab_mtgs:
-                    if ld == bd and times_overlap(ls, le, bs, be):
-                        return True
-        return False
+    # ── build work list (same every iteration) ─────────────────────────────
 
-    def eligible_tas(lab, rr):
-        """TAs that can fill one more seat for this (lab, role) slot right now."""
-        role    = roles_map.get(rr["role_id"], {})
-        se_val  = role.get("se_value", 1.0)
-        already = ta_per_slot.get((lab["id"], rr["role_id"]), set())
-        result  = []
-        for ta in tas:
-            tid = ta["id"]
-            if tid in already:
-                continue
-            if static_conflict(ta, lab):
-                continue
-            if ta_used_se[tid] + se_val > ta.get("max_se", 2.0) + 0.001:
-                continue
-            if double_booked(tid, lab):
-                continue
-            result.append(ta)
-        return result
+    # Initialise locked state to compute the slot list and initial eligibility
+    init_ta_per_slot = {}
+    for a in locked_assignments:
+        key = (a["lab_id"], a["role_id"])
+        init_ta_per_slot.setdefault(key, set()).add(a["ta_id"])
 
-    def score(ta, lab, rr):
-        """Higher is better."""
-        s = 1000   # filling the slot at all
-        if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
-            s += 1
-        # split penalty: ta already assigned to a *different* course name
-        courses = ta_courses[ta["id"]]
-        cn = lab.get("name", "")
-        if courses and cn not in courses:
-            s -= 200
-        # load-balancing: prefer TAs with less SE already assigned
-        s -= ta_used_se[ta["id"]] * 500
-        # random tiebreak
-        s += random.random()
-        return s
-
-    # ── build work list: one entry per unfilled seat ──────────────────────────
     slots = []
     for lab in labs:
         for rr in lab.get("roles", []):
             count        = rr.get("count", 1)
-            locked_count = len(ta_per_slot.get((lab["id"], rr["role_id"]), set()))
+            locked_count = len(init_ta_per_slot.get((lab["id"], rr["role_id"]), set()))
             for _ in range(count - locked_count):
                 slots.append((lab, rr))
 
-    # Sort by number of currently eligible TAs ascending (fail-first heuristic).
-    # Break ties by SE cost descending — high-SE slots are harder to fill later.
-    slots.sort(key=lambda s: (len(eligible_tas(s[0], s[1])),
-                              -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0)))
+    if not slots:
+        # Nothing to assign — return locked assignments as-is
+        return {"status": "feasible", "assignments": locked_assignments, "diagnostics": {}}
 
-    # ── greedy assignment ─────────────────────────────────────────────────────
-    result_assignments = list(locked_assignments)
+    # ── single greedy pass ─────────────────────────────────────────────────
 
-    for lab, rr in slots:
-        candidates = eligible_tas(lab, rr)
-        if not candidates:
-            continue
-        best = max(candidates, key=lambda ta: score(ta, lab, rr))
-        role = roles_map.get(rr["role_id"], {})
+    def _greedy_pass():
+        ta_used_se     = {}
+        ta_booked_labs = {}
+        ta_courses     = {}
+        ta_per_slot    = {}
 
-        result_assignments.append({
-            "lab_id":  lab["id"],
-            "role_id": rr["role_id"],
-            "ta_id":   best["id"],
-            "locked":  False,
-        })
+        for ta in tas:
+            outside_se = sum(d.get("se_value", 0) for d in ta.get("outside_duties", []))
+            ta_used_se[ta["id"]]     = outside_se
+            ta_booked_labs[ta["id"]] = set()
+            ta_courses[ta["id"]]     = set()
 
-        # update running state
-        ta_used_se[best["id"]]     += role.get("se_value", 1.0)
-        ta_booked_labs[best["id"]].add(lab["id"])
-        ta_courses[best["id"]].add(lab.get("name", ""))
-        ta_per_slot.setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
+        for a in locked_assignments:
+            tid, lid, rid = a["ta_id"], a["lab_id"], a["role_id"]
+            lab  = labs_by_id.get(lid)
+            role = roles_map.get(rid, {})
+            if lab and tid in ta_used_se:
+                ta_used_se[tid]     += role.get("se_value", 1.0)
+                ta_booked_labs[tid].add(lid)
+                ta_courses[tid].add(lab.get("name", ""))
+            key = (lid, rid)
+            ta_per_slot.setdefault(key, set()).add(tid)
+
+        def double_booked(ta_id, lab):
+            lab_mtgs = _get_meetings(lab)
+            for booked_id in ta_booked_labs[ta_id]:
+                booked = labs_by_id.get(booked_id)
+                if not booked:
+                    continue
+                for bd, bs, be in _get_meetings(booked):
+                    for ld, ls, le in lab_mtgs:
+                        if ld == bd and times_overlap(ls, le, bs, be):
+                            return True
+            return False
+
+        def eligible_tas(lab, rr):
+            role    = roles_map.get(rr["role_id"], {})
+            se_val  = role.get("se_value", 1.0)
+            already = ta_per_slot.get((lab["id"], rr["role_id"]), set())
+            result  = []
+            for ta in tas:
+                tid = ta["id"]
+                if tid in already:
+                    continue
+                if static_conflict(ta, lab):
+                    continue
+                if ta_used_se[tid] + se_val > ta.get("max_se", 2.0) + 0.001:
+                    continue
+                if double_booked(tid, lab):
+                    continue
+                result.append(ta)
+            return result
+
+        def score(ta, lab, rr):
+            s = 1000
+            if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
+                s += 1
+            courses = ta_courses[ta["id"]]
+            cn = lab.get("name", "")
+            if courses and cn not in courses:
+                s -= 200
+            s -= ta_used_se[ta["id"]] * 500
+            s += random.random()
+            return s
+
+        # Sort slots by eligibility count (fail-first), recomputed each iteration
+        sorted_slots = sorted(slots,
+            key=lambda s: (len(eligible_tas(s[0], s[1])),
+                           -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0)))
+
+        result_assignments = list(locked_assignments)
+
+        for lab, rr in sorted_slots:
+            candidates = eligible_tas(lab, rr)
+            if not candidates:
+                continue
+            best = max(candidates, key=lambda ta: score(ta, lab, rr))
+            role = roles_map.get(rr["role_id"], {})
+
+            result_assignments.append({
+                "lab_id":  lab["id"],
+                "role_id": rr["role_id"],
+                "ta_id":   best["id"],
+                "locked":  False,
+            })
+
+            ta_used_se[best["id"]]     += role.get("se_value", 1.0)
+            ta_booked_labs[best["id"]].add(lab["id"])
+            ta_courses[best["id"]].add(lab.get("name", ""))
+            ta_per_slot.setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
+
+        return result_assignments
+
+    # ── run multiple iterations, keep the best ─────────────────────────────
+
+    best_result = None
+    best_unfilled = float("inf")
+
+    for _ in range(_SOLVER_ITERATIONS):
+        result_assignments = _greedy_pass()
+
+        # Count unfilled seats for this attempt
+        unfilled_count = len(slots) - sum(
+            1 for a in result_assignments if not a.get("locked"))
+        if unfilled_count <= 0:
+            best_result = result_assignments
+            break
+        if unfilled_count < best_unfilled:
+            best_unfilled = unfilled_count
+            best_result = result_assignments
+
+    result_assignments = best_result
 
     # ── diagnostics ──────────────────────────────────────────────────────────
     tas_map = {ta["id"]: ta for ta in tas}
