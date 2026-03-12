@@ -25,6 +25,7 @@ _window = None
 EMPTY_DATA = {
     "roles": [{"id": "role-primary-ta", "label": "Primary TA", "se_value": 1.0}],
     "grad_courses": [], "labs": [], "tas": [], "assignments": [],
+    "exams": [], "proctor_assignments": [],
 }
 
 
@@ -44,7 +45,12 @@ def load_data():
     if not p or not os.path.exists(p):
         return EMPTY_DATA
     with open(p) as f:
-        return json.load(f)
+        data = json.load(f)
+    # Backward compat: fill missing keys
+    for key in EMPTY_DATA:
+        if key not in data:
+            data[key] = EMPTY_DATA[key] if key == "roles" else []
+    return data
 
 
 def save_data_to_file(data):
@@ -125,6 +131,26 @@ def _is_regular(date_str):
     return len(parts) == 2 and parts[0].strip() != parts[1].strip()
 
 
+def _parse_exam_date(date_str):
+    """'05/12-05/12' → '05/12' (the single date portion)."""
+    parts = date_str.strip().split('-')
+    return parts[0].strip() if parts else None
+
+
+def _exam_date_to_iso(date_part, year):
+    """'05/12' + 2026 → '2026-05-12'."""
+    m = re.match(r'(\d{2})/(\d{2})', date_part)
+    if not m:
+        return None
+    return f"{year}-{m.group(1)}-{m.group(2)}"
+
+
+def _extract_year_from_term(term_str):
+    """Extract 4-digit year from term code like '202620'."""
+    m = re.match(r'(\d{4})', str(term_str).strip())
+    return int(m.group(1)) if m else None
+
+
 # ── routes ───────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -202,6 +228,8 @@ def import_csv_route():
     DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
     grad_courses = []
     undergrad = {}  # key: "SUBJ NUMBER" → {subject, number, title, sections:[]}
+    exam_courses = {}  # key: course_name → set of (date_iso, start_min, end_min)
+    term_year = None
 
     try:
         with open(path, newline='', encoding='utf-8-sig') as f:
@@ -215,6 +243,12 @@ def import_csv_route():
                 days_raw = row.get("Meeting Days", "").strip()
                 times_raw = row.get("Meeting Times", "").strip()
                 dates_raw = row.get("Meeting Dates", "").strip()
+
+                # Try to extract year from Term column
+                if term_year is None:
+                    term_val = row.get("Term", "").strip()
+                    if term_val:
+                        term_year = _extract_year_from_term(term_val)
 
                 if not days_raw or not times_raw:
                     continue
@@ -231,12 +265,29 @@ def import_csv_route():
                     s_min, e_min = _parse_time_range(t_str)
                     if not days or s_min is None:
                         continue
-                    target = regular if _is_regular(dt_str) else exams
-                    for day in days:
-                        target.append({"day": day, "start_min": s_min, "end_min": e_min})
+                    if _is_regular(dt_str):
+                        for day in days:
+                            regular.append({"day": day, "start_min": s_min, "end_min": e_min})
+                    else:
+                        # Exam: capture the actual date
+                        date_part = _parse_exam_date(dt_str)
+                        for day in days:
+                            exam_entry = {"day": day, "start_min": s_min, "end_min": e_min}
+                            if date_part:
+                                exam_entry["date_raw"] = date_part
+                            exams.append(exam_entry)
 
                 course_name = f"{subject} {number}"
                 section_label = section.strip()
+
+                # Collect exam info for exam_courses (dedup by date+time)
+                if level == "Undergraduate":
+                    for ex in exams:
+                        if ex.get("date_raw") and term_year:
+                            iso = _exam_date_to_iso(ex["date_raw"], term_year)
+                            if iso:
+                                exam_courses.setdefault(course_name, set()).add(
+                                    (iso, ex["start_min"], ex["end_min"]))
 
                 if level == "Graduate":
                     if regular:
@@ -265,10 +316,21 @@ def import_csv_route():
                             "exams": exams,
                         })
 
+        # Build exam_courses response: list of {name, exams: [{date, start_min, end_min}]}
+        exam_courses_list = []
+        for cname in sorted(exam_courses.keys()):
+            unique_exams = sorted(exam_courses[cname])
+            exam_courses_list.append({
+                "name": cname,
+                "exams": [{"date": e[0], "start_min": e[1], "end_min": e[2]}
+                          for e in unique_exams],
+            })
+
         return jsonify({
             "grad_courses": grad_courses,
             "undergrad_courses": sorted(undergrad.values(),
                                         key=lambda c: (c["subject"], c["number"])),
+            "exam_courses": exam_courses_list,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -279,6 +341,17 @@ def run_schedule():
     data = request.get_json()
     try:
         result = solve(data)
+        return jsonify(result)
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": traceback.format_exc()}), 500
+
+
+@app.route("/api/schedule-proctoring", methods=["POST"])
+def run_proctoring():
+    data = request.get_json()
+    try:
+        result = solve_proctoring(data)
         return jsonify(result)
     except Exception:
         traceback.print_exc()
@@ -514,6 +587,209 @@ def solve(data):
     }
 
 
+# ── proctoring solver ────────────────────────────────────────────────────────
+
+def solve_proctoring(data):
+    import datetime
+
+    exams = data.get("exams", [])
+    tas = data.get("tas", [])
+    proctor_in = data.get("proctor_assignments", [])
+    labs = data.get("labs", [])
+    gc_map = {gc["id"]: gc for gc in data.get("grad_courses", [])}
+    assignments = data.get("assignments", [])
+
+    if not exams or not tas:
+        return {"status": "feasible", "proctor_assignments": proctor_in, "diagnostics": {}}
+
+    exams_by_id = {ex["id"]: ex for ex in exams}
+    locked = [a for a in proctor_in if a.get("locked")]
+
+    # Build lab assignments per TA: ta_id → [(weekday, start_min, end_min)]
+    labs_by_id = {l["id"]: l for l in labs}
+    ta_lab_times = {}
+    for a in assignments:
+        lab = labs_by_id.get(a["lab_id"])
+        if not lab:
+            continue
+        for d, s, e in _get_meetings(lab):
+            ta_lab_times.setdefault(a["ta_id"], []).append((d, s, e))
+
+    # TA → set of lab course names (for familiarity bonus)
+    ta_lab_courses = {}
+    for a in assignments:
+        lab = labs_by_id.get(a["lab_id"])
+        if lab:
+            ta_lab_courses.setdefault(a["ta_id"], set()).add(lab.get("name", ""))
+
+    def exam_weekday(exam):
+        """Get weekday (0=Mon) from exam date string."""
+        try:
+            d = datetime.date.fromisoformat(exam["date"])
+            return d.weekday()  # 0=Mon
+        except (KeyError, ValueError):
+            return None
+
+    # Build slots
+    init_per_exam = {}
+    for a in locked:
+        init_per_exam.setdefault(a["exam_id"], set()).add(a["ta_id"])
+
+    slots = []
+    for exam in exams:
+        if exam.get("tbd"):
+            continue  # Skip TBD exams — no date/time to schedule against
+        count = exam.get("proctor_count", 1)
+        locked_count = len(init_per_exam.get(exam["id"], set()))
+        for _ in range(count - locked_count):
+            slots.append(exam)
+
+    if not slots:
+        return {"status": "feasible", "proctor_assignments": locked, "diagnostics": {}}
+
+    def _greedy_pass():
+        ta_used_pe = {}
+        ta_assigned_exams = {}  # ta_id → set of exam_ids
+        ta_proctored_times = {}  # ta_id → [(date, start, end)]
+
+        for ta in tas:
+            ta_used_pe[ta["id"]] = 0.0
+            ta_assigned_exams[ta["id"]] = set()
+            ta_proctored_times[ta["id"]] = []
+
+        for a in locked:
+            tid = a["ta_id"]
+            eid = a["exam_id"]
+            exam = exams_by_id.get(eid)
+            if not exam or tid not in ta_used_pe:
+                continue
+            ta_used_pe[tid] += exam.get("pe_value", 1.0)
+            ta_assigned_exams[tid].add(eid)
+            ta_proctored_times[tid].append(
+                (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+
+        def eligible_tas(exam):
+            pe_val = exam.get("pe_value", 1.0)
+            wd = exam_weekday(exam)
+            result = []
+            for ta in tas:
+                tid = ta["id"]
+                max_pe = ta.get("max_pe", 2.0)
+                if ta_used_pe[tid] + pe_val > max_pe + 0.001:
+                    continue
+                if exam["id"] in ta_assigned_exams[tid]:
+                    continue
+                # Check same-date time conflicts with other proctored exams
+                conflict = False
+                for pdate, ps, pe in ta_proctored_times[tid]:
+                    if pdate == exam.get("date") and times_overlap(
+                            exam.get("start_min", 0), exam.get("end_min", 0), ps, pe):
+                        conflict = True
+                        break
+                if conflict:
+                    continue
+                # Check conflicts with lab meetings (convert exam date to weekday)
+                if wd is not None:
+                    for ld, ls, le in ta_lab_times.get(tid, []):
+                        if ld == wd and times_overlap(
+                                exam.get("start_min", 0), exam.get("end_min", 0), ls, le):
+                            conflict = True
+                            break
+                    if conflict:
+                        continue
+                    # Check grad course conflicts
+                    for gc_id in ta.get("grad_course_ids", []):
+                        gc = gc_map.get(gc_id)
+                        if not gc:
+                            continue
+                        for gd, gs, ge in _get_meetings(gc):
+                            if gd == wd and times_overlap(
+                                    exam.get("start_min", 0), exam.get("end_min", 0), gs, ge):
+                                conflict = True
+                                break
+                        if conflict:
+                            break
+                    if conflict:
+                        continue
+                    # Check other commitments
+                    for oc in ta.get("other_commitments", []):
+                        if oc["day"] == wd and times_overlap(
+                                exam.get("start_min", 0), exam.get("end_min", 0),
+                                oc["start_min"], oc["end_min"]):
+                            conflict = True
+                            break
+                    if conflict:
+                        continue
+                result.append(ta)
+            return result
+
+        def score(ta, exam):
+            s = 1000
+            # Course familiarity bonus
+            course_name = exam.get("course_name", "")
+            if course_name and course_name in ta_lab_courses.get(ta["id"], set()):
+                s += 300
+            # Load balancing
+            s -= ta_used_pe[ta["id"]] * 500
+            s += random.random()
+            return s
+
+        # Sort slots by eligibility count (fail-first)
+        sorted_slots = sorted(slots, key=lambda ex: len(eligible_tas(ex)))
+
+        result = list(locked)
+        for exam in sorted_slots:
+            candidates = eligible_tas(exam)
+            if not candidates:
+                continue
+            best = max(candidates, key=lambda ta: score(ta, exam))
+            result.append({
+                "exam_id": exam["id"],
+                "ta_id": best["id"],
+                "locked": False,
+            })
+            ta_used_pe[best["id"]] += exam.get("pe_value", 1.0)
+            ta_assigned_exams[best["id"]].add(exam["id"])
+            ta_proctored_times[best["id"]].append(
+                (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+
+        return result
+
+    best_result = None
+    best_unfilled = float("inf")
+
+    for _ in range(_SOLVER_ITERATIONS):
+        result = _greedy_pass()
+        unfilled_count = len(slots) - sum(1 for a in result if not a.get("locked"))
+        if unfilled_count <= 0:
+            best_result = result
+            break
+        if unfilled_count < best_unfilled:
+            best_unfilled = unfilled_count
+            best_result = result
+
+    result = best_result
+
+    # Diagnostics
+    unfilled = []
+    for exam in exams:
+        count = exam.get("proctor_count", 1)
+        assigned = [a for a in result if a["exam_id"] == exam["id"]]
+        if len(assigned) < count:
+            unfilled.append({
+                "exam_name": exam.get("name", ""),
+                "assigned": len(assigned),
+                "required": count,
+            })
+
+    status = "partial" if unfilled else "feasible"
+    return {
+        "status": status,
+        "proctor_assignments": result,
+        "diagnostics": {"unfilled_proctors": unfilled},
+    }
+
+
 # ── DOCX export ──────────────────────────────────────────────────────────────
 
 def generate_docx(data):
@@ -550,6 +826,26 @@ def generate_docx(data):
                 row[2].text = "Locked" if a.get("locked") else "Assigned"
         else:
             doc.add_paragraph("No assignments")
+        doc.add_paragraph()
+
+    # Exam proctoring
+    exams = data.get("exams", [])
+    proctor_assignments = data.get("proctor_assignments", [])
+    if exams and proctor_assignments:
+        doc.add_heading("Exam Proctoring", 1)
+        for exam in exams:
+            exam_asgn = [a for a in proctor_assignments if a["exam_id"] == exam["id"]]
+            if not exam_asgn:
+                continue
+            doc.add_heading(exam.get("name", "Exam"), 2)
+            doc.add_paragraph(
+                f"{exam.get('date', '—')}, {fmt_time(exam.get('start_min', 0))} – "
+                f"{fmt_time(exam.get('end_min', 0))}"
+            )
+            for a in exam_asgn:
+                ta = tas_map.get(a["ta_id"])
+                status = "Locked" if a.get("locked") else "Assigned"
+                doc.add_paragraph(f"  {ta.get('name', a['ta_id']) if ta else a['ta_id']} ({status})")
         doc.add_paragraph()
 
     # TA-centric

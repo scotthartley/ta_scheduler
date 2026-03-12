@@ -42,15 +42,15 @@ header button:hover { background: #E0E0E0; }
 /* ── tabs ───────────────────────────────────────────────────── */
 nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
            background: var(--toolbar-bg); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.tab-group { display: flex; gap: 0; }
+.tab-group { display: flex; gap: 0; border-radius: 7px;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 .tab-btn { background: transparent; color: var(--text2);
            border: 1px solid var(--border); border-right: none; border-radius: 0; padding: 5px 16px;
            cursor: pointer; font-size: 13px; font-weight: 600; transition: .15s; }
 .tab-group .tab-btn:first-child { border-radius: 7px 0 0 7px; }
 .tab-group .tab-btn:last-child  { border-right: 1px solid var(--border); border-radius: 0 7px 7px 0; }
 .tab-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
-.tab-btn.active { background: #fff; color: var(--text);
-                  box-shadow: 0 1px 3px rgba(0,0,0,0.12); position: relative; z-index: 1; }
+.tab-btn.active { background: #fff; color: var(--text); }
 
 /* ── workspace ──────────────────────────────────────────────── */
 #workspace { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
@@ -116,16 +116,19 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .grid-placeholder { flex: 1; display: flex; align-items: center; justify-content: center;
                      color: var(--text2); font-size: 16px; }
 
-.grid-outer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.day-header-spacer { width: 64px; flex-shrink: 0; }
+.grid-outer { flex: 1; display: flex; flex-direction: column; overflow: hidden;
+              border: 1px solid var(--border); border-radius: 6px;
+              margin: 10px; }
+.day-header-spacer { width: 76px; flex-shrink: 0; }
 .day-header { flex: 1; text-align: center; font-size: 16px; font-weight: 600;
                padding: 6px; border-left: 1px solid var(--border); color: var(--text2); }
 
-.grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-left: 4px; }
+.grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
 .day-headers-sticky { display: flex; position: sticky; top: 0; z-index: 5;
-                       background: var(--panel); border-bottom: 1px solid var(--border); }
+                       background: var(--gray-lt); border-bottom: 1px solid var(--border);
+                       border-radius: 5px 5px 0 0; }
 .grid-body { display: flex; position: relative; padding-top: 8px; }
-.time-labels { width: 64px; flex-shrink: 0; position: relative; }
+.time-labels { width: 76px; flex-shrink: 0; position: relative; }
 .time-label { position: absolute; right: 6px; font-size: 14px; color: var(--text2);
                transform: translateY(-50%); white-space: nowrap; }
 .days-area { flex: 1; display: flex; position: relative; }
@@ -165,9 +168,11 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 
 /* ── schedule workspace ──────────────────────────────────────── */
 #schedule-workspace {
-  flex: 1; overflow: auto; padding: 20px; display: none; flex-direction: column; gap: 15px; }
+  flex: 1; overflow: auto; padding: 20px; display: none; flex-direction: column; gap: 15px;
+  background: var(--panel); }
 #schedule-workspace.active { display: flex; }
-#meeting-workspace { flex: 1; overflow: hidden; display: none; flex-direction: row; }
+#meeting-workspace { flex: 1; overflow: hidden; display: none; flex-direction: row;
+                     background: var(--panel); }
 #meeting-workspace.active { display: flex; }
 .meeting-right { flex: 1; min-height: 0; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
 .meeting-lab-row { padding: 9px 15px; display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
@@ -190,7 +195,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 #diagnostics ul { padding-left: 20px; font-size: 16px; }
 #diagnostics li { margin-bottom: 4px; }
 
-.sched-table-wrap { overflow-x: auto; }
+.sched-table-wrap { overflow-x: auto; flex-shrink: 0; }
 .sched-table { border-collapse: collapse; min-width: 600px; width: 100%; }
 .sched-table th, .sched-table td { border: 1px solid var(--border); padding: 8px 12px;
                                      font-size: 16px; text-align: left; }
@@ -263,6 +268,42 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
               color: var(--text2); white-space: nowrap; overflow: hidden;
               text-overflow: ellipsis; }
 
+/* ── exam calendar ──────────────────────────────────────────── */
+.cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.cal-nav button { background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+                  padding: 4px 10px; cursor: pointer; font-size: 14px; }
+.cal-nav button:hover { background: var(--gray-lt); }
+.cal-nav span { font-weight: 600; font-size: 15px; min-width: 140px; text-align: center; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+            border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.cal-hdr { background: var(--gray-lt); text-align: center; font-size: 12px; font-weight: 600;
+           padding: 6px 0; color: var(--text2); }
+.cal-day { background: var(--panel); min-height: 70px; padding: 4px; font-size: 12px;
+           color: var(--text2); position: relative; }
+.cal-day.other-month { background: #fafafa; color: #ccc; }
+.cal-day .day-num { font-weight: 600; margin-bottom: 2px; }
+.cal-day.has-exam { background: #eff6ff; }
+.cal-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+           background: var(--blue); margin: 1px; }
+.cal-exam-label { font-size: 10px; color: var(--blue); white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; display: block; cursor: pointer; }
+.cal-exam-label:hover { text-decoration: underline; }
+
+/* ── proctoring workspace ─────────────────────────────────────── */
+#exams-workspace {
+  flex: 1; overflow: hidden; display: none; flex-direction: row; }
+#exams-workspace.active { display: flex; }
+#proctoring-workspace {
+  flex: 1; overflow: auto; display: none; padding: 20px; flex-direction: column; gap: 15px;
+  background: var(--panel); }
+#proctoring-workspace.active { display: flex; }
+.btn-run-proctor { padding: 8px 17px; border-radius: 5px; border: 1px solid var(--border);
+                   background: var(--panel); cursor: pointer; font-size: 16px; }
+.btn-run-proctor:hover { background: var(--gray-lt); }
+
+/* ── TA summary tables ────────────────────────────────────────── */
+#sched-ta-summary, #proctor-ta-summary { margin-top: 20px; }
+
 /* ── print ───────────────────────────────────────────────────── */
 @media print {
   header, nav.tabs, .left-panel, .sched-controls, #diagnostics { display: none !important; }
@@ -287,11 +328,13 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 <nav class="tabs">
   <div class="tab-group">
     <button class="tab-btn active" data-tab="labs"    onclick="switchTab('labs')"     title="Define lab sections and their TA role requirements">Lab Sections</button>
+    <button class="tab-btn" data-tab="exams"   onclick="switchTab('exams')"    title="Define exams for proctoring assignments">Exams</button>
     <button class="tab-btn" data-tab="courses" onclick="switchTab('courses')"  title="Add graduate courses taken by TAs">Graduate Courses</button>
     <button class="tab-btn" data-tab="tas"     onclick="switchTab('tas')"      title="Add TAs, set experience, SE load, and commitments">TAs</button>
   </div>
   <div class="tab-group">
-    <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule</button>
+    <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule Labs</button>
+    <button class="tab-btn" data-tab="proctoring" onclick="switchTab('proctoring')" title="Run proctoring solver, assign TAs to exams">Schedule Proctoring</button>
     <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')"  title="Heatmap showing when assigned TAs are busy">Meeting Finder</button>
   </div>
 </nav>
@@ -344,17 +387,14 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   <!-- SCHEDULE WORKSPACE -->
   <div id="schedule-workspace">
     <div class="sched-controls">
-      <div class="view-toggle">
-        <button id="view-lab-btn" class="active" onclick="setSchedView('lab')" title="View assignments grouped by lab section">Lab View</button>
-        <button id="view-ta-btn"  onclick="setSchedView('ta')"                 title="View assignments grouped by TA">TA View</button>
-      </div>
+      <button class="btn-run" onclick="runSolver()" title="Auto-assign TAs to unfilled slots (locked assignments are preserved)">▶ Assign TAs</button>
       <button onclick="clearAssignments()" title="Remove all solver-assigned (unlocked) assignments">Clear Unlocked</button>
       <div style="flex:1;"></div>
-      <button class="btn-run" onclick="runSolver()" title="Auto-assign TAs to unfilled slots (locked assignments are preserved)">▶ Assign TAs</button>
     </div>
     <div id="diagnostics" style="display:none;"></div>
     <div class="sched-table-wrap"><div id="sched-table"></div></div>
     <div id="outside-duties-section"></div>
+    <div id="sched-ta-summary"></div>
   </div>
 
   <!-- MEETING FINDER WORKSPACE -->
@@ -405,6 +445,35 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     </div>
   </div>
 
+  <!-- EXAMS WORKSPACE -->
+  <div id="exams-workspace">
+    <div class="left-panel">
+      <div class="panel-section">
+        <div class="panel-section-header">
+          <span>Exams</span>
+          <button class="btn-sm" onclick="createNewExam()">+ New</button>
+        </div>
+      </div>
+      <div id="exam-list" style="overflow-y:auto;flex:1;"></div>
+      <div id="exam-form" style="display:none;overflow-y:auto;padding:12px;border-top:1px solid var(--border);max-height:55%;background:var(--panel);"></div>
+    </div>
+    <div class="right-panel" style="padding:20px;">
+      <div id="exam-calendar"></div>
+    </div>
+  </div>
+
+  <!-- PROCTORING WORKSPACE -->
+  <div id="proctoring-workspace">
+    <div class="sched-controls">
+      <button class="btn-run-proctor" onclick="runProctorSolver()">▶ Assign Proctors</button>
+      <button onclick="clearProctorAssignments()">Clear Unlocked</button>
+      <div style="flex:1;"></div>
+    </div>
+    <div id="proctor-diagnostics" style="display:none;"></div>
+    <div class="sched-table-wrap"><div id="proctor-table"></div></div>
+    <div id="proctor-ta-summary"></div>
+  </div>
+
 </div><!-- #workspace -->
 
 <div id="status-bar"></div>
@@ -430,14 +499,18 @@ const DAYS       = ['M','T','W','R','F'];
 // STATE
 // ════════════════════════════════════════════════════════════════
 const S = {
-  data: { roles:[], grad_courses:[], labs:[], tas:[], assignments:[] },
+  data: { roles:[], grad_courses:[], labs:[], tas:[], assignments:[], exams:[], proctor_assignments:[] },
   tab: 'labs',
   selId: null,
   drag: null,
-  schedView: 'lab',
   dirty: false,
   schedDiag: {},
   schedStatus: null,
+  proctorDiag: {},
+  proctorStatus: null,
+  examCalYear: new Date().getFullYear(),
+  examCalMonth: new Date().getMonth(),
+  examSelId: null,
 };
 
 let _dragAssignment = null; // {assignment, sourceLabId?, sourceRoleId?, sourceTaId?}
@@ -497,7 +570,10 @@ async function loadData() {
       fetch('/api/file-path'),
     ]);
     S.data = await dataRes.json();
+    S.data.exams = S.data.exams || [];
+    S.data.proctor_assignments = S.data.proctor_assignments || [];
     S.schedDiag = {}; S.schedStatus = null;
+    S.proctorDiag = {}; S.proctorStatus = null;
     currentFilePath = (await pathRes.json()).path || '';
     updateStatusBar();
     renderAll();
@@ -537,8 +613,11 @@ async function openNative() {
     if (result.cancelled) return;
     if (result.error) { alert('Could not open file:\n' + result.error); return; }
     S.data = result.data;
+    S.data.exams = S.data.exams || [];
+    S.data.proctor_assignments = S.data.proctor_assignments || [];
     S.selId = null;
     S.schedDiag = {}; S.schedStatus = null;
+    S.proctorDiag = {}; S.proctorStatus = null;
     currentFilePath = result.path;
     updateStatusBar();
     renderAll();
@@ -589,9 +668,11 @@ function switchTab(tab) {
     b.classList.toggle('active', b.dataset.tab === tab));
 
   const isGrid = ['courses','tas','labs'].includes(tab);
-  $id('grid-workspace').style.display     = isGrid    ? 'flex'  : 'none';
+  $id('grid-workspace').style.display        = isGrid          ? 'flex'  : 'none';
   $id('schedule-workspace').classList.toggle('active', tab==='schedule');
   $id('meeting-workspace').classList.toggle('active',  tab==='meeting');
+  $id('exams-workspace').classList.toggle('active',    tab==='exams');
+  $id('proctoring-workspace').classList.toggle('active', tab==='proctoring');
 
   if (isGrid) {
     renderLeftPanel(); showGridPlaceholder();
@@ -599,6 +680,10 @@ function switchTab(tab) {
     renderSchedule();
   } else if (tab === 'meeting') {
     renderMeetingFinder();
+  } else if (tab === 'exams') {
+    renderExamsTab();
+  } else if (tab === 'proctoring') {
+    renderProctoring();
   }
 }
 
@@ -610,6 +695,10 @@ function renderAll() {
     renderSchedule();
   } else if (S.tab === 'meeting') {
     renderMeetingFinder();
+  } else if (S.tab === 'exams') {
+    renderExamsTab();
+  } else if (S.tab === 'proctoring') {
+    renderProctoring();
   }
 }
 
@@ -668,7 +757,7 @@ function createNewItem() {
     item = {id:uid(), name:'New Course', section:'', day:0, start_min:540, end_min:660};
     S.data.grad_courses.push(item);
   } else if (S.tab === 'tas') {
-    item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0,
+    item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0, max_pe:2.0,
             grad_course_ids:[], outside_duties:[], other_commitments:[]};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
@@ -697,6 +786,7 @@ function deleteCurrentItem() {
   } else if (S.tab === 'tas') {
     S.data.tas = S.data.tas.filter(i => i.id !== S.selId);
     S.data.assignments = S.data.assignments.filter(a => a.ta_id !== S.selId);
+    S.data.proctor_assignments = (S.data.proctor_assignments||[]).filter(a => a.ta_id !== S.selId);
   } else if (S.tab === 'labs') {
     S.data.labs = S.data.labs.filter(i => i.id !== S.selId);
     S.data.assignments = S.data.assignments.filter(a => a.lab_id !== S.selId);
@@ -837,14 +927,24 @@ function renderTAForm(item, form) {
   expS.onchange = () => { item.experience=expS.value; markDirty(); renderLeftPanel(); };
   expL.appendChild(expS); expG.appendChild(expL); form.appendChild(expG);
 
-  // Max SE
+  // Max SE / Max PE row
+  const sepeRow = el('div','form-row');
   const seG = el('div','form-group');
   const seL = el('label'); seL.textContent = 'Max SE';
   const seInp = document.createElement('input');
   seInp.type='number'; seInp.step='0.5'; seInp.min='0'; seInp.value=item.max_se||2.0;
   seInp.title = 'Maximum service-equivalent units this TA can be assigned (labs + outside duties)';
   seInp.oninput = () => { item.max_se=parseFloat(seInp.value)||0; markDirty(); };
-  seL.appendChild(seInp); seG.appendChild(seL); form.appendChild(seG);
+  seL.appendChild(seInp); seG.appendChild(seL); sepeRow.appendChild(seG);
+
+  const peG = el('div','form-group');
+  const peL = el('label'); peL.textContent = 'Max PE';
+  const peInp = document.createElement('input');
+  peInp.type='number'; peInp.step='0.5'; peInp.min='0'; peInp.value=item.max_pe??2.0;
+  peInp.title = 'Maximum proctoring-equivalent units this TA can be assigned';
+  peInp.oninput = () => { item.max_pe=parseFloat(peInp.value)||0; markDirty(); };
+  peL.appendChild(peInp); peG.appendChild(peL); sepeRow.appendChild(peG);
+  form.appendChild(sepeRow);
 
   // Grad courses
   form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Grad Courses</label>`));
@@ -1399,13 +1499,6 @@ function eraseBlock(block) {
 // ════════════════════════════════════════════════════════════════
 // SCHEDULE TAB
 // ════════════════════════════════════════════════════════════════
-function setSchedView(v) {
-  S.schedView = v;
-  $id('view-lab-btn').classList.toggle('active', v==='lab');
-  $id('view-ta-btn').classList.toggle('active',  v==='ta');
-  renderSchedule();
-}
-
 function clearAssignments() {
   S.data.assignments = S.data.assignments.filter(a => a.locked);
   S.schedDiag = {}; S.schedStatus = null;
@@ -1450,9 +1543,9 @@ function renderSchedule(diag, status) {
 
   const tbl = $id('sched-table');
   tbl.innerHTML = '';
-  if (S.schedView === 'lab') renderLabView(tbl);
-  else renderTAView(tbl);
+  renderLabView(tbl);
   renderOutsideDuties();
+  renderTASummary($id('sched-ta-summary'));
 }
 
 function renderLabView(container) {
@@ -1615,6 +1708,65 @@ function renderTAView(container) {
       labsCell.appendChild(chip);
     });
 
+    tr.appendChild(labsCell);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+// ── TA Summary table (always visible below lab view) ──
+function renderTASummary(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  if (!S.data.tas.length) return;
+
+  const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
+
+  const hdr = el('h4',null,'TA Summary');
+  hdr.style.cssText = 'margin-bottom:8px;font-size:17px;';
+  container.appendChild(hdr);
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['TA','Experience','Max SE','Used SE','Assigned Labs'].forEach(h => thr.appendChild(el('th',null,h)));
+  thead.appendChild(thr); table.appendChild(thead);
+  const tbody = el('tbody');
+
+  S.data.tas.forEach(ta => {
+    const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
+    const usedSE = taAssigns.reduce((sum,a) => {
+      const role = S.data.roles.find(r=>r.id===a.role_id);
+      return sum + (role?.se_value||0);
+    },0) + (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0);
+
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+    tr.appendChild(el('td',null,ta.experience==='experienced'?'Experienced':'Inexperienced'));
+
+    // Editable Max SE
+    const seTd = el('td');
+    const seInp = document.createElement('input');
+    seInp.type='number'; seInp.step='0.5'; seInp.min='0';
+    seInp.value = Number(ta.max_se).toFixed(1);
+    seInp.style.cssText='width:60px;font-size:13px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;';
+    seInp.onchange = () => { ta.max_se=parseFloat(seInp.value)||0; markDirty(); };
+    seTd.appendChild(seInp);
+    tr.appendChild(seTd);
+
+    tr.appendChild(el('td',null,usedSE.toFixed(1)));
+
+    const labsCell = el('td');
+    taAssigns.forEach(a => {
+      const lab  = labsMap[a.lab_id];
+      const role = rolesMap[a.role_id];
+      const chip = el('span','ta-row-lab');
+      chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
+      if (a.locked) chip.textContent += ' 🔒';
+      labsCell.appendChild(chip);
+    });
     tr.appendChild(labsCell);
     tbody.appendChild(tr);
   });
@@ -2034,6 +2186,7 @@ function showModal(html) {
   if ($id('roles-list')) renderRolesList();
   if ($id('import-grad-list')) renderImportGradList();
   if ($id('import-lab-list')) renderImportLabList();
+  if ($id('import-exam-list')) renderImportExamList();
 }
 function closeModal() {
   const mc = $id('modal-container');
@@ -2056,10 +2209,13 @@ async function importClassList() {
     if (!grad.length && !undergrad.length) {
       alert('No courses with meeting times found.'); return;
     }
+    const examCourses = result.exam_courses || [];
     S._importGrad    = grad;
     S._importGradChk = new Set(grad.map((_,i) => i));  // all checked by default
     S._importCourses = undergrad;
     S._importChecked = new Set();                       // none checked by default
+    S._importExamCourses = examCourses;
+    S._importExamChecked = new Set();                   // none checked by default
     showModal(`<div class="modal-box">
       <h2>Import Class List</h2>
       ${grad.length ? `
@@ -2078,6 +2234,15 @@ async function importClassList() {
           <button class="btn-sm" onclick="importLabSelectAll(false)">Deselect All</button>
         </div>
         <div id="import-lab-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
+      ` : ''}
+      ${examCourses.length ? `
+        <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Courses with Exams (${examCourses.length})</h3>
+        <p style="font-size:12px;color:var(--text2);margin:0 0 6px;">Import exam sessions for proctoring:</p>
+        <div style="margin-bottom:6px;">
+          <button class="btn-sm" onclick="importExamSelectAll(true)">Select All</button>
+          <button class="btn-sm" onclick="importExamSelectAll(false)">Deselect All</button>
+        </div>
+        <div id="import-exam-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
       ` : ''}
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Cancel</button>
@@ -2132,6 +2297,27 @@ function importLabSelectAll(checked) {
   renderImportLabList();
 }
 
+function renderImportExamList() {
+  const div = $id('import-exam-list'); if (!div) return;
+  div.innerHTML = (S._importExamCourses||[]).map(course => {
+    const chk = S._importExamChecked.has(course.name) ? ' checked' : '';
+    return `<div style="padding:4px 0;border-bottom:1px solid #eee;">
+      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+        <input type="checkbox" data-exam-key="${escHtml(course.name)}"${chk}>
+        ${escHtml(course.name)} (${course.exams.length} exam${course.exams.length>1?'s':''})
+      </label></div>`;
+  }).join('');
+  div.querySelectorAll('input[data-exam-key]').forEach(cb => {
+    const key = cb.dataset.examKey;
+    cb.onchange = () => { if (cb.checked) S._importExamChecked.add(key); else S._importExamChecked.delete(key); };
+  });
+}
+
+function importExamSelectAll(checked) {
+  S._importExamChecked = new Set(checked ? (S._importExamCourses||[]).map(c=>c.name) : []);
+  renderImportExamList();
+}
+
 function confirmImportAll() {
   (S._importGrad || []).forEach((c, i) => {
     if (!S._importGradChk.has(i)) return;
@@ -2147,9 +2333,621 @@ function confirmImportAll() {
         meetings: sec.meetings || [], exams: sec.exams || [], roles: []});
     });
   });
+  // Import exams
+  S.data.exams = S.data.exams || [];
+  (S._importExamCourses || []).forEach(course => {
+    if (!S._importExamChecked.has(course.name)) return;
+    course.exams.forEach(ex => {
+      S.data.exams.push({
+        id: uid(), name: 'Exam', course_name: course.name,
+        date: ex.date, start_min: ex.start_min, end_min: ex.end_min,
+        pe_value: 1.0, proctor_count: 1
+      });
+    });
+  });
   delete S._importGrad; delete S._importGradChk;
   delete S._importCourses; delete S._importChecked;
+  delete S._importExamCourses; delete S._importExamChecked;
   markDirty(); closeModal(); renderLeftPanel();
+}
+
+// ════════════════════════════════════════════════════════════════
+// EXAMS TAB
+// ════════════════════════════════════════════════════════════════
+function renderExamsTab() {
+  renderExamList();
+  renderExamCalendar();
+  if (S.examSelId) renderExamForm(S.data.exams.find(e=>e.id===S.examSelId));
+  else $id('exam-form').style.display = 'none';
+}
+
+function renderExamList() {
+  const list = $id('exam-list');
+  list.innerHTML = '';
+  (S.data.exams||[]).forEach(exam => {
+    const row = el('div','item-row'+(exam.id===S.examSelId?' selected':''));
+    row.onclick = () => { S.examSelId = exam.id; renderExamsTab(); };
+    const name = el('span','item-name', escHtml(exam.name||'(unnamed)'));
+    row.appendChild(name);
+    const badge = el('span','item-badge', exam.tbd ? 'TBD' : (exam.date||''));
+    row.appendChild(badge);
+    list.appendChild(row);
+  });
+}
+
+function renderExamForm(exam) {
+  const form = $id('exam-form');
+  if (!exam) { form.style.display='none'; return; }
+  form.style.display = 'block';
+  form.innerHTML = '';
+  form.appendChild(el('h3',null,'Edit Exam'));
+
+  // Name
+  const nameInp = textInput(exam.name, v => { exam.name=v; markDirty(); renderExamList(); });
+  form.appendChild(fgRow('Name', nameInp));
+
+  // Course Name (dropdown from unique lab names + freetext)
+  const cnG = el('div','form-group');
+  const cnL = el('label'); cnL.textContent = 'Course Name';
+  const cnInp = document.createElement('input');
+  cnInp.type = 'text'; cnInp.value = exam.course_name||'';
+  cnInp.setAttribute('list', 'exam-course-names');
+  cnInp.oninput = () => { exam.course_name=cnInp.value; markDirty(); };
+  // Build datalist
+  const dl = document.createElement('datalist'); dl.id = 'exam-course-names';
+  const uniqueNames = [...new Set(S.data.labs.map(l=>l.name).filter(Boolean))];
+  uniqueNames.forEach(n => { const o = document.createElement('option'); o.value=n; dl.appendChild(o); });
+  cnL.appendChild(cnInp); cnL.appendChild(dl); cnG.appendChild(cnL); form.appendChild(cnG);
+
+  // Date row with TBD checkbox inline
+  const dateRow = el('div','form-group');
+  const dateRowLabel = el('label'); dateRowLabel.textContent = 'Date';
+  dateRow.appendChild(dateRowLabel);
+  const dateRowInner = el('div');
+  dateRowInner.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  const dateInp = document.createElement('input');
+  dateInp.type = 'date'; dateInp.value = exam.date||'';
+  dateInp.style.cssText = 'width:150px;flex-shrink:0;';
+  dateInp.oninput = () => { exam.date=dateInp.value; markDirty(); renderExamCalendar(); };
+  if (exam.tbd) dateInp.style.display = 'none';
+  dateRowInner.appendChild(dateInp);
+  const tbdCb = document.createElement('input');
+  tbdCb.type = 'checkbox'; tbdCb.checked = !!exam.tbd;
+  tbdCb.style.cssText = 'margin:0;';
+  dateRowInner.appendChild(tbdCb);
+  const tbdSpan = document.createTextNode('TBD');
+  dateRowInner.appendChild(tbdSpan);
+  dateRow.appendChild(dateRowInner);
+  form.appendChild(dateRow);
+
+  // Start/End Time (hidden when TBD)
+  const dtWrap = el('div');
+  dtWrap.style.display = exam.tbd ? 'none' : '';
+  const timeRow = el('div','form-row');
+  const stG = el('div','form-group');
+  const stL = el('label'); stL.textContent = 'Start';
+  stL.appendChild(timeSelect(exam.start_min||540, v => { exam.start_min=v; markDirty(); }));
+  stG.appendChild(stL); timeRow.appendChild(stG);
+  const etG = el('div','form-group');
+  const etL = el('label'); etL.textContent = 'End';
+  etL.appendChild(timeSelect(exam.end_min||660, v => { exam.end_min=v; markDirty(); }));
+  etG.appendChild(etL); timeRow.appendChild(etG);
+  dtWrap.appendChild(timeRow);
+  form.appendChild(dtWrap);
+
+  tbdCb.onchange = () => {
+    exam.tbd = tbdCb.checked;
+    dateInp.style.display = exam.tbd ? 'none' : '';
+    dtWrap.style.display = exam.tbd ? 'none' : '';
+    markDirty(); renderExamList(); renderExamCalendar();
+  };
+
+  // PE Value and Proctor Count
+  const peRow = el('div','form-row');
+  const pvG = el('div','form-group');
+  const pvL = el('label'); pvL.textContent = 'PE Value';
+  const pvInp = document.createElement('input');
+  pvInp.type='number'; pvInp.step='0.5'; pvInp.min='0'; pvInp.value=exam.pe_value??1.0;
+  pvInp.oninput = () => { exam.pe_value=parseFloat(pvInp.value)||0; markDirty(); };
+  pvL.appendChild(pvInp); pvG.appendChild(pvL); peRow.appendChild(pvG);
+  const pcG = el('div','form-group');
+  const pcL = el('label'); pcL.textContent = 'Proctors';
+  const pcInp = document.createElement('input');
+  pcInp.type='number'; pcInp.min='1'; pcInp.value=exam.proctor_count||1;
+  pcInp.oninput = () => { exam.proctor_count=parseInt(pcInp.value)||1; markDirty(); };
+  pcL.appendChild(pcInp); pcG.appendChild(pcL); peRow.appendChild(pcG);
+  form.appendChild(peRow);
+
+  // Actions: Duplicate + Delete
+  const actions = el('div','form-actions');
+  const dupBtn = el('button','btn-sm','Duplicate');
+  dupBtn.onclick = () => { duplicateExam(exam); };
+  actions.appendChild(dupBtn);
+  const delBtn = el('button','btn-sm btn-danger','Delete');
+  delBtn.onclick = () => { deleteExam(exam.id); };
+  actions.appendChild(delBtn);
+  form.appendChild(actions);
+}
+
+function duplicateExam(src) {
+  S.data.exams = S.data.exams||[];
+  const copy = Object.assign({}, src, {id: uid(), name: src.name + ' (copy)'});
+  // Deep-copy any nested objects
+  if (src.tbd !== undefined) copy.tbd = src.tbd;
+  S.data.exams.push(copy);
+  S.examSelId = copy.id;
+  markDirty();
+  renderExamsTab();
+}
+
+function createNewExam() {
+  S.data.exams = S.data.exams||[];
+  const exam = {id:uid(), name:'New Exam', course_name:'', date:'', start_min:540, end_min:660, pe_value:1.0, proctor_count:1, tbd:false};
+  S.data.exams.push(exam);
+  S.examSelId = exam.id;
+  markDirty();
+  renderExamsTab();
+}
+
+function deleteExam(id) {
+  if (!confirm('Delete this exam?')) return;
+  S.data.exams = (S.data.exams||[]).filter(e=>e.id!==id);
+  S.data.proctor_assignments = (S.data.proctor_assignments||[]).filter(a=>a.exam_id!==id);
+  S.examSelId = null;
+  markDirty();
+  renderExamsTab();
+}
+
+function renderExamCalendar() {
+  const cal = $id('exam-calendar');
+  if (!cal) return;
+  cal.innerHTML = '';
+
+  const allExams = S.data.exams||[];
+  if (!allExams.length) return; // Hide calendar entirely when no exams
+
+  // Separate TBD vs dated exams
+  const tbdExams = [], datedExams = [];
+  allExams.forEach(ex => { if (ex.tbd) tbdExams.push(ex); else if (ex.date) datedExams.push(ex); });
+
+  // Build set of months (year*12+month) that have exams
+  const examMonths = new Set();
+  const examMap = {};
+  datedExams.forEach(ex => {
+    const d = new Date(ex.date+'T00:00:00');
+    if (!isNaN(d)) examMonths.add(d.getFullYear()*12 + d.getMonth());
+    if(!examMap[ex.date]) examMap[ex.date]=[];
+    examMap[ex.date].push(ex);
+  });
+
+  // Sort exam months and build navigable range (first exam month to last, inclusive)
+  const sortedMonths = [...examMonths].sort((a,b)=>a-b);
+  let minMonth = sortedMonths.length ? sortedMonths[0] : S.examCalYear*12+S.examCalMonth;
+  let maxMonth = sortedMonths.length ? sortedMonths[sortedMonths.length-1] : minMonth;
+
+  // If there are dated exams, constrain calendar to the range
+  if (sortedMonths.length) {
+    const cur = S.examCalYear*12 + S.examCalMonth;
+    if (cur < minMonth || cur > maxMonth) {
+      // Snap to nearest boundary
+      const nearest = cur < minMonth ? minMonth : maxMonth;
+      S.examCalYear = Math.floor(nearest/12);
+      S.examCalMonth = nearest%12;
+    }
+  }
+
+  const year = S.examCalYear, month = S.examCalMonth;
+  const curKey = year*12+month;
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // Nav — enable prev/next within the range [minMonth, maxMonth]
+  const nav = el('div','cal-nav');
+  const prevBtn = el('button',null,'◀');
+  if (curKey > minMonth) {
+    prevBtn.onclick = () => {
+      S.examCalMonth--; if(S.examCalMonth<0){S.examCalMonth=11;S.examCalYear--;}
+      renderExamCalendar();
+    };
+  } else { prevBtn.disabled=true; prevBtn.style.opacity='0.3'; }
+  const nextBtn = el('button',null,'▶');
+  if (curKey < maxMonth) {
+    nextBtn.onclick = () => {
+      S.examCalMonth++; if(S.examCalMonth>11){S.examCalMonth=0;S.examCalYear++;}
+      renderExamCalendar();
+    };
+  } else { nextBtn.disabled=true; nextBtn.style.opacity='0.3'; }
+  const title = el('span',null,`${monthNames[month]} ${year}`);
+  nav.append(prevBtn, title, nextBtn);
+  cal.appendChild(nav);
+
+  // Grid
+  const grid = el('div','cal-grid');
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => grid.appendChild(el('div','cal-hdr',d)));
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const prevDays = new Date(year, month, 0).getDate();
+
+  // Previous month padding
+  for (let i = firstDay-1; i >= 0; i--) {
+    const d = el('div','cal-day other-month');
+    d.innerHTML = `<div class="day-num">${prevDays-i}</div>`;
+    grid.appendChild(d);
+  }
+
+  // Current month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const examsOnDay = examMap[dateStr]||[];
+    const d = el('div','cal-day'+(examsOnDay.length?' has-exam':''));
+    let html = `<div class="day-num">${day}</div>`;
+    examsOnDay.forEach(ex => {
+      const calLabel = ex.course_name ? `${ex.course_name}: ${ex.name}` : ex.name;
+      html += `<span class="cal-exam-label" onclick="S.examSelId='${ex.id}';renderExamsTab();" title="${escHtml(calLabel)}">${escHtml(calLabel)}</span>`;
+    });
+    d.innerHTML = html;
+    grid.appendChild(d);
+  }
+
+  // Next month padding
+  const totalCells = firstDay + daysInMonth;
+  const remaining = (7 - totalCells % 7) % 7;
+  for (let i = 1; i <= remaining; i++) {
+    const d = el('div','cal-day other-month');
+    d.innerHTML = `<div class="day-num">${i}</div>`;
+    grid.appendChild(d);
+  }
+
+  cal.appendChild(grid);
+
+  // TBD exams list below calendar
+  if (tbdExams.length) {
+    const tbdDiv = el('div');
+    tbdDiv.style.cssText = 'margin-top:12px;padding:8px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;';
+    tbdDiv.appendChild(el('strong',null,'TBD Exams'));
+    const ul = document.createElement('ul');
+    ul.style.cssText = 'padding-left:18px;margin-top:4px;font-size:14px;';
+    tbdExams.forEach(ex => {
+      const li = document.createElement('li');
+      li.style.cssText = 'margin-bottom:2px;cursor:pointer;';
+      li.textContent = ex.name + (ex.course_name ? ` (${ex.course_name})` : '');
+      li.onclick = () => { S.examSelId = ex.id; renderExamsTab(); };
+      ul.appendChild(li);
+    });
+    tbdDiv.appendChild(ul);
+    cal.appendChild(tbdDiv);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PROCTORING TAB
+// ════════════════════════════════════════════════════════════════
+function clearProctorAssignments() {
+  S.data.proctor_assignments = (S.data.proctor_assignments||[]).filter(a=>a.locked);
+  S.proctorDiag = {}; S.proctorStatus = null;
+  markDirty(); renderProctoring();
+}
+
+async function runProctorSolver() {
+  const btn = document.querySelector('.btn-run-proctor');
+  btn.textContent = '⏳ Solving…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/schedule-proctoring', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(S.data)
+    });
+    const result = await r.json();
+    if (result.status === 'error') {
+      alert('Solver error:\n' + result.message);
+    } else {
+      S.data.proctor_assignments = result.proctor_assignments;
+      markDirty();
+      renderProctoring(result.diagnostics, result.status);
+    }
+  } catch(e) { alert('Proctoring solver failed: ' + e); }
+  btn.textContent = '▶ Assign Proctors'; btn.disabled = false;
+}
+
+function renderProctoring(diag, status) {
+  if (diag !== undefined) { S.proctorDiag = diag||{}; S.proctorStatus = status||null; }
+  diag = S.proctorDiag; status = S.proctorStatus;
+
+  const diagDiv = $id('proctor-diagnostics');
+  const unfilled = diag.unfilled_proctors||[];
+  if (status === 'partial' && unfilled.length) {
+    let html = '<h4 style="color:#92400e;">⚠ Partial Proctoring Schedule</h4>';
+    html += '<p><strong>Slots not fully filled:</strong></p><ul>' +
+      unfilled.map(u => `<li><strong>${escHtml(u.exam_name)}</strong>: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
+    diagDiv.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;';
+    diagDiv.innerHTML = html;
+    diagDiv.style.display = 'block';
+  } else {
+    diagDiv.style.display = 'none';
+  }
+
+  const tbl = $id('proctor-table');
+  tbl.innerHTML = '';
+  renderProctorExamView(tbl);
+  renderProctorTASummary($id('proctor-ta-summary'));
+}
+
+function renderProctorExamView(container) {
+  const tasMap = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
+  const exams = S.data.exams||[];
+  if (!exams.length) { container.appendChild(el('p','help-text','No exams defined')); return; }
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['Exam','Date/Time','Course','Count','Assigned Proctors'].forEach(h => thr.appendChild(el('th',null,h)));
+  thead.appendChild(thr); table.appendChild(thead);
+  const tbody = el('tbody');
+
+  exams.forEach(exam => {
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(exam.name)}</strong>`));
+    tr.appendChild(el('td',null, exam.tbd ? 'TBD' : `${exam.date||'—'} ${fmtRange(exam.start_min||0, exam.end_min||0)}`));
+    tr.appendChild(el('td',null,escHtml(exam.course_name||'—')));
+
+    const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id);
+    tr.appendChild(el('td',null,`${assigns.length}/${exam.proctor_count||1}`));
+
+    const assignCell = el('td');
+    const roleDiv = el('div','role-cell');
+    assigns.forEach(a => {
+      const ta = tasMap[a.ta_id];
+      const chip = el('div',`ta-chip${a.locked?' locked':''}`);
+      chip.innerHTML = escHtml(ta?.name||a.ta_id);
+      const lockBtn = el('span','lock-btn', a.locked?'🔒':'🔓');
+      lockBtn.title = a.locked?'Unlock':'Lock';
+      lockBtn.onclick = () => { a.locked=!a.locked; markDirty(); renderProctoring(); };
+      const rmBtn = el('span','rm-btn','×');
+      rmBtn.title = 'Remove';
+      rmBtn.onclick = () => {
+        S.data.proctor_assignments = S.data.proctor_assignments.filter(x=>x!==a);
+        markDirty(); renderProctoring();
+      };
+      chip.append(lockBtn, rmBtn);
+      roleDiv.appendChild(chip);
+    });
+    const addBtn = el('button','add-ta-btn','+ TA');
+    addBtn.onclick = () => openProctorAssignModal(exam);
+    roleDiv.appendChild(addBtn);
+    assignCell.appendChild(roleDiv);
+    tr.appendChild(assignCell);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function renderProctorTAView(container) {
+  const examsMap = Object.fromEntries((S.data.exams||[]).map(e=>[e.id,e]));
+  if (!S.data.tas.length) { container.appendChild(el('p','help-text','No TAs defined')); return; }
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['TA','Max PE','Used PE','Assigned Exams'].forEach(h => thr.appendChild(el('th',null,h)));
+  thead.appendChild(thr); table.appendChild(thead);
+  const tbody = el('tbody');
+
+  S.data.tas.forEach(ta => {
+    const taAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
+    const usedPE = taAssigns.reduce((sum,a) => {
+      const exam = examsMap[a.exam_id];
+      return sum + (exam?.pe_value||0);
+    }, 0);
+
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+    tr.appendChild(el('td',null,Number(ta.max_pe??2.0).toFixed(1)));
+    tr.appendChild(el('td',null,usedPE.toFixed(1)));
+
+    const examsCell = el('td');
+    taAssigns.forEach(a => {
+      const exam = examsMap[a.exam_id];
+      const chip = el('span','ta-row-lab');
+      chip.textContent = (exam?.name||a.exam_id) + (a.locked?' 🔒':'');
+      examsCell.appendChild(chip);
+    });
+    tr.appendChild(examsCell);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+// ── Proctor TA Summary table (always visible below exam view) ──
+function renderProctorTASummary(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  if (!S.data.tas.length) return;
+
+  const examsMap = Object.fromEntries((S.data.exams||[]).map(e=>[e.id,e]));
+  const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
+
+  const hdr = el('h4',null,'TA Summary');
+  hdr.style.cssText = 'margin-bottom:8px;font-size:17px;';
+  container.appendChild(hdr);
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['TA','Max PE','Used PE','Lab Assignments','Assigned Exams'].forEach(h => thr.appendChild(el('th',null,h)));
+  thead.appendChild(thr); table.appendChild(thead);
+  const tbody = el('tbody');
+
+  S.data.tas.forEach(ta => {
+    const taProctorAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
+    const usedPE = taProctorAssigns.reduce((sum,a) => {
+      const exam = examsMap[a.exam_id];
+      return sum + (exam?.pe_value||0);
+    }, 0);
+
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+
+    // Editable Max PE
+    const peTd = el('td');
+    const peInp = document.createElement('input');
+    peInp.type='number'; peInp.step='0.5'; peInp.min='0';
+    peInp.value = Number(ta.max_pe??2.0).toFixed(1);
+    peInp.style.cssText='width:60px;font-size:13px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;';
+    peInp.onchange = () => { ta.max_pe=parseFloat(peInp.value)||0; markDirty(); };
+    peTd.appendChild(peInp);
+    tr.appendChild(peTd);
+
+    tr.appendChild(el('td',null,usedPE.toFixed(1)));
+
+    // Lab assignments column
+    const labsCell = el('td');
+    const taLabAssigns = (S.data.assignments||[]).filter(a=>a.ta_id===ta.id);
+    taLabAssigns.forEach(a => {
+      const lab = labsMap[a.lab_id];
+      const role = rolesMap[a.role_id];
+      const chip = el('span','ta-row-lab');
+      chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
+      labsCell.appendChild(chip);
+    });
+    tr.appendChild(labsCell);
+
+    // Assigned exams column
+    const examsCell = el('td');
+    taProctorAssigns.forEach(a => {
+      const exam = examsMap[a.exam_id];
+      const chip = el('span','ta-row-lab');
+      chip.textContent = (exam?.name||a.exam_id) + (a.locked?' 🔒':'');
+      examsCell.appendChild(chip);
+    });
+    tr.appendChild(examsCell);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function openProctorAssignModal(exam) {
+  const existing = new Set(
+    (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id).map(a=>a.ta_id)
+  );
+
+  function usedPE(ta) {
+    return (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id).reduce((sum,a) => {
+      const ex = (S.data.exams||[]).find(e=>e.id===a.exam_id);
+      return sum + (ex?.pe_value||0);
+    }, 0);
+  }
+
+  // Get exam weekday (skip date-based checks for TBD exams)
+  let examWd = null;
+  const hasDates = !exam.tbd && exam.date;
+  if (hasDates) {
+    try { examWd = new Date(exam.date+'T00:00:00').getDay(); examWd = [6,0,1,2,3,4,5][examWd]; } catch(e) {}
+  }
+  // Convert JS getDay (0=Sun) to our model (0=Mon): Sun=6,Mon=0,Tue=1...
+
+  const eligible = [], conflicted = [];
+
+  S.data.tas.forEach(ta => {
+    if (existing.has(ta.id)) return;
+    const reasons = [];
+    const addPE = exam.pe_value||1.0;
+    if (usedPE(ta) + addPE > (ta.max_pe??2.0) + 0.001) {
+      reasons.push(`PE: ${(usedPE(ta)+addPE).toFixed(1)}/${Number(ta.max_pe??2.0).toFixed(1)} (over cap)`);
+    }
+    // Check time conflicts with other proctored exams on same date (skip for TBD)
+    if (hasDates) (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id).forEach(a => {
+      const otherExam = (S.data.exams||[]).find(e=>e.id===a.exam_id);
+      if (otherExam && otherExam.date===exam.date && overlap(exam.start_min, exam.end_min, otherExam.start_min, otherExam.end_min)) {
+        reasons.push(`conflicts with ${otherExam.name}`);
+      }
+    });
+    // Check grad course conflicts
+    if (examWd !== null) {
+      for (const gcId of (ta.grad_course_ids||[])) {
+        const gc = S.data.grad_courses.find(c=>c.id===gcId);
+        if (!gc) continue;
+        const gcMtgs = gc.meetings?.length ? gc.meetings : (gc.day!==undefined?[{day:gc.day,start_min:gc.start_min,end_min:gc.end_min}]:[]);
+        for (const m of gcMtgs) {
+          if (m.day===examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
+            reasons.push(`conflicts with ${gc.name}`);
+          }
+        }
+      }
+      // Check lab assignment conflicts
+      S.data.assignments.filter(a=>a.ta_id===ta.id).forEach(a => {
+        const lab = S.data.labs.find(l=>l.id===a.lab_id);
+        if (!lab) return;
+        const mtgs = lab.meetings?.length ? lab.meetings : (lab.day!==undefined?[{day:lab.day,start_min:lab.start_min,end_min:lab.end_min}]:[]);
+        for (const m of mtgs) {
+          if (m.day===examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
+            reasons.push(`conflicts with lab ${lab.name}`);
+          }
+        }
+      });
+      // Other commitments
+      for (const oc of (ta.other_commitments||[])) {
+        if (oc.day===examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
+          reasons.push(`conflicts with commitment`);
+        }
+      }
+    }
+    if (reasons.length===0) eligible.push(ta);
+    else conflicted.push({ta, reasons});
+  });
+
+  const html = `
+    <div class="modal-box">
+      <h2>Assign Proctor — ${escHtml(exam.name)}</h2>
+      <div class="assign-ta-list" id="proctor-assign-list"></div>
+      <div class="modal-footer">
+        <button class="btn-sm" onclick="closeModal()">Close</button>
+      </div>
+    </div>`;
+  showModal(html);
+
+  const listDiv = $id('proctor-assign-list');
+
+  function makeRow(ta, isAssigned, reasons) {
+    const row = el('div','assign-ta-row');
+    if (isAssigned) row.style.background = '#eff6ff';
+    else if (reasons) row.style.background = '#fffbeb';
+    const expBadge = el('span',`exp-badge${ta.experience!=='experienced'?' inexp':''}`,
+                        ta.experience==='experienced'?'exp':'inexp');
+    const name = el('span',null,escHtml(ta.name));
+    const peInfo = el('span','se-info',`PE: ${usedPE(ta).toFixed(1)}/${Number(ta.max_pe??2.0).toFixed(1)}`);
+    const checkmark = el('span',null, isAssigned?' ✓':'');
+    checkmark.style.color = 'var(--green)';
+    row.append(expBadge, name, checkmark, peInfo);
+    if (reasons) {
+      const reasonEl = el('div','help-text','⚠ '+reasons.join('; '));
+      reasonEl.style.cssText='color:#b45309;font-size:0.78em;margin-top:2px;';
+      row.appendChild(reasonEl); row.style.flexWrap='wrap';
+    }
+    row.onclick = () => {
+      if (isAssigned) {
+        S.data.proctor_assignments = S.data.proctor_assignments.filter(
+          a=>!(a.exam_id===exam.id && a.ta_id===ta.id));
+      } else {
+        S.data.proctor_assignments = S.data.proctor_assignments||[];
+        S.data.proctor_assignments.push({exam_id:exam.id, ta_id:ta.id, locked:true});
+      }
+      markDirty(); closeModal(); renderProctoring();
+    };
+    return row;
+  }
+
+  // Already assigned
+  S.data.tas.filter(ta=>existing.has(ta.id)).forEach(ta => listDiv.appendChild(makeRow(ta,true,null)));
+  eligible.forEach(ta => listDiv.appendChild(makeRow(ta,false,null)));
+  if (conflicted.length) {
+    const divider = el('div',null,'— or override conflict —');
+    divider.style.cssText='text-align:center;color:#9ca3af;font-size:0.82em;padding:6px 0 4px;';
+    listDiv.appendChild(divider);
+    conflicted.forEach(({ta,reasons}) => listDiv.appendChild(makeRow(ta,false,reasons)));
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2183,11 +2981,21 @@ function showHelpModal() {
         <p>Add graduate TAs. Set experience level, maximum SE load, the grad courses
         they take, and any fixed commitments (blocks on the grid).</p>
 
-        <h3>Schedule</h3>
+        <h3>Exams</h3>
+        <p>Define exam sessions for proctoring. Set date, time, PE value, and number
+        of proctors needed. Exams can also be imported from a class list CSV. The
+        calendar shows exams by month.</p>
+
+        <h3>Schedule Labs</h3>
         <p>Use <strong>Assign TAs</strong> to auto-fill open slots, or use <strong>+ TA</strong> to assign manually.
         Lock assignments you want to keep; the solver won't overwrite locked slots.
         Switch between Lab View and TA View. Add outside duties (grading etc.) that count
         toward SE but have no meeting time. Export DOCX when done.</p>
+
+        <h3>Schedule Proctoring</h3>
+        <p>Use <strong>Assign Proctors</strong> to auto-fill exam proctoring slots.
+        The solver respects PE caps and avoids time conflicts with labs, grad courses,
+        and other commitments. TAs familiar with a course get a scoring bonus.</p>
 
         <h3>Meeting Finder</h3>
         <p>Heatmap showing when assigned TAs are busy across the week. Green = all
@@ -2196,6 +3004,7 @@ function showHelpModal() {
         <h3>Key Concepts</h3>
         <ul>
           <li><strong>SE (Section Equivalent):</strong> unit of TA workload. A typical lab = 1.0 SE.</li>
+          <li><strong>PE (Proctoring Equivalent):</strong> unit of proctoring workload. Independent from SE.</li>
           <li><strong>Experienced / Inexperienced:</strong> controls experience-preference soft constraints.</li>
           <li><strong>Locked assignments:</strong> preserved by the solver; unlocked ones can be replaced.</li>
           <li><strong>Outside duties:</strong> SE-consuming responsibilities with no fixed meeting time.</li>
