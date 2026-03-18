@@ -2367,7 +2367,8 @@ function renderExamList() {
   (S.data.exams||[]).forEach(exam => {
     const row = el('div','item-row'+(exam.id===S.examSelId?' selected':''));
     row.onclick = () => { S.examSelId = exam.id; renderExamsTab(); };
-    const name = el('span','item-name', escHtml(exam.name||'(unnamed)'));
+    const displayName = exam.course_name ? `${exam.course_name}: ${exam.name||'(unnamed)'}` : (exam.name||'(unnamed)');
+    const name = el('span','item-name', escHtml(displayName));
     row.appendChild(name);
     const badge = el('span','item-badge', exam.tbd ? 'TBD' : (exam.date||''));
     row.appendChild(badge);
