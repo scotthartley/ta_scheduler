@@ -717,7 +717,7 @@ function renderLeftPanel() {
   $id('panel-title').textContent = titles[S.tab] || '';
   const list = $id('item-list');
   list.innerHTML = '';
-  getItems().forEach(item => {
+  getItems().slice().sort((a,b) => displayName(a).localeCompare(displayName(b))).forEach(item => {
     const row = el('div', 'item-row' + (item.id===S.selId?' selected':''));
     row.onclick = () => selectItem(item.id);
     const name = el('span','item-name', escHtml(displayName(item)));
