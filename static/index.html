@@ -2387,7 +2387,12 @@ function renderExamList() {
   sorted.forEach(exam => {
     const row = el('div','item-row'+(exam.id===S.examSelId?' selected':''));
     row.onclick = () => { S.examSelId = exam.id; jumpCalToExam(exam); renderExamsTab(); };
-    const displayName = exam.course_name ? `${exam.course_name}: ${exam.name||'(unnamed)'}` : (exam.name||'(unnamed)');
+    const courseLabel = exam.course_name
+      ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name)
+      : '';
+    const displayName = courseLabel
+      ? `${courseLabel}: ${exam.name||'(unnamed)'}`
+      : (exam.name||'(unnamed)');
     const name = el('span','item-name', escHtml(displayName));
     name.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     row.appendChild(name);
@@ -2419,7 +2424,21 @@ function renderExamForm(exam) {
   const dl = document.createElement('datalist'); dl.id = 'exam-course-names';
   const uniqueNames = [...new Set(S.data.labs.map(l=>l.name).filter(Boolean))];
   uniqueNames.forEach(n => { const o = document.createElement('option'); o.value=n; dl.appendChild(o); });
-  cnL.appendChild(cnInp); cnL.appendChild(dl); cnG.appendChild(cnL); form.appendChild(cnG);
+  cnL.appendChild(cnInp); cnL.appendChild(dl); cnG.appendChild(cnL);
+
+  // Course Name + Section row
+  const cnRow = el('div','form-row');
+  cnG.style.flex = '1';
+  cnRow.appendChild(cnG);
+
+  const csG = el('div','form-group'); csG.style.width='72px';
+  const csL = el('label'); csL.textContent='Section';
+  const csInp = textInput(exam.section||'', v => { exam.section=v; markDirty(); renderExamList(); });
+  csInp.title = 'Section identifier (e.g. A, B, 001)';
+  csInp.style.width='100%';
+  csL.appendChild(csInp); csG.appendChild(csL); cnRow.appendChild(csG);
+
+  form.appendChild(cnRow);
 
   // Date row with TBD checkbox inline
   const dateRow = el('div','form-group');
@@ -2504,7 +2523,7 @@ function duplicateExam(src) {
 
 function createNewExam() {
   S.data.exams = S.data.exams||[];
-  const exam = {id:uid(), name:'New Exam', course_name:'', date:'', start_min:540, end_min:660, pe_value:1.0, proctor_count:1, tbd:false};
+  const exam = {id:uid(), name:'New Exam', course_name:'', section:'', date:'', start_min:540, end_min:660, pe_value:1.0, proctor_count:1, tbd:false};
   S.data.exams.push(exam);
   S.examSelId = exam.id;
   markDirty();
@@ -2700,15 +2719,18 @@ function renderProctorExamView(container) {
 
   const table = el('table','sched-table');
   const thead = el('thead'); const thr = el('tr');
-  ['Exam','Date/Time','Course','Count','Assigned Proctors'].forEach(h => thr.appendChild(el('th',null,h)));
+  ['Course/Section','Exam','Date/Time','Count','Assigned Proctors'].forEach(h => thr.appendChild(el('th',null,h)));
   thead.appendChild(thr); table.appendChild(thead);
   const tbody = el('tbody');
 
   exams.forEach(exam => {
     const tr = el('tr');
+    const courseLabel = exam.course_name
+      ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name)
+      : '—';
+    tr.appendChild(el('td',null,escHtml(courseLabel)));
     tr.appendChild(el('td',null,`<strong>${escHtml(exam.name)}</strong>`));
     tr.appendChild(el('td',null, exam.tbd ? 'TBD' : `${exam.date||'—'} ${fmtRange(exam.start_min||0, exam.end_min||0)}`));
-    tr.appendChild(el('td',null,escHtml(exam.course_name||'—')));
 
     const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id);
     tr.appendChild(el('td',null,`${assigns.length}/${exam.proctor_count||1}`));
