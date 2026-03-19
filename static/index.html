@@ -373,7 +373,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   <button id="save-btn" onclick="saveData()" title="Save schedule to current file (Ctrl+S)">Save</button>
   <button onclick="saveAsData()" title="Save schedule to a new file">Save As…</button>
   <button onclick="openNative()" title="Open an existing schedule file">Open…</button>
-  <button onclick="importClassList()" title="Import courses and labs from a departmental class list CSV">Import Class List</button>
+  <button onclick="importClassList()" title="Import courses and labs from a departmental class list CSV">Import Class Info</button>
   <button onclick="exportDocx()" title="Export the current schedule as a Word document">Export DOCX</button>
   <button onclick="showHelpModal()" title="Open help reference">?</button>
 </header>
@@ -2606,7 +2606,7 @@ async function importClassList() {
     S._importExamCourses = examCourses;
     S._importExamChecked = new Set();                   // none checked by default
     showModal(`<div class="modal-box">
-      <h2>Import Class List</h2>
+      <h2>Import Class Info</h2>
       ${grad.length ? `
         <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Graduate Courses (${grad.length})</h3>
         <div style="margin-bottom:6px;">
@@ -3911,8 +3911,8 @@ function showHelpModal() {
     <div class="modal-box" style="min-width:560px;">
       <h2>TA Scheduler — Help</h2>
       <div class="help-modal">
-        <h3>Import Class List</h3>
-        <p>Use the <strong>Import Class List</strong> button to load courses and lab sections from a
+        <h3>Import Class Info</h3>
+        <p>Use the <strong>Import Class Info</strong> button to load courses and lab sections from a
         departmental class list CSV. These can be obtained from
         <a href="https://www.apps.miamioh.edu/courselist/" target="_blank">apps.miamioh.edu/courselist</a>.
         Graduate courses are imported into the Graduate Courses tab; undergraduate sections
