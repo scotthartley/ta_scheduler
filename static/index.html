@@ -298,6 +298,30 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   flex: 1; overflow: auto; display: none; padding: 20px; flex-direction: column; gap: 15px;
   background: var(--panel); }
 #proctoring-workspace.active { display: flex; }
+
+/* ── summary workspace ────────────────────────────────────────── */
+#summary-workspace {
+  display: none;
+  padding: 24px 32px;
+  overflow-y: auto;
+  max-width: 900px;
+  background: var(--panel);
+}
+#summary-workspace.active { display: block; }
+.summary-h1 { font-size: 1.4rem; font-weight: 700; margin: 24px 0 8px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+.summary-h1:first-child { margin-top: 0; }
+.summary-h2 { font-size: 1.1rem; font-weight: 600; margin: 16px 0 4px; }
+.summary-sub { color: #6b7280; font-size: 0.875rem; margin: 0 0 8px; }
+.summary-none { color: #9ca3af; font-style: italic; font-size: 0.875rem; }
+.summary-proctor-label { font-weight: 600; font-size: 0.875rem; margin: 12px 0 4px; }
+.summary-proctor-list { margin: 0 0 8px 16px; font-size: 0.875rem; }
+.summary-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+.summary-table { border-collapse: separate; border-spacing: 0; font-size: 0.875rem; width: 100%; }
+.summary-table th, .summary-table td { border-bottom: 1px solid #e5e7eb; padding: 7px 12px; text-align: left; }
+.summary-table th { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
+.summary-table td { background: var(--panel); }
+.summary-table tbody tr:last-child td { border-bottom: none; }
+.summary-total td { font-weight: 600; background: var(--gray-lt); }
 .btn-run-proctor { padding: 8px 17px; border-radius: 5px; border: 1px solid var(--border);
                    background: var(--panel); cursor: pointer; font-size: 16px; }
 .btn-run-proctor:hover { background: var(--gray-lt); }
@@ -310,7 +334,8 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .assign-grid { border-collapse: collapse; font-size: 12px; width: auto; }
 .assign-grid th.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; min-width: 120px;
                                font-weight: 600; border-right: 1px solid var(--border);
-                               position: sticky; left: 0; top: 0; background: var(--panel); z-index: 3; }
+                               position: sticky; left: 0; top: 0; background: var(--gray-lt); z-index: 3; }
+.assign-grid thead th:not(.ta-name-col) { border-left: hidden; border-right: hidden; }
 .assign-grid td.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; font-weight: 400;
                                border-right: 1px solid var(--border);
                                position: sticky; left: 0; background: var(--panel); z-index: 1; }
@@ -329,7 +354,8 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
                          color: var(--red); line-height: 1; cursor: pointer; z-index: 1; }
 .assign-cell:hover { opacity: 0.8; }
 .assign-grid .col-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
-                            font-size: 11px; max-height: 200px; overflow: hidden; text-align: center; }
+                            font-size: 11px; max-height: 200px; overflow: hidden; text-align: start;
+                            width: fit-content; margin: 0 auto; }
 
 /* ── print ───────────────────────────────────────────────────── */
 @media print {
@@ -362,6 +388,9 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   <div class="tab-group">
     <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule Labs</button>
     <button class="tab-btn" data-tab="proctoring" onclick="switchTab('proctoring')" title="Run proctoring solver, assign TAs to exams">Schedule Proctoring</button>
+  </div>
+  <div class="tab-group">
+    <button class="tab-btn" data-tab="summary" onclick="switchTab('summary')" title="Full schedule summary: lab assignments, proctoring, and TA loads">Summary</button>
     <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')"  title="Heatmap showing when assigned TAs are busy">Meeting Finder</button>
   </div>
 </nav>
@@ -510,6 +539,9 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     <div id="proctor-pe-total"></div>
     <div id="proctor-ta-summary"></div>
   </div>
+
+  <!-- SUMMARY WORKSPACE -->
+  <div id="summary-workspace"></div>
 
 </div><!-- #workspace -->
 
@@ -713,6 +745,7 @@ function switchTab(tab) {
   $id('meeting-workspace').classList.toggle('active',  tab==='meeting');
   $id('exams-workspace').classList.toggle('active',    tab==='exams');
   $id('proctoring-workspace').classList.toggle('active', tab==='proctoring');
+  $id('summary-workspace').classList.toggle('active',  tab==='summary');
 
   if (isGrid) {
     renderLeftPanel(); showGridPlaceholder();
@@ -724,6 +757,8 @@ function switchTab(tab) {
     renderExamsTab();
   } else if (tab === 'proctoring') {
     renderProctoring();
+  } else if (tab === 'summary') {
+    renderSummary();
   }
 }
 
@@ -2180,6 +2215,178 @@ function meetingDeselectAll() {
   renderMeetingFinder();
 }
 
+// ════════════════════════════════════════════════════════════════
+// SUMMARY
+// ════════════════════════════════════════════════════════════════
+function buildTable(headers, rows, totalRows = 0) {
+  const wrap = el('div', 'summary-table-wrap');
+  const tbl = el('table', 'summary-table');
+  const thead = tbl.createTHead();
+  const hrow = thead.insertRow();
+  for (const h of headers) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    hrow.append(th);
+  }
+  const tbody = tbl.createTBody();
+  rows.forEach((cols, i) => {
+    const tr = tbody.insertRow();
+    if (totalRows > 0 && i >= rows.length - totalRows) tr.classList.add('summary-total');
+    for (const col of cols) {
+      const td = tr.insertCell();
+      td.textContent = col;
+    }
+  });
+  wrap.append(tbl);
+  return wrap;
+}
+
+function renderSummary() {
+  const c = $id('summary-workspace');
+  c.innerHTML = '';
+  const d = S.data;
+
+  const rolesMap  = Object.fromEntries(d.roles.map(r => [r.id, r]));
+  const tasMap    = Object.fromEntries(d.tas.map(t => [t.id, t]));
+  const labsMap   = Object.fromEntries(d.labs.map(l => [l.id, l]));
+  const examsMap  = Object.fromEntries((d.exams||[]).map(e => [e.id, e]));
+  const dayLong   = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  const dayShort  = ['Mon','Tue','Wed','Thu','Fri'];
+
+  // ── Section 1: Lab Assignments ───────────────────────────────────────
+  const h1 = el('h1','summary-h1'); h1.textContent = 'Lab Assignments'; c.append(h1);
+  const sortedLabs = [...d.labs].sort((a,b) =>
+    (a.name+' '+(a.section||'')).localeCompare(b.name+' '+(b.section||'')));
+
+  for (const lab of sortedLabs) {
+    const h2 = el('h2','summary-h2'); h2.textContent = displayName(lab); c.append(h2);
+    const sub = el('p','summary-sub');
+    sub.textContent = lab.day != null
+      ? `${dayLong[lab.day]}, ${fmtRange(lab.start_min, lab.end_min)}`
+      : '(time TBD)';
+    c.append(sub);
+
+    const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
+    if (labAsgn.length) {
+      const tbl = buildTable(['Role','TA','Status'], labAsgn.map(a => [
+        rolesMap[a.role_id]?.label ?? a.role_id,
+        tasMap[a.ta_id]?.name    ?? a.ta_id,
+        a.locked ? 'Locked' : 'Assigned',
+      ]));
+      c.append(tbl);
+    } else {
+      c.append(el('p','summary-none','No assignments'));
+    }
+  }
+
+  // ── Section 2: Exam Proctoring ───────────────────────────────────────
+  const exams = d.exams ?? [];
+  const proctorAsgn = d.proctor_assignments ?? [];
+  const assignedExams = exams.filter(e => proctorAsgn.some(a => a.exam_id === e.id));
+  if (assignedExams.length) {
+    const h1p = el('h1','summary-h1'); h1p.textContent = 'Exam Proctoring'; c.append(h1p);
+    const sortedExams = [...assignedExams].sort((a,b) =>
+      ((a.course_name||'')+' '+(a.section||'')+' '+(a.date||''))
+        .localeCompare((b.course_name||'')+' '+(b.section||'')+' '+(b.date||'')));
+
+    for (const exam of sortedExams) {
+      const label = displayName({name: exam.course_name||'', section: exam.section||''});
+      const sub2  = exam.name && exam.name !== label ? `${label} — ${exam.name}` : label || exam.name || 'Exam';
+      const h2e = el('h2','summary-h2'); h2e.textContent = sub2; c.append(h2e);
+      const subp = el('p','summary-sub');
+      subp.textContent = exam.date
+        ? `${exam.date}, ${fmtRange(exam.start_min, exam.end_min)}`
+        : '(date TBD)';
+      c.append(subp);
+
+      const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id);
+      const ul = el('ul','summary-proctor-list');
+      for (const a of eAsgn) {
+        const ta = tasMap[a.ta_id];
+        const li = el('li');
+        li.textContent = `${ta?.name ?? a.ta_id} (${a.locked ? 'Locked' : 'Assigned'})`;
+        ul.append(li);
+      }
+      c.append(ul);
+    }
+  }
+
+  // ── Section 3: TA Assignments ────────────────────────────────────────
+  const h1t = el('h1','summary-h1'); h1t.textContent = 'TA Assignments'; c.append(h1t);
+
+  for (const ta of d.tas) {
+    const h2t = el('h2','summary-h2'); h2t.textContent = ta.name; c.append(h2t);
+    const meta = el('p','summary-sub');
+    meta.textContent = `${(ta.experience||'').replace(/^\w/,ch=>ch.toUpperCase())}, Max SE: ${(ta.max_se??2).toFixed(1)}`;
+    c.append(meta);
+
+    const taAsgn    = d.assignments.filter(a => a.ta_id === ta.id);
+    const outside   = ta.outside_duties ?? [];
+    const taProctor = [...proctorAsgn.filter(a => a.ta_id === ta.id)].sort((a,b) => {
+      const ea = examsMap[a.exam_id]??{}, eb = examsMap[b.exam_id]??{};
+      return ((ea.course_name||'')+' '+(ea.section||'')+' '+(ea.date||''))
+             .localeCompare((eb.course_name||'')+' '+(eb.section||'')+' '+(eb.date||''));
+    });
+
+    if (taAsgn.length || outside.length) {
+      let totalSE = 0;
+      const seRows = [];
+      for (const a of [...taAsgn].sort((a,b) => {
+          const la = labsMap[a.lab_id]??{}, lb = labsMap[b.lab_id]??{};
+          return (la.day??0)*10000+(la.start_min??0) - ((lb.day??0)*10000+(lb.start_min??0));
+        })) {
+        const lab  = labsMap[a.lab_id] ?? {};
+        const role = rolesMap[a.role_id] ?? {};
+        const se   = role.se_value ?? 0;
+        totalSE += se;
+        const timeStr = lab.day != null
+          ? `${dayShort[lab.day]} ${fmtRange(lab.start_min, lab.end_min)}`
+          : '—';
+        seRows.push([displayName(lab)||'—', role.label||'—', timeStr, se.toFixed(1)]);
+      }
+      for (const od of outside) {
+        const se = od.se_value ?? 0;
+        totalSE += se;
+        seRows.push([od.label||'Outside Duty', 'Outside Duty', '—', se.toFixed(1)]);
+      }
+      seRows.push(['Total SE', '', '', `${totalSE.toFixed(1)} / ${(ta.max_se??2).toFixed(1)}`]);
+      c.append(buildTable(['Lab','Role','Time','SE'], seRows, 1));
+    }
+
+    const outsideProctor = ta.outside_proctoring ?? [];
+    if (taProctor.length || outsideProctor.length) {
+      c.append(el('p','summary-proctor-label','Proctoring'));
+      let totalPE = 0;
+      const peRows = [];
+      for (const pa of taProctor) {
+        const exam  = examsMap[pa.exam_id] ?? {};
+        const pe    = exam.pe_value ?? 0;
+        totalPE += pe;
+        const elabel = displayName({name: exam.course_name||'', section: exam.section||''});
+        const eDisp  = exam.name && exam.name !== elabel
+          ? `${elabel} — ${exam.name}` : elabel || exam.name || 'Exam';
+        peRows.push([
+          eDisp,
+          exam.date || '—',
+          exam.date ? fmtRange(exam.start_min, exam.end_min) : '—',
+          pe.toFixed(1),
+        ]);
+      }
+      for (const op of outsideProctor) {
+        const pe = op.pe_value ?? 0;
+        totalPE += pe;
+        peRows.push([op.label || 'Outside Proctoring', '—', '—', pe.toFixed(1)]);
+      }
+      peRows.push(['Total PE', '', '', totalPE.toFixed(1)]);
+      c.append(buildTable(['Exam','Date','Time','PE'], peRows, 1));
+    }
+
+    if (!taAsgn.length && !outside.length && !taProctor.length && !outsideProctor.length) {
+      c.append(el('p','summary-none','No assignments'));
+    }
+  }
+}
+
 function renderMeetingFinder() {
   // ── Lab section filter ──────────────────────────────────────
   const labsWithAssignments = S.data.labs.filter(lab =>
@@ -3512,7 +3719,7 @@ function renderScheduleGrid(container) {
 
   for (const col of cols) {
     const th = document.createElement('th');
-    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--panel); z-index:1;';
+    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--gray-lt); z-index:1;';
     const div = document.createElement('div');
     div.className = 'col-header';
     div.title = `${displayName(col.lab)} (${col.role.label})`;
@@ -3614,7 +3821,7 @@ function renderProctorGrid(container) {
 
   for (const exam of exams) {
     const th = document.createElement('th');
-    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--panel); z-index:1;';
+    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--gray-lt); z-index:1;';
     const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
     const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
     const timeLabel = (!exam.tbd && exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';

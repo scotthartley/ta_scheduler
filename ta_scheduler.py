@@ -836,13 +836,19 @@ def generate_docx(data):
     tas_map = {t["id"]: t for t in data.get("tas", [])}
     labs_map = {l["id"]: l for l in data.get("labs", [])}
     assignments = data.get("assignments", [])
+    exams_map = {e["id"]: e for e in data.get("exams", [])}
+    proctor_assignments = data.get("proctor_assignments", [])
     day_long = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     day_short = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
+    def lab_disp(lab):
+        s = lab.get("section", "")
+        return f"{lab['name']} {s}".strip() if s else lab["name"]
+
     # Lab-centric
     doc.add_heading("Lab Assignments", 1)
-    for lab in data.get("labs", []):
-        doc.add_heading(lab["name"], 2)
+    for lab in sorted(data.get("labs", []), key=lambda l: (l.get("name", ""), l.get("section", ""))):
+        doc.add_heading(lab_disp(lab), 2)
         day = lab.get("day", 0)
         doc.add_paragraph(
             f"{day_long[day]}, {fmt_time(lab.get('start_min', 480))} – {fmt_time(lab.get('end_min', 540))}"
@@ -864,14 +870,18 @@ def generate_docx(data):
 
     # Exam proctoring
     exams = data.get("exams", [])
-    proctor_assignments = data.get("proctor_assignments", [])
     if exams and proctor_assignments:
         doc.add_heading("Exam Proctoring", 1)
-        for exam in exams:
+        sorted_exams = sorted(exams, key=lambda e: (e.get("course_name", ""), e.get("section", ""), e.get("date", "")))
+        for exam in sorted_exams:
             exam_asgn = [a for a in proctor_assignments if a["exam_id"] == exam["id"]]
             if not exam_asgn:
                 continue
-            doc.add_heading(exam.get("name", "Exam"), 2)
+            cname = exam.get("course_name", "")
+            sect = exam.get("section", "")
+            label = f"{cname} {sect}".strip() if cname else exam.get("name", "Exam")
+            sub = exam.get("name", "")
+            doc.add_heading(f"{label} — {sub}" if sub and label != sub else label or sub, 2)
             doc.add_paragraph(
                 f"{exam.get('date', '—')}, {fmt_time(exam.get('start_min', 0))} – "
                 f"{fmt_time(exam.get('end_min', 0))}"
@@ -891,6 +901,14 @@ def generate_docx(data):
         )
         ta_asgn = [a for a in assignments if a["ta_id"] == ta["id"]]
         outside = ta.get("outside_duties", [])
+        ta_proctor = sorted(
+            [a for a in proctor_assignments if a["ta_id"] == ta["id"]],
+            key=lambda a: (
+                exams_map.get(a["exam_id"], {}).get("course_name", ""),
+                exams_map.get(a["exam_id"], {}).get("section", ""),
+                exams_map.get(a["exam_id"], {}).get("date", ""),
+            ),
+        )
         if ta_asgn or outside:
             tbl = doc.add_table(rows=1, cols=4)
             tbl.style = "Table Grid"
@@ -909,7 +927,7 @@ def generate_docx(data):
                 se = role.get("se_value", 0)
                 total_se += se
                 row = tbl.add_row().cells
-                row[0].text = lab.get("name", "")
+                row[0].text = lab_disp(lab)
                 row[1].text = role.get("label", "")
                 if lab:
                     d = lab.get("day", 0)
@@ -928,7 +946,43 @@ def generate_docx(data):
             tot = tbl.add_row().cells
             tot[0].text = "Total SE"
             tot[3].text = f"{total_se:.1f} / {ta.get('max_se', 2.0):.1f}"
-        else:
+        outside_proctor = ta.get("outside_proctoring", [])
+        if ta_proctor or outside_proctor:
+            doc.add_paragraph("Proctoring")
+            ptbl = doc.add_table(rows=1, cols=4)
+            ptbl.style = "Table Grid"
+            phdr = ptbl.rows[0].cells
+            phdr[0].text, phdr[1].text, phdr[2].text, phdr[3].text = "Exam", "Date", "Time", "PE"
+            total_pe = 0.0
+            for pa in ta_proctor:
+                exam = exams_map.get(pa["exam_id"], {})
+                pe = exam.get("pe_value", 0)
+                total_pe += pe
+                cname = exam.get("course_name", "")
+                sect = exam.get("section", "")
+                label = f"{cname} {sect}".strip() if cname else exam.get("name", "Exam")
+                sub = exam.get("name", "")
+                exam_label = f"{label} — {sub}" if sub and label != sub else label or sub
+                prow = ptbl.add_row().cells
+                prow[0].text = exam_label
+                prow[1].text = exam.get("date", "—")
+                prow[2].text = (
+                    f"{fmt_time(exam.get('start_min', 0))}–{fmt_time(exam.get('end_min', 0))}"
+                    if exam.get("date") else "—"
+                )
+                prow[3].text = f"{pe:.1f}"
+            for op in outside_proctor:
+                pe = op.get("pe_value", 0)
+                total_pe += pe
+                orow = ptbl.add_row().cells
+                orow[0].text = op.get("label", "Outside Proctoring")
+                orow[1].text = "—"
+                orow[2].text = "—"
+                orow[3].text = f"{pe:.1f}"
+            ptot = ptbl.add_row().cells
+            ptot[0].text = "Total PE"
+            ptot[3].text = f"{total_pe:.1f}"
+        if not ta_asgn and not outside and not ta_proctor and not outside_proctor:
             doc.add_paragraph("No assignments")
         doc.add_paragraph()
 
