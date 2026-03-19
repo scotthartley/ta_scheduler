@@ -2697,6 +2697,17 @@ async function runProctorSolver() {
   btn.textContent = '▶ Assign Proctors'; btn.disabled = false;
 }
 
+function updateProctorPETotals() {
+  const peDiv = $id('proctor-pe-total');
+  if (!peDiv) return;
+  const exams = S.data.exams||[];
+  const totalRequiredPE = exams.reduce((s,e)=>s+(e.pe_value||0)*(e.proctor_count||1), 0);
+  const totalAvailablePE = S.data.tas.reduce((s,t)=>s+(t.max_pe??2.0), 0);
+  peDiv.style.cssText = 'margin:8px 0;font-size:13px;';
+  peDiv.innerHTML = `<strong>Total Required PE:</strong> ${totalRequiredPE.toFixed(1)}<br>` +
+    `<strong>PE Available from TAs:</strong> ${totalAvailablePE.toFixed(1)}`;
+}
+
 function renderProctoring(diag, status) {
   if (diag !== undefined) { S.proctorDiag = diag||{}; S.proctorStatus = status||null; }
   diag = S.proctorDiag; status = S.proctorStatus;
@@ -2719,21 +2730,22 @@ function renderProctoring(diag, status) {
   tbl.innerHTML = '';
   renderProctorExamView(tbl);
 
-  const peDiv = $id('proctor-pe-total');
-  const exams = S.data.exams||[];
-  const examsMap = Object.fromEntries(exams.map(e=>[e.id,e]));
-  const totalRequiredPE = exams.reduce((s,e)=>s+(e.pe_value||0)*(e.proctor_count||1), 0);
-  const totalAssignedPE = (S.data.proctor_assignments||[]).reduce((s,a)=>s+(examsMap[a.exam_id]?.pe_value||0), 0);
-  peDiv.style.cssText = 'margin:8px 0;font-size:13px;';
-  peDiv.innerHTML = `<strong>Total Required PE:</strong> ${totalRequiredPE.toFixed(1)}<br>` +
-    `<strong>Total PE from TAs:</strong> ${totalAssignedPE.toFixed(1)}`;
+  updateProctorPETotals();
 
   renderProctorTASummary($id('proctor-ta-summary'));
 }
 
 function renderProctorExamView(container) {
   const tasMap = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
-  const exams = S.data.exams||[];
+  const exams = [...(S.data.exams||[])].sort((a,b) => {
+    const aLabel = a.course_name ? (a.section ? `${a.course_name} ${a.section}` : a.course_name) : '—';
+    const bLabel = b.course_name ? (b.section ? `${b.course_name} ${b.section}` : b.course_name) : '—';
+    const cmp = aLabel.localeCompare(bLabel);
+    if (cmp !== 0) return cmp;
+    if (a.tbd && !b.tbd) return 1;
+    if (!a.tbd && b.tbd) return -1;
+    return (a.date||'').localeCompare(b.date||'') || (a.start_min||0)-(b.start_min||0);
+  });
   if (!exams.length) { container.appendChild(el('p','help-text','No exams defined')); return; }
 
   const table = el('table','sched-table');
@@ -2864,7 +2876,7 @@ function renderProctorTASummary(container) {
     peInp.type='number'; peInp.step='0.5'; peInp.min='0';
     peInp.value = Number(ta.max_pe??2.0).toFixed(1);
     peInp.style.cssText='width:60px;font-size:13px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;';
-    peInp.onchange = () => { ta.max_pe=parseFloat(peInp.value)||0; markDirty(); };
+    peInp.onchange = () => { ta.max_pe=parseFloat(peInp.value)||0; markDirty(); updateProctorPETotals(); };
     peTd.appendChild(peInp);
     tr.appendChild(peTd);
 
@@ -2887,7 +2899,8 @@ function renderProctorTASummary(container) {
     taProctorAssigns.forEach(a => {
       const exam = examsMap[a.exam_id];
       const chip = el('span','ta-row-lab');
-      chip.textContent = (exam?.name||a.exam_id) + (a.locked?' 🔒':'');
+      const courseLabel = exam ? (exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '') : '';
+      chip.textContent = (courseLabel ? `${courseLabel} — ` : '') + (exam?.name||a.exam_id) + (a.locked?' 🔒':'');
       examsCell.appendChild(chip);
     });
     tr.appendChild(examsCell);
