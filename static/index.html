@@ -1560,7 +1560,7 @@ function renderLabView(container) {
 
   const table = el('table','sched-table');
   const thead = el('thead'); const thr = el('tr');
-  ['Lab','Day/Time','Role','Count','SE','Assigned TAs'].forEach(h => {
+  ['Lab','Day/Time','Role','Count','Net SE','Assigned TAs'].forEach(h => {
     const th = el('th',null,h); thr.appendChild(th);
   });
   thead.appendChild(thr); table.appendChild(thead);
@@ -1598,7 +1598,7 @@ function renderLabView(container) {
       const roleTd = el('td'); roleTd.innerHTML = roleLabel;
       tr.appendChild(roleTd);
       tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
-      tr.appendChild(el('td',null,(role?.se_value||0).toFixed(1)));
+      tr.appendChild(el('td',null,((role?.se_value||0)*rr.count).toFixed(1)));
 
       const assignCell = el('td');
       const roleDiv = el('div','role-cell');
