@@ -2256,7 +2256,15 @@ async function importClassList() {
     }
     const examCourses = result.exam_courses || [];
     S._importGrad    = grad;
-    S._importGradChk = new Set(grad.map((_,i) => i));  // all checked by default
+    const _existingGrad = new Set(
+      S.data.grad_courses.map(c => `${c.name}|${c.section||''}`)
+    );
+    S._importGradChk = new Set(
+      grad.reduce((acc, c, i) => {
+        if (!_existingGrad.has(`${c.name}|${c.section||''}`)) acc.push(i);
+        return acc;
+      }, [])
+    );
     S._importCourses = undergrad;
     S._importChecked = new Set();                       // none checked by default
     S._importExamCourses = examCourses;
@@ -2364,24 +2372,92 @@ function importExamSelectAll(checked) {
 }
 
 function confirmImportAll() {
+  const conflicts = [];
+  // Check grad course conflicts
   (S._importGrad || []).forEach((c, i) => {
     if (!S._importGradChk.has(i)) return;
-    S.data.grad_courses.push({id: uid(), name: c.name, section: c.section || '', day: c.day,
-      start_min: c.start_min, end_min: c.end_min, meetings: c.meetings || [], exams: c.exams || []});
+    const key = `${c.name}|${c.section||''}`;
+    const existing = S.data.grad_courses.find(x => `${x.name}|${x.section||''}` === key);
+    if (existing) {
+      const dname = c.section ? `${c.name} ${c.section}` : c.name;
+      conflicts.push({ type: 'grad', key, label: `Grad: ${dname}`, idx: i, incoming: c, existingId: existing.id });
+    }
   });
+  // Check lab section conflicts
   (S._importCourses || []).forEach(course => {
-    const key = `${course.subject} ${course.number}`;
-    if (!S._importChecked.has(key)) return;
+    const courseKey = `${course.subject} ${course.number}`;
+    if (!S._importChecked.has(courseKey)) return;
     course.sections.forEach(sec => {
-      S.data.labs.push({id: uid(), name: sec.name, section: sec.section || '', day: sec.day,
-        start_min: sec.start_min, end_min: sec.end_min,
-        meetings: sec.meetings || [], exams: sec.exams || [], roles: []});
+      const key = `${sec.name}|${sec.section||''}`;
+      const existing = S.data.labs.find(x => `${x.name}|${x.section||''}` === key);
+      if (existing) {
+        conflicts.push({ type: 'lab', key, label: `Lab: ${sec.name}${sec.section ? ' ' + sec.section : ''}`, incoming: sec, existingId: existing.id });
+      }
     });
   });
-  // Import exams
+  // Check exam course conflicts
   S.data.exams = S.data.exams || [];
   (S._importExamCourses || []).forEach(course => {
     if (!S._importExamChecked.has(course.name)) return;
+    const hasExisting = S.data.exams.some(x => x.course_name === course.name);
+    if (hasExisting) {
+      conflicts.push({ type: 'exam', key: course.name, label: `Exams: ${course.name}`, incoming: course });
+    }
+  });
+
+  if (conflicts.length === 0) {
+    performImport(new Set());
+  } else {
+    S._importConflicts = conflicts;
+    showConflictDialog(conflicts);
+  }
+}
+
+function performImport(overwriteSet) {
+  (S._importGrad || []).forEach((c, i) => {
+    if (!S._importGradChk.has(i)) return;
+    const key = `${c.name}|${c.section||''}`;
+    const existingIdx = S.data.grad_courses.findIndex(x => `${x.name}|${x.section||''}` === key);
+    if (existingIdx >= 0) {
+      if (!overwriteSet.has(key)) return;
+      const ex = S.data.grad_courses[existingIdx];
+      ex.day = c.day; ex.start_min = c.start_min; ex.end_min = c.end_min;
+      ex.meetings = c.meetings || []; ex.exams = c.exams || [];
+      ex.date_start = c.date_start || ''; ex.date_end = c.date_end || '';
+    } else {
+      S.data.grad_courses.push({id: uid(), name: c.name, section: c.section || '', day: c.day,
+        start_min: c.start_min, end_min: c.end_min, meetings: c.meetings || [], exams: c.exams || [],
+        date_start: c.date_start || '', date_end: c.date_end || ''});
+    }
+  });
+  (S._importCourses || []).forEach(course => {
+    const courseKey = `${course.subject} ${course.number}`;
+    if (!S._importChecked.has(courseKey)) return;
+    course.sections.forEach(sec => {
+      const key = `${sec.name}|${sec.section||''}`;
+      const existingIdx = S.data.labs.findIndex(x => `${x.name}|${x.section||''}` === key);
+      if (existingIdx >= 0) {
+        if (!overwriteSet.has(key)) return;
+        const ex = S.data.labs[existingIdx];
+        ex.day = sec.day; ex.start_min = sec.start_min; ex.end_min = sec.end_min;
+        ex.meetings = sec.meetings || []; ex.exams = sec.exams || [];
+        ex.date_start = sec.date_start || ''; ex.date_end = sec.date_end || '';
+      } else {
+        S.data.labs.push({id: uid(), name: sec.name, section: sec.section || '', day: sec.day,
+          start_min: sec.start_min, end_min: sec.end_min,
+          meetings: sec.meetings || [], exams: sec.exams || [], roles: [],
+          date_start: sec.date_start || '', date_end: sec.date_end || ''});
+      }
+    });
+  });
+  S.data.exams = S.data.exams || [];
+  (S._importExamCourses || []).forEach(course => {
+    if (!S._importExamChecked.has(course.name)) return;
+    const hasExisting = S.data.exams.some(x => x.course_name === course.name);
+    if (hasExisting) {
+      if (!overwriteSet.has(course.name)) return;
+      S.data.exams = S.data.exams.filter(x => x.course_name !== course.name);
+    }
     course.exams.forEach(ex => {
       S.data.exams.push({
         id: uid(), name: 'Exam', course_name: course.name,
@@ -2393,7 +2469,44 @@ function confirmImportAll() {
   delete S._importGrad; delete S._importGradChk;
   delete S._importCourses; delete S._importChecked;
   delete S._importExamCourses; delete S._importExamChecked;
+  delete S._importConflicts; delete S._conflictOverwrite;
   markDirty(); closeModal(); renderLeftPanel();
+}
+
+function showConflictDialog(conflicts) {
+  closeModal();
+  S._conflictOverwrite = new Set(conflicts.map(c => c.key));
+  const rows = conflicts.map(c => `
+    <div style="padding:4px 0;border-bottom:1px solid #eee;">
+      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+        <input type="checkbox" data-conflict-key="${escHtml(c.key)}" checked>
+        ${escHtml(c.label)}
+      </label>
+    </div>`).join('');
+  showModal(`<div class="modal-box">
+    <h2>Import Conflicts (${conflicts.length} item${conflicts.length > 1 ? 's' : ''} already exist)</h2>
+    <p style="font-size:13px;color:var(--text2);margin:0 0 8px;">Checked items will be overwritten. Uncheck to keep existing data.</p>
+    <div style="max-height:260px;overflow-y:auto;font-size:13px;margin-bottom:8px;">${rows}</div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal()">Cancel</button>
+      <button class="btn-sm" onclick="performImport(new Set())">Skip All</button>
+      <button class="btn-sm" onclick="performImport(new Set((S._importConflicts||[]).map(c=>c.key)))">Overwrite All</button>
+      <button class="btn-sm btn-primary" onclick="conflictConfirm()">Confirm Import</button>
+    </div>
+  </div>`);
+  document.querySelectorAll('input[data-conflict-key]').forEach(cb => {
+    cb.onchange = () => toggleConflict(cb);
+  });
+}
+
+function toggleConflict(cb) {
+  const key = cb.dataset.conflictKey;
+  if (cb.checked) S._conflictOverwrite.add(key); else S._conflictOverwrite.delete(key);
+}
+
+
+function conflictConfirm() {
+  performImport(S._conflictOverwrite || new Set());
 }
 
 // ════════════════════════════════════════════════════════════════
