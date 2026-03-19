@@ -145,6 +145,16 @@ def _exam_date_to_iso(date_part, year):
     return f"{year}-{m.group(1)}-{m.group(2)}"
 
 
+def _parse_regular_date_range(date_str, year):
+    """'01/26-05/08' + 2026 → ('2026-01-26', '2026-05-08'), or (None, None)."""
+    parts = date_str.strip().split('-')
+    if len(parts) != 2:
+        return None, None
+    start = _exam_date_to_iso(parts[0].strip(), year)
+    end   = _exam_date_to_iso(parts[1].strip(), year)
+    return start, end
+
+
 def _extract_year_from_term(term_str):
     """Extract 4-digit year from term code like '202620'."""
     m = re.match(r'(\d{4})', str(term_str).strip())
@@ -258,6 +268,7 @@ def import_csv_route():
                 slots_dates = dates_raw.split("|") if dates_raw else []
 
                 regular, exams = [], []
+                date_start, date_end = None, None
                 for i, d in enumerate(slots_days):
                     t_str = slots_times[i].strip() if i < len(slots_times) else ""
                     dt_str = slots_dates[i].strip() if i < len(slots_dates) else ""
@@ -268,12 +279,17 @@ def import_csv_route():
                     if _is_regular(dt_str):
                         for day in days:
                             regular.append({"day": day, "start_min": s_min, "end_min": e_min})
+                        if date_start is None and term_year:
+                            date_start, date_end = _parse_regular_date_range(dt_str, term_year)
                     else:
                         # Exam: capture the actual date
                         date_part = _parse_exam_date(dt_str)
+                        date_iso = _exam_date_to_iso(date_part, term_year) if date_part and term_year else None
                         for day in days:
                             exam_entry = {"day": day, "start_min": s_min, "end_min": e_min}
-                            if date_part:
+                            if date_iso:
+                                exam_entry["date"] = date_iso
+                            elif date_part:
                                 exam_entry["date_raw"] = date_part
                             exams.append(exam_entry)
 
@@ -283,11 +299,12 @@ def import_csv_route():
                 # Collect exam info for exam_courses (dedup by date+time)
                 if level == "Undergraduate":
                     for ex in exams:
-                        if ex.get("date_raw") and term_year:
-                            iso = _exam_date_to_iso(ex["date_raw"], term_year)
-                            if iso:
-                                exam_courses.setdefault(course_name, set()).add(
-                                    (iso, ex["start_min"], ex["end_min"]))
+                        iso = ex.get("date") or (
+                            _exam_date_to_iso(ex["date_raw"], term_year)
+                            if ex.get("date_raw") and term_year else None)
+                        if iso:
+                            exam_courses.setdefault(course_name, set()).add(
+                                (iso, ex["start_min"], ex["end_min"]))
 
                 if level == "Graduate":
                     if regular:
@@ -299,6 +316,8 @@ def import_csv_route():
                             "end_min": regular[0]["end_min"],
                             "meetings": regular,
                             "exams": exams,
+                            "date_start": date_start,
+                            "date_end":   date_end,
                         })
                 elif level == "Undergraduate":
                     key = course_name
@@ -314,6 +333,8 @@ def import_csv_route():
                             "end_min": regular[0]["end_min"],
                             "meetings": regular,
                             "exams": exams,
+                            "date_start": date_start,
+                            "date_end":   date_end,
                         })
 
         # Build exam_courses response: list of {name, exams: [{date, start_min, end_min}]}

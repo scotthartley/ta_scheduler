@@ -903,6 +903,43 @@ function renderCourseForm(item, form) {
   if (!meetings.length) mtgDiv.appendChild(el('span','help-text','No times set'));
   form.appendChild(mtgDiv);
 
+  // Date range for regular meetings
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Meeting Date Range</label>'));
+  const drRow = el('div','form-row');
+  const dsG = el('div','form-group'); dsG.style.flex='1';
+  const dsL = el('label'); dsL.textContent='Start';
+  const dsInp = document.createElement('input'); dsInp.type='date'; dsInp.style.width='100%';
+  dsInp.value = item.date_start||'';
+  dsInp.oninput = () => { item.date_start = dsInp.value||null; markDirty(); };
+  dsL.appendChild(dsInp); dsG.appendChild(dsL); drRow.appendChild(dsG);
+  const deG = el('div','form-group'); deG.style.flex='1';
+  const deL = el('label'); deL.textContent='End';
+  const deInp = document.createElement('input'); deInp.type='date'; deInp.style.width='100%';
+  deInp.value = item.date_end||'';
+  deInp.oninput = () => { item.date_end = deInp.value||null; markDirty(); };
+  deL.appendChild(deInp); deG.appendChild(deL); drRow.appendChild(deG);
+  form.appendChild(drRow);
+
+  // Exam list
+  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Exams</label>'));
+  const exDiv = el('div','sublist');
+  const exams = item.exams||[];
+  exams.forEach((ex, i) => {
+    const r = el('div','sublist-item');
+    const dateStr = ex.date ? ex.date : (ex.date_raw ? ex.date_raw : '(TBD)');
+    const label = ex.date
+      ? `${ex.date}  ${fmtRange(ex.start_min, ex.end_min)}`
+      : `${dateStr}  ${fmtRange(ex.start_min, ex.end_min)}`;
+    const info = el('span','sl-label', label);
+    info.style.flex = '1';
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { item.exams.splice(i, 1); markDirty(); renderItemForm(); };
+    r.append(info, rm);
+    exDiv.appendChild(r);
+  });
+  if (!exams.length) exDiv.appendChild(el('span','help-text','No exams'));
+  form.appendChild(exDiv);
+
   form.appendChild(formActions(deleteCurrentItem));
 }
 
@@ -2955,7 +2992,17 @@ function openProctorAssignModal(exam) {
         const gcMtgs = gc.meetings?.length ? gc.meetings : (gc.day!==undefined?[{day:gc.day,start_min:gc.start_min,end_min:gc.end_min}]:[]);
         for (const m of gcMtgs) {
           if (m.day===examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
-            reasons.push(`conflicts with ${gc.name}`);
+            const inRange = !gc.date_start || !gc.date_end ||
+              (exam.date >= gc.date_start && exam.date <= gc.date_end);
+            if (inRange) reasons.push(`conflicts with ${gc.name}`);
+          }
+        }
+        // Check grad course exam conflicts
+        if (hasDates) {
+          for (const gcEx of (gc.exams||[])) {
+            if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
+              reasons.push(`conflicts with ${gc.name} exam`);
+            }
           }
         }
       }
@@ -2966,7 +3013,9 @@ function openProctorAssignModal(exam) {
         const mtgs = lab.meetings?.length ? lab.meetings : (lab.day!==undefined?[{day:lab.day,start_min:lab.start_min,end_min:lab.end_min}]:[]);
         for (const m of mtgs) {
           if (m.day===examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
-            reasons.push(`conflicts with lab ${lab.name}`);
+            const inRange = !lab.date_start || !lab.date_end ||
+              (exam.date >= lab.date_start && exam.date <= lab.date_end);
+            if (inRange) reasons.push(`conflicts with lab ${lab.name}`);
           }
         }
       });
