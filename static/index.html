@@ -471,6 +471,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     </div>
     <div id="proctor-diagnostics" style="display:none;"></div>
     <div class="sched-table-wrap"><div id="proctor-table"></div></div>
+    <div id="outside-proctoring-section"></div>
     <div id="proctor-pe-total"></div>
     <div id="proctor-ta-summary"></div>
   </div>
@@ -759,7 +760,7 @@ function createNewItem() {
     S.data.grad_courses.push(item);
   } else if (S.tab === 'tas') {
     item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0, max_pe:2.0,
-            grad_course_ids:[], outside_duties:[], other_commitments:[]};
+            grad_course_ids:[], outside_duties:[], outside_proctoring:[], other_commitments:[]};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
     item = {id:uid(), name:'New Lab', section:'', day:0, start_min:540, end_min:660,
@@ -1907,6 +1908,95 @@ function confirmAddDuty() {
   renderOutsideDuties();
 }
 
+// ── Outside Proctoring table ──
+function renderOutsideProctoring() {
+  const sec = $id('outside-proctoring-section');
+  if (!sec) return;
+  sec.innerHTML = '';
+
+  const hdr = el('div','od-section-hdr');
+  hdr.appendChild(el('h4',null,'Outside Proctoring'));
+  const addBtn = el('button','btn-sm','+ Add Outside Proctoring');
+  addBtn.title = "Add a proctoring duty that counts toward a TA's PE but is not associated with a specific exam";
+  addBtn.onclick = openAddOutsideProctorModal;
+  hdr.appendChild(addBtn);
+  sec.appendChild(hdr);
+  sec.appendChild(el('p','help-text','Proctoring duties that count toward a TA\'s PE but are not associated with a specific exam'));
+
+  const rows = [];
+  S.data.tas.forEach(ta => (ta.outside_proctoring||[]).forEach((op,i) => rows.push({ta,op,i})));
+
+  if (!rows.length) return;
+
+  const table = el('table','sched-table');
+  const thead = el('thead'); const thr = el('tr');
+  ['TA','Duty','PE',''].forEach(h => thr.appendChild(el('th',null,h)));
+  thead.appendChild(thr); table.appendChild(thead);
+
+  const tbody = el('tbody');
+  rows.forEach(({ta, op, i}) => {
+    const tr = el('tr');
+    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+
+    const nameTd = el('td');
+    const nameInp = document.createElement('input'); nameInp.type='text';
+    nameInp.value = op.label||''; nameInp.style.cssText='font-size:13px;width:100%;';
+    nameInp.oninput = () => { op.label=nameInp.value; markDirty(); };
+    nameTd.appendChild(nameInp); tr.appendChild(nameTd);
+
+    const peTd = el('td');
+    const peInp = document.createElement('input'); peInp.type='number';
+    peInp.step='0.5'; peInp.min='0'; peInp.value=op.pe_value||0;
+    peInp.style.cssText='width:60px;font-size:13px;';
+    peInp.oninput = () => { op.pe_value=parseFloat(peInp.value)||0; markDirty(); updateProctorPETotals(); };
+    peTd.appendChild(peInp); tr.appendChild(peTd);
+
+    const rmTd = el('td');
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { ta.outside_proctoring.splice(i,1); markDirty(); renderOutsideProctoring(); updateProctorPETotals(); renderProctorTASummary($id('proctor-ta-summary')); };
+    rmTd.appendChild(rm); tr.appendChild(rmTd);
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  sec.appendChild(table);
+}
+
+function openAddOutsideProctorModal() {
+  if (!S.data.tas.length) { alert('No TAs defined.'); return; }
+  const html = `
+    <div class="modal-box">
+      <h2>Add Outside Proctoring</h2>
+      <div class="form-group"><label>TA<br><select id="op-ta-sel" style="width:100%;margin-top:4px;"></select></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="op-label" type="text" placeholder="e.g. Makeup exam" style="width:100%;margin-top:4px;"></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>PE value<br><input id="op-pe" type="number" step="0.5" min="0" value="1.0" style="width:80px;margin-top:4px;"></label></div>
+      <div class="modal-footer">
+        <button class="btn-sm" onclick="closeModal()">Cancel</button>
+        <button class="btn-sm btn-primary" onclick="confirmAddOutsideProctor()">Add</button>
+      </div>
+    </div>`;
+  showModal(html);
+  const sel = $id('op-ta-sel');
+  S.data.tas.forEach(ta => {
+    const o = document.createElement('option'); o.value=ta.id; o.textContent=ta.name;
+    sel.appendChild(o);
+  });
+}
+
+function confirmAddOutsideProctor() {
+  const ta = S.data.tas.find(t => t.id === $id('op-ta-sel').value);
+  if (!ta) return;
+  const label = $id('op-label').value.trim() || 'Proctoring';
+  const pe_value = parseFloat($id('op-pe').value) || 0;
+  ta.outside_proctoring = ta.outside_proctoring || [];
+  ta.outside_proctoring.push({label, pe_value});
+  markDirty();
+  closeModal();
+  renderOutsideProctoring();
+  updateProctorPETotals();
+  renderProctorTASummary($id('proctor-ta-summary'));
+}
+
 // ── Assignment modal ──
 function openAssignModal(lab, rr, rolesMap, tasMap) {
   const role = rolesMap[rr.role_id];
@@ -2851,10 +2941,18 @@ function updateProctorPETotals() {
   const peDiv = $id('proctor-pe-total');
   if (!peDiv) return;
   const exams = S.data.exams||[];
-  const totalRequiredPE = exams.reduce((s,e)=>s+(e.pe_value||0)*(e.proctor_count||1), 0);
+  const examPE = exams.reduce((s,e)=>s+(e.pe_value||0)*(e.proctor_count||1), 0);
+  const outsidePE = S.data.tas.reduce((s,ta)=>
+    s + (ta.outside_proctoring||[]).reduce((ss,op)=>ss+(op.pe_value||0), 0), 0);
+  const totalRequiredPE = examPE + outsidePE;
   const totalAvailablePE = S.data.tas.reduce((s,t)=>s+(t.max_pe??2.0), 0);
+
+  let totalLine = `<strong>Total Required PE:</strong> ${totalRequiredPE.toFixed(1)}`;
+  if (outsidePE > 0) {
+    totalLine += ` (${examPE.toFixed(1)} from exams, ${outsidePE.toFixed(1)} from outside proctoring)`;
+  }
   peDiv.style.cssText = 'margin:8px 0;font-size:13px;';
-  peDiv.innerHTML = `<strong>Total Required PE:</strong> ${totalRequiredPE.toFixed(1)}<br>` +
+  peDiv.innerHTML = totalLine + '<br>' +
     `<strong>PE Available from TAs:</strong> ${totalAvailablePE.toFixed(1)}`;
 }
 
@@ -2881,6 +2979,7 @@ function renderProctoring(diag, status) {
   renderProctorExamView(tbl);
 
   updateProctorPETotals();
+  renderOutsideProctoring();
 
   renderProctorTASummary($id('proctor-ta-summary'));
 }
@@ -3015,7 +3114,7 @@ function renderProctorTASummary(container) {
     const usedPE = taProctorAssigns.reduce((sum,a) => {
       const exam = examsMap[a.exam_id];
       return sum + (exam?.pe_value||0);
-    }, 0);
+    }, 0) + (ta.outside_proctoring||[]).reduce((s,op)=>s+(op.pe_value||0), 0);
 
     const tr = el('tr');
     tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));

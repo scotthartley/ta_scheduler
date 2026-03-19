@@ -674,7 +674,8 @@ def solve_proctoring(data):
         ta_proctored_times = {}  # ta_id → [(date, start, end)]
 
         for ta in tas:
-            ta_used_pe[ta["id"]] = 0.0
+            outside_pe = sum(op.get("pe_value", 0) for op in ta.get("outside_proctoring", []))
+            ta_used_pe[ta["id"]] = outside_pe
             ta_assigned_exams[ta["id"]] = set()
             ta_proctored_times[ta["id"]] = []
 
