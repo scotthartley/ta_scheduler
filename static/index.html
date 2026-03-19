@@ -195,11 +195,11 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 #diagnostics ul { padding-left: 20px; font-size: 16px; }
 #diagnostics li { margin-bottom: 4px; }
 
-.sched-table-wrap { overflow-x: auto; flex-shrink: 0; }
-.sched-table { border-collapse: collapse; min-width: 600px; width: 100%; }
-.sched-table th, .sched-table td { border: 1px solid var(--border); padding: 8px 12px;
-                                     font-size: 13px; text-align: left; }
-.sched-table th { background: var(--gray-lt); font-weight: 600; }
+.sched-table-wrap { overflow-x: auto; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.sched-table { border-collapse: separate; border-spacing: 0; min-width: 600px; width: 100%; }
+.sched-table th, .sched-table td { border-bottom: 1px solid #e5e7eb; padding: 8px 12px;
+                                     font-size: 14px; text-align: left; }
+.sched-table th { background: var(--gray-lt); font-weight: 600; color: var(--text2); text-align: center; }
 .sched-table .lab-header { background: #eff6ff; font-weight: 700; }
 .sched-table .ta-header  { background: #f0fdf4; font-weight: 700; }
 .role-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -214,9 +214,9 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .add-ta-btn { background: none; border: 1px dashed #93c5fd; border-radius: 3px;
                padding: 3px 8px; font-size: 15px; cursor: pointer; color: var(--blue); }
 .add-ta-btn:hover { background: var(--blue-lt); }
-.ta-row-lab { display: inline-flex; align-items: center; gap: 5px; background: #eff6ff;
-               border: 1px solid #93c5fd; border-radius: 3px; padding: 3px 8px;
-               font-size: 15px; color: #1e40af; margin: 2px; }
+.ta-row-lab { display: inline-flex; align-items: center; gap: 5px; background: #f2f2f2;
+               border: 1px solid #d1d5db; border-radius: 3px; padding: 3px 8px;
+               font-size: 14px; color: var(--text2); margin: 2px; }
 
 /* ── drag-and-drop chip reassignment ── */
 .ta-chip[draggable="true"]  { cursor: grab; }
@@ -516,6 +516,7 @@ const S = {
 };
 
 let _dragAssignment = null; // {assignment, sourceLabId?, sourceRoleId?, sourceTaId?}
+let _dragProctorAssignment = null; // {assignment, sourceExamId}
 
 // ════════════════════════════════════════════════════════════════
 // UTILS
@@ -1818,7 +1819,7 @@ function renderTASummary(container) {
   });
 
   table.appendChild(tbody);
-  container.appendChild(table);
+  const wrap = el('div','sched-table-wrap'); wrap.appendChild(table); container.appendChild(wrap);
 }
 
 // ── Outside Duties table ──
@@ -1872,7 +1873,7 @@ function renderOutsideDuties() {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  sec.appendChild(table);
+  const wrapOD = el('div','sched-table-wrap'); wrapOD.appendChild(table); sec.appendChild(wrapOD);
 }
 
 function openAddDutyModal() {
@@ -1959,7 +1960,7 @@ function renderOutsideProctoring() {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  sec.appendChild(table);
+  const wrapOP = el('div','sched-table-wrap'); wrapOP.appendChild(table); sec.appendChild(wrapOP);
 }
 
 function openAddOutsideProctorModal() {
@@ -3009,7 +3010,7 @@ function renderProctorExamView(container) {
       ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name)
       : '—';
     tr.appendChild(el('td',null,escHtml(courseLabel)));
-    tr.appendChild(el('td',null,`<strong>${escHtml(exam.name)}</strong>`));
+    tr.appendChild(el('td',null,escHtml(exam.name)));
     tr.appendChild(el('td',null, exam.tbd ? 'TBD' : `${exam.date||'—'} ${fmtRange(exam.start_min||0, exam.end_min||0)}`));
 
     const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id);
@@ -3017,11 +3018,19 @@ function renderProctorExamView(container) {
     tr.appendChild(el('td',null,(exam.pe_value||0).toFixed(1)));
 
     const assignCell = el('td');
-    const roleDiv = el('div','role-cell');
+    const roleDiv = el('div','role-cell role-chips-area');
+    roleDiv.dataset.examId = exam.id;
     assigns.forEach(a => {
       const ta = tasMap[a.ta_id];
       const chip = el('div',`ta-chip${a.locked?' locked':''}`);
       chip.innerHTML = escHtml(ta?.name||a.ta_id);
+      chip.draggable = true;
+      chip.addEventListener('dragstart', e => {
+        _dragProctorAssignment = {assignment: a, sourceExamId: exam.id};
+        chip.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
       const lockBtn = el('span','lock-btn', a.locked?'🔒':'🔓');
       lockBtn.title = a.locked?'Unlock':'Lock';
       lockBtn.onclick = () => { a.locked=!a.locked; markDirty(); renderProctoring(); };
@@ -3033,6 +3042,27 @@ function renderProctorExamView(container) {
       };
       chip.append(lockBtn, rmBtn);
       roleDiv.appendChild(chip);
+    });
+    roleDiv.addEventListener('dragover', e => {
+      if (!_dragProctorAssignment) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      roleDiv.classList.add('drag-over');
+    });
+    roleDiv.addEventListener('dragleave', () => roleDiv.classList.remove('drag-over'));
+    roleDiv.addEventListener('drop', e => {
+      e.preventDefault();
+      roleDiv.classList.remove('drag-over');
+      if (!_dragProctorAssignment) return;
+      const {assignment, sourceExamId} = _dragProctorAssignment;
+      _dragProctorAssignment = null;
+      const destExamId = roleDiv.dataset.examId;
+      if (destExamId === sourceExamId) return;
+      // check TA not already assigned to dest exam
+      const alreadyThere = (S.data.proctor_assignments||[]).some(x => x.exam_id===destExamId && x.ta_id===assignment.ta_id);
+      if (alreadyThere) return;
+      assignment.exam_id = destExamId;
+      markDirty(); renderProctoring();
     });
     const addBtn = el('button','add-ta-btn','+ TA');
     addBtn.onclick = () => openProctorAssignModal(exam);
@@ -3157,7 +3187,7 @@ function renderProctorTASummary(container) {
   });
 
   table.appendChild(tbody);
-  container.appendChild(table);
+  const wrapPS = el('div','sched-table-wrap'); wrapPS.appendChild(table); container.appendChild(wrapPS);
 }
 
 function openProctorAssignModal(exam) {
