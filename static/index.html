@@ -198,7 +198,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .sched-table-wrap { overflow-x: auto; flex-shrink: 0; }
 .sched-table { border-collapse: collapse; min-width: 600px; width: 100%; }
 .sched-table th, .sched-table td { border: 1px solid var(--border); padding: 8px 12px;
-                                     font-size: 16px; text-align: left; }
+                                     font-size: 13px; text-align: left; }
 .sched-table th { background: var(--gray-lt); font-weight: 600; }
 .sched-table .lab-header { background: #eff6ff; font-weight: 700; }
 .sched-table .ta-header  { background: #f0fdf4; font-weight: 700; }
@@ -471,6 +471,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     </div>
     <div id="proctor-diagnostics" style="display:none;"></div>
     <div class="sched-table-wrap"><div id="proctor-table"></div></div>
+    <div id="proctor-pe-total"></div>
     <div id="proctor-ta-summary"></div>
   </div>
 
@@ -1559,7 +1560,7 @@ function renderLabView(container) {
 
   const table = el('table','sched-table');
   const thead = el('thead'); const thr = el('tr');
-  ['Lab','Day/Time','Role','Count','Assigned TAs'].forEach(h => {
+  ['Lab','Day/Time','Role','Count','SE','Assigned TAs'].forEach(h => {
     const th = el('th',null,h); thr.appendChild(th);
   });
   thead.appendChild(thr); table.appendChild(thead);
@@ -1573,7 +1574,7 @@ function renderLabView(container) {
 
     if (!activeRoles.length) {
       const hrow = el('tr','lab-header');
-      const hcell = el('td'); hcell.colSpan=5;
+      const hcell = el('td'); hcell.colSpan=6;
       hcell.innerHTML = `<strong>${escHtml(displayName(lab))}</strong>`;
       hrow.appendChild(hcell); tbody.appendChild(hrow);
       return;
@@ -1597,6 +1598,7 @@ function renderLabView(container) {
       const roleTd = el('td'); roleTd.innerHTML = roleLabel;
       tr.appendChild(roleTd);
       tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
+      tr.appendChild(el('td',null,(role?.se_value||0).toFixed(1)));
 
       const assignCell = el('td');
       const roleDiv = el('div','role-cell');
@@ -2697,7 +2699,8 @@ function renderProctoring(diag, status) {
   const unfilled = diag.unfilled_proctors||[];
   if (status === 'partial' && unfilled.length) {
     let html = '<h4 style="color:#92400e;">⚠ Partial Proctoring Schedule</h4>';
-    html += '<p><strong>Slots not fully filled:</strong></p><ul>' +
+    html += '<p><strong>Slots not fully filled:</strong></p>' +
+      '<ul style="margin:4px 0 0 0;padding-left:1.5em;">' +
       unfilled.map(u => `<li><strong>${escHtml(u.exam_name)}</strong>: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
     diagDiv.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;';
     diagDiv.innerHTML = html;
@@ -2709,6 +2712,16 @@ function renderProctoring(diag, status) {
   const tbl = $id('proctor-table');
   tbl.innerHTML = '';
   renderProctorExamView(tbl);
+
+  const peDiv = $id('proctor-pe-total');
+  const exams = S.data.exams||[];
+  const examsMap = Object.fromEntries(exams.map(e=>[e.id,e]));
+  const totalRequiredPE = exams.reduce((s,e)=>s+(e.pe_value||0)*(e.proctor_count||1), 0);
+  const totalAssignedPE = (S.data.proctor_assignments||[]).reduce((s,a)=>s+(examsMap[a.exam_id]?.pe_value||0), 0);
+  peDiv.style.cssText = 'margin:8px 0;font-size:13px;';
+  peDiv.innerHTML = `<strong>Total Required PE:</strong> ${totalRequiredPE.toFixed(1)}<br>` +
+    `<strong>Total PE from TAs:</strong> ${totalAssignedPE.toFixed(1)}`;
+
   renderProctorTASummary($id('proctor-ta-summary'));
 }
 
@@ -2719,7 +2732,7 @@ function renderProctorExamView(container) {
 
   const table = el('table','sched-table');
   const thead = el('thead'); const thr = el('tr');
-  ['Course/Section','Exam','Date/Time','Count','Assigned Proctors'].forEach(h => thr.appendChild(el('th',null,h)));
+  ['Course/Section','Exam','Date/Time','Count','PE','Assigned Proctors'].forEach(h => thr.appendChild(el('th',null,h)));
   thead.appendChild(thr); table.appendChild(thead);
   const tbody = el('tbody');
 
@@ -2734,6 +2747,7 @@ function renderProctorExamView(container) {
 
     const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id);
     tr.appendChild(el('td',null,`${assigns.length}/${exam.proctor_count||1}`));
+    tr.appendChild(el('td',null,(exam.pe_value||0).toFixed(1)));
 
     const assignCell = el('td');
     const roleDiv = el('div','role-cell');
