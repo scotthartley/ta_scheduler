@@ -304,7 +304,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   display: none;
   padding: 24px 32px;
   overflow-y: auto;
-  max-width: 900px;
+  flex: 1;
   background: var(--panel);
 }
 #summary-workspace.active { display: block; }
@@ -321,7 +321,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .summary-table th { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
 .summary-table td { background: var(--panel); }
 .summary-table tbody tr:last-child td { border-bottom: none; }
-.summary-total td { font-weight: 600; background: var(--gray-lt); }
+.summary-total td { font-weight: 600; background: var(--gray-lt); color: var(--text2); }
 .btn-run-proctor { padding: 8px 17px; border-radius: 5px; border: 1px solid var(--border);
                    background: var(--panel); cursor: pointer; font-size: 16px; }
 .btn-run-proctor:hover { background: var(--gray-lt); }
