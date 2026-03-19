@@ -1737,7 +1737,13 @@ function renderTASummary(container) {
   thead.appendChild(thr); table.appendChild(thead);
   const tbody = el('tbody');
 
-  S.data.tas.forEach(ta => {
+  const sortedTAs = [...S.data.tas].sort((a,b) => {
+    const aCount = S.data.assignments.filter(x=>x.ta_id===a.id).length;
+    const bCount = S.data.assignments.filter(x=>x.ta_id===b.id).length;
+    return bCount - aCount || a.name.localeCompare(b.name);
+  });
+
+  sortedTAs.forEach(ta => {
     const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
     const usedSE = taAssigns.reduce((sum,a) => {
       const role = S.data.roles.find(r=>r.id===a.role_id);
@@ -2836,7 +2842,13 @@ function renderProctorTASummary(container) {
   thead.appendChild(thr); table.appendChild(thead);
   const tbody = el('tbody');
 
-  S.data.tas.forEach(ta => {
+  const sortedTAs = [...S.data.tas].sort((a,b) => {
+    const aCount = (S.data.assignments||[]).filter(x=>x.ta_id===a.id).length;
+    const bCount = (S.data.assignments||[]).filter(x=>x.ta_id===b.id).length;
+    return bCount - aCount || a.name.localeCompare(b.name);
+  });
+
+  sortedTAs.forEach(ta => {
     const taProctorAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
     const usedPE = taProctorAssigns.reduce((sum,a) => {
       const exam = examsMap[a.exam_id];
