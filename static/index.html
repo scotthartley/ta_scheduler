@@ -196,6 +196,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 #diagnostics li { margin-bottom: 4px; }
 
 .sched-table-wrap { overflow-x: auto; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.sched-table-wrap.grid-mode { border: none; border-radius: 0; overflow: visible; display: flex; justify-content: center; }
 .sched-table { border-collapse: separate; border-spacing: 0; min-width: 600px; width: 100%; }
 .sched-table th, .sched-table td { border-bottom: 1px solid #e5e7eb; padding: 8px 12px;
                                      font-size: 14px; text-align: left; }
@@ -304,6 +305,27 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 /* ── TA summary tables ────────────────────────────────────────── */
 #sched-ta-summary, #proctor-ta-summary { margin-top: 20px; }
 
+/* ── assignment grid view ────────────────────────────────────── */
+.assign-grid-wrap { display: inline-block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.assign-grid { border-collapse: collapse; font-size: 12px; width: auto; }
+.assign-grid th.ta-name-col { text-align: left; padding: 4px 8px; white-space: nowrap; min-width: 120px;
+                               font-weight: 600; border-right: 2px solid var(--border);
+                               position: sticky; left: 0; top: 0; background: var(--panel); z-index: 3; }
+.assign-grid td.ta-name-col { text-align: left; padding: 4px 8px; white-space: nowrap; font-weight: 400;
+                               border-right: 2px solid var(--border);
+                               position: sticky; left: 0; background: var(--panel); z-index: 1; }
+.assign-grid td.assign-cell { width: 36px; min-width: 36px; height: 36px; text-align: center;
+                               vertical-align: middle; border: 1px solid var(--border);
+                               cursor: pointer; position: relative; }
+.assign-cell.cell-conflict { background: #f3f3f3; }
+.assign-cell.cell-assigned { background: #E5F1FF; color: #003D80; }
+.assign-cell.cell-locked   { background: #E3F9EB; color: #1A6B36; }
+.assign-cell .cell-rm { position: absolute; top: 0; right: 1px; font-size: 13px;
+                         color: var(--red); line-height: 1; cursor: pointer; z-index: 1; }
+.assign-cell:hover { opacity: 0.8; }
+.assign-grid .col-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
+                            font-size: 11px; max-height: 160px; overflow: hidden; }
+
 /* ── print ───────────────────────────────────────────────────── */
 @media print {
   header, nav.tabs, .left-panel, .sched-controls, #diagnostics { display: none !important; }
@@ -389,6 +411,10 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     <div class="sched-controls">
       <button class="btn-run" onclick="runSolver()" title="Auto-assign TAs to unfilled slots (locked assignments are preserved)">▶ Assign TAs</button>
       <button onclick="clearAssignments()" title="Remove all solver-assigned (unlocked) assignments">Clear Unlocked</button>
+      <div class="view-toggle" style="margin-left:8px;">
+        <button id="sched-table-btn" class="active" onclick="setSchedView('table')">☰ Table</button>
+        <button id="sched-grid-btn" onclick="setSchedView('grid')">⊞ Grid</button>
+      </div>
       <div style="flex:1;"></div>
     </div>
     <div id="diagnostics" style="display:none;"></div>
@@ -467,6 +493,10 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     <div class="sched-controls">
       <button class="btn-run-proctor" onclick="runProctorSolver()">▶ Assign Proctors</button>
       <button onclick="clearProctorAssignments()">Clear Unlocked</button>
+      <div class="view-toggle" style="margin-left:8px;">
+        <button id="proctor-table-btn" class="active" onclick="setProctorView('table')">☰ Table</button>
+        <button id="proctor-grid-btn" onclick="setProctorView('grid')">⊞ Grid</button>
+      </div>
       <div style="flex:1;"></div>
     </div>
     <div id="proctor-diagnostics" style="display:none;"></div>
@@ -513,6 +543,8 @@ const S = {
   examCalYear: new Date().getFullYear(),
   examCalMonth: new Date().getMonth(),
   examSelId: null,
+  schedViewMode: 'table',    // 'table' | 'grid'
+  proctorViewMode: 'table',  // 'table' | 'grid'
 };
 
 let _dragAssignment = null; // {assignment, sourceLabId?, sourceRoleId?, sourceTaId?}
@@ -1583,7 +1615,8 @@ function renderSchedule(diag, status) {
 
   const tbl = $id('sched-table');
   tbl.innerHTML = '';
-  renderLabView(tbl);
+  if (S.schedViewMode === 'grid') renderScheduleGrid(tbl);
+  else renderLabView(tbl);
   renderOutsideDuties();
   renderTASummary($id('sched-ta-summary'));
 }
@@ -2977,7 +3010,8 @@ function renderProctoring(diag, status) {
 
   const tbl = $id('proctor-table');
   tbl.innerHTML = '';
-  renderProctorExamView(tbl);
+  if (S.proctorViewMode === 'grid') renderProctorGrid(tbl);
+  else renderProctorExamView(tbl);
 
   updateProctorPETotals();
   renderOutsideProctoring();
@@ -3322,6 +3356,356 @@ function openProctorAssignModal(exam) {
     listDiv.appendChild(divider);
     conflicted.forEach(({ta,reasons}) => listDiv.appendChild(makeRow(ta,false,reasons)));
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// VIEW-MODE SETTERS
+// ════════════════════════════════════════════════════════════════
+function setSchedView(mode) {
+  S.schedViewMode = mode;
+  const tb = $id('sched-table-btn'), gb = $id('sched-grid-btn');
+  if (tb) tb.classList.toggle('active', mode === 'table');
+  if (gb) gb.classList.toggle('active', mode === 'grid');
+  const wrap = $id('sched-table') && $id('sched-table').parentElement;
+  if (wrap) wrap.classList.toggle('grid-mode', mode === 'grid');
+  renderSchedule();
+}
+function setProctorView(mode) {
+  S.proctorViewMode = mode;
+  const tb = $id('proctor-table-btn'), gb = $id('proctor-grid-btn');
+  if (tb) tb.classList.toggle('active', mode === 'table');
+  if (gb) gb.classList.toggle('active', mode === 'grid');
+  const wrap = $id('proctor-table') && $id('proctor-table').parentElement;
+  if (wrap) wrap.classList.toggle('grid-mode', mode === 'grid');
+  renderProctoring();
+}
+
+// ════════════════════════════════════════════════════════════════
+// CONFLICT-DETECTION HELPERS
+// ════════════════════════════════════════════════════════════════
+function taLabConflictReasons(ta, lab) {
+  const reasons = [];
+  const labMeetings = lab.meetings
+    ? lab.meetings.map(m => [m.day, m.start_min, m.end_min])
+    : (lab.day !== null && lab.start_min ? [[lab.day, lab.start_min, lab.end_min]] : []);
+
+  // SE cap check
+  const usedSE = S.data.assignments
+    .filter(a => a.ta_id === ta.id)
+    .reduce((sum, a) => {
+      const r = S.data.roles.find(r2 => r2.id === a.role_id);
+      return sum + (r?.se_value || 0);
+    }, (ta.outside_duties || []).reduce((s, d) => s + d.se_value, 0));
+  // (no role/SE value here since we don't know the role — caller may want to check separately)
+
+  // Grad course conflicts
+  for (const gcId of (ta.grad_course_ids || [])) {
+    const gc = S.data.grad_courses.find(c => c.id === gcId);
+    if (!gc) continue;
+    const gcMeetings = gc.meetings
+      ? gc.meetings.map(m => [m.day, m.start_min, m.end_min])
+      : [[gc.day, gc.start_min, gc.end_min]];
+    for (const [ld, ls, le] of labMeetings) {
+      for (const [gd, gs, ge] of gcMeetings) {
+        if (ld === gd && overlap(ls, le, gs, ge)) {
+          reasons.push(`conflicts with ${gc.name}`);
+        }
+      }
+    }
+  }
+  // Other commitment conflicts
+  for (const oc of (ta.other_commitments || [])) {
+    for (const [ld, ls, le] of labMeetings) {
+      if (oc.day === ld && overlap(ls, le, oc.start_min, oc.end_min)) {
+        reasons.push(`conflicts with commitment (${fmtTime(oc.start_min)}–${fmtTime(oc.end_min)})`);
+      }
+    }
+  }
+  return reasons;
+}
+
+function taExamConflictReasons(ta, exam) {
+  const reasons = [];
+  const hasDates = !exam.tbd && exam.date;
+  let examWd = null;
+  if (hasDates) {
+    try { examWd = new Date(exam.date + 'T00:00:00').getDay(); examWd = [6,0,1,2,3,4,5][examWd]; } catch(e) {}
+  }
+
+  // PE cap check
+  const usedPE = (S.data.proctor_assignments || []).filter(a => a.ta_id === ta.id).reduce((sum, a) => {
+    const ex = (S.data.exams || []).find(e => e.id === a.exam_id);
+    return sum + (ex?.pe_value || 0);
+  }, 0);
+  const addPE = exam.pe_value || 1.0;
+  if (usedPE + addPE > (ta.max_pe ?? 2.0) + 0.001) {
+    reasons.push(`PE: ${(usedPE + addPE).toFixed(1)}/${Number(ta.max_pe ?? 2.0).toFixed(1)} (over cap)`);
+  }
+
+  // Time conflicts with other proctored exams
+  if (hasDates) {
+    (S.data.proctor_assignments || []).filter(a => a.ta_id === ta.id).forEach(a => {
+      const otherExam = (S.data.exams || []).find(e => e.id === a.exam_id);
+      if (otherExam && otherExam.date === exam.date && overlap(exam.start_min, exam.end_min, otherExam.start_min, otherExam.end_min)) {
+        reasons.push(`conflicts with ${otherExam.name}`);
+      }
+    });
+  }
+
+  if (examWd !== null) {
+    // Grad course conflicts
+    for (const gcId of (ta.grad_course_ids || [])) {
+      const gc = S.data.grad_courses.find(c => c.id === gcId);
+      if (!gc) continue;
+      const gcMtgs = gc.meetings?.length ? gc.meetings : (gc.day !== undefined ? [{day:gc.day, start_min:gc.start_min, end_min:gc.end_min}] : []);
+      for (const m of gcMtgs) {
+        if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
+          const inRange = !gc.date_start || !gc.date_end || (exam.date >= gc.date_start && exam.date <= gc.date_end);
+          if (inRange) reasons.push(`conflicts with ${gc.name}`);
+        }
+      }
+      if (hasDates) {
+        for (const gcEx of (gc.exams || [])) {
+          if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
+            reasons.push(`conflicts with ${gc.name} exam`);
+          }
+        }
+      }
+    }
+    // Lab assignment conflicts
+    S.data.assignments.filter(a => a.ta_id === ta.id).forEach(a => {
+      const lab = S.data.labs.find(l => l.id === a.lab_id);
+      if (!lab) return;
+      const mtgs = lab.meetings?.length ? lab.meetings : (lab.day !== undefined ? [{day:lab.day, start_min:lab.start_min, end_min:lab.end_min}] : []);
+      for (const m of mtgs) {
+        if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
+          const inRange = !lab.date_start || !lab.date_end || (exam.date >= lab.date_start && exam.date <= lab.date_end);
+          if (inRange) reasons.push(`conflicts with lab ${lab.name}`);
+        }
+      }
+    });
+    // Other commitment conflicts
+    for (const oc of (ta.other_commitments || [])) {
+      if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
+        reasons.push(`conflicts with commitment`);
+      }
+    }
+  }
+  return reasons;
+}
+
+// ════════════════════════════════════════════════════════════════
+// GRID VIEWS
+// ════════════════════════════════════════════════════════════════
+function renderScheduleGrid(container) {
+  container.innerHTML = '';
+  const cols = [];
+  const sortedLabs = [...S.data.labs].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  for (const lab of sortedLabs) {
+    for (const rq of (lab.roles || [])) {
+      if (!rq.count) continue;
+      const role = S.data.roles.find(r => r.id === rq.role_id);
+      if (!role) continue;
+      cols.push({ lab, role, rq });
+    }
+  }
+  if (!cols.length) { container.innerHTML = '<p style="color:var(--text2)">No lab roles configured.</p>'; return; }
+
+  const tas = [...S.data.tas].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (!tas.length) { container.innerHTML = '<p style="color:var(--text2)">No TAs configured.</p>'; return; }
+
+  const tbl = document.createElement('table');
+  tbl.className = 'assign-grid';
+
+  // Header row
+  const thead = tbl.createTHead();
+  const hrow = thead.insertRow();
+  const thName = document.createElement('th');
+  thName.className = 'ta-name-col';
+  thName.textContent = '';
+  hrow.appendChild(thName);
+
+  for (const col of cols) {
+    const th = document.createElement('th');
+    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--panel); z-index:1;';
+    const div = document.createElement('div');
+    div.className = 'col-header';
+    div.title = `${displayName(col.lab)} (${col.role.label})`;
+    div.innerHTML = `${displayName(col.lab)}<br><span style="opacity:0.7">${col.role.label}</span>`;
+    th.appendChild(div);
+    hrow.appendChild(th);
+  }
+
+  // Body rows
+  const tbody = tbl.createTBody();
+  for (const ta of tas) {
+    const row = tbody.insertRow();
+    const tdName = row.insertCell();
+    tdName.className = 'ta-name-col';
+    tdName.textContent = ta.name || '(unnamed)';
+
+    for (const col of cols) {
+      const td = row.insertCell();
+      td.className = 'assign-cell';
+
+      const asgn = S.data.assignments.find(a => a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id);
+      const conflicts = !asgn ? taLabConflictReasons(ta, col.lab) : [];
+
+      if (asgn) {
+        td.classList.add(asgn.locked ? 'cell-locked' : 'cell-assigned');
+        // Remove button
+        const rm = document.createElement('span');
+        rm.className = 'cell-rm';
+        rm.textContent = '×';
+        rm.title = 'Remove assignment';
+        rm.onclick = (e) => {
+          e.stopPropagation();
+          S.data.assignments = S.data.assignments.filter(a => !(a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id));
+          markDirty();
+          renderSchedule();
+        };
+        td.appendChild(rm);
+        if (asgn.locked) {
+          const lk = document.createElement('span');
+          lk.textContent = '🔒';
+          lk.style.fontSize = '11px';
+          td.appendChild(lk);
+        } else {
+          const lk = document.createElement('span');
+          lk.textContent = '✓';
+          lk.style.cssText = 'font-size:13px; color:#003D80;';
+          td.appendChild(lk);
+        }
+        td.title = `${ta.name} → ${displayName(col.lab)} (${col.role.label})${asgn.locked ? ' [locked]' : ''}`;
+        td.onclick = () => { asgn.locked = !asgn.locked; markDirty(); renderSchedule(); };
+      } else {
+        if (conflicts.length > 0) {
+          td.classList.add('cell-conflict');
+          td.title = conflicts.join('; ');
+        } else {
+          td.title = `Click to assign ${ta.name} → ${displayName(col.lab)} (${col.role.label})`;
+        }
+        td.onclick = () => {
+          S.data.assignments.push({ lab_id: col.lab.id, role_id: col.role.id, ta_id: ta.id, locked: true });
+          markDirty();
+          renderSchedule();
+        };
+      }
+    }
+  }
+
+  const gridWrap = document.createElement('div');
+  gridWrap.className = 'assign-grid-wrap';
+  gridWrap.appendChild(tbl);
+  container.appendChild(gridWrap);
+}
+
+function renderProctorGrid(container) {
+  container.innerHTML = '';
+  const exams = [...(S.data.exams || [])].sort((a, b) => {
+    const aLabel = a.course_name ? (a.section ? `${a.course_name} ${a.section}` : a.course_name) : '—';
+    const bLabel = b.course_name ? (b.section ? `${b.course_name} ${b.section}` : b.course_name) : '—';
+    const cmp = aLabel.localeCompare(bLabel);
+    if (cmp !== 0) return cmp;
+    if (a.tbd && !b.tbd) return 1;
+    if (!a.tbd && b.tbd) return -1;
+    return (a.date || '').localeCompare(b.date || '') || (a.start_min || 0) - (b.start_min || 0);
+  });
+  if (!exams.length) { container.innerHTML = '<p style="color:var(--text2)">No exams defined.</p>'; return; }
+
+  const tas = [...S.data.tas].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (!tas.length) { container.innerHTML = '<p style="color:var(--text2)">No TAs configured.</p>'; return; }
+
+  const tbl = document.createElement('table');
+  tbl.className = 'assign-grid';
+
+  // Header row
+  const thead = tbl.createTHead();
+  const hrow = thead.insertRow();
+  const thName = document.createElement('th');
+  thName.className = 'ta-name-col';
+  thName.textContent = '';
+  hrow.appendChild(thName);
+
+  for (const exam of exams) {
+    const th = document.createElement('th');
+    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--panel); z-index:1;';
+    const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
+    const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
+    const timeLabel = (!exam.tbd && exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';
+    const line2 = [dateLabel, timeLabel].filter(Boolean).join(' ');
+    const div = document.createElement('div');
+    div.className = 'col-header';
+    div.title = `${courseLabel}: ${exam.name} (${line2})`;
+    div.innerHTML = `${courseLabel}: ${exam.name}<br><span style="opacity:0.7">${line2}</span>`;
+    th.appendChild(div);
+    hrow.appendChild(th);
+  }
+
+  // Body rows
+  const tbody = tbl.createTBody();
+  for (const ta of tas) {
+    const row = tbody.insertRow();
+    const tdName = row.insertCell();
+    tdName.className = 'ta-name-col';
+    tdName.textContent = ta.name || '(unnamed)';
+
+    for (const exam of exams) {
+      const td = row.insertCell();
+      td.className = 'assign-cell';
+
+      const asgn = (S.data.proctor_assignments || []).find(a => a.exam_id === exam.id && a.ta_id === ta.id);
+      const conflicts = !asgn ? taExamConflictReasons(ta, exam) : [];
+
+      if (asgn) {
+        td.classList.add(asgn.locked ? 'cell-locked' : 'cell-assigned');
+        const rm = document.createElement('span');
+        rm.className = 'cell-rm';
+        rm.textContent = '×';
+        rm.title = 'Remove assignment';
+        rm.onclick = (e) => {
+          e.stopPropagation();
+          S.data.proctor_assignments = S.data.proctor_assignments.filter(a => !(a.exam_id === exam.id && a.ta_id === ta.id));
+          markDirty();
+          renderProctoring();
+        };
+        td.appendChild(rm);
+        if (asgn.locked) {
+          const lk = document.createElement('span');
+          lk.textContent = '🔒';
+          lk.style.fontSize = '11px';
+          td.appendChild(lk);
+        } else {
+          const lk = document.createElement('span');
+          lk.textContent = '✓';
+          lk.style.cssText = 'font-size:13px; color:#003D80;';
+          td.appendChild(lk);
+        }
+        const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
+        td.title = `${ta.name} → ${courseLabel}: ${exam.name}${asgn.locked ? ' [locked]' : ''}`;
+        td.onclick = () => { asgn.locked = !asgn.locked; markDirty(); renderProctoring(); };
+      } else {
+        if (conflicts.length > 0) {
+          td.classList.add('cell-conflict');
+          td.title = conflicts.join('; ');
+        } else {
+          const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
+          td.title = `Click to assign ${ta.name} → ${courseLabel}: ${exam.name}`;
+        }
+        td.onclick = () => {
+          S.data.proctor_assignments = S.data.proctor_assignments || [];
+          S.data.proctor_assignments.push({ exam_id: exam.id, ta_id: ta.id, locked: true });
+          markDirty();
+          renderProctoring();
+        };
+      }
+    }
+  }
+
+  const gridWrap = document.createElement('div');
+  gridWrap.className = 'assign-grid-wrap';
+  gridWrap.appendChild(tbl);
+  container.appendChild(gridWrap);
 }
 
 // ════════════════════════════════════════════════════════════════
