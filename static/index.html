@@ -308,23 +308,28 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 /* ── assignment grid view ────────────────────────────────────── */
 .assign-grid-wrap { display: inline-block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .assign-grid { border-collapse: collapse; font-size: 12px; width: auto; }
-.assign-grid th.ta-name-col { text-align: left; padding: 4px 8px; white-space: nowrap; min-width: 120px;
-                               font-weight: 600; border-right: 2px solid var(--border);
+.assign-grid th.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; min-width: 120px;
+                               font-weight: 600; border-right: 1px solid var(--border);
                                position: sticky; left: 0; top: 0; background: var(--panel); z-index: 3; }
-.assign-grid td.ta-name-col { text-align: left; padding: 4px 8px; white-space: nowrap; font-weight: 400;
-                               border-right: 2px solid var(--border);
+.assign-grid td.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; font-weight: 400;
+                               border-right: 1px solid var(--border);
                                position: sticky; left: 0; background: var(--panel); z-index: 1; }
-.assign-grid td.assign-cell { width: 36px; min-width: 36px; height: 36px; text-align: center;
+.assign-grid td.assign-cell { width: 48px; min-width: 48px; height: 36px; text-align: center;
                                vertical-align: middle; border: 1px solid var(--border);
                                cursor: pointer; position: relative; }
-.assign-cell.cell-conflict { background: #f3f3f3; }
+.assign-cell.cell-conflict {
+  background-color: #e8e8e8;
+  background-image:
+    linear-gradient(to bottom right, transparent calc(50% - 0.6px), #888 calc(50% - 0.6px), #888 calc(50% + 0.6px), transparent calc(50% + 0.6px)),
+    linear-gradient(to bottom left,  transparent calc(50% - 0.6px), #888 calc(50% - 0.6px), #888 calc(50% + 0.6px), transparent calc(50% + 0.6px));
+}
 .assign-cell.cell-assigned { background: #E5F1FF; color: #003D80; }
 .assign-cell.cell-locked   { background: #E3F9EB; color: #1A6B36; }
 .assign-cell .cell-rm { position: absolute; top: 0; right: 1px; font-size: 13px;
                          color: var(--red); line-height: 1; cursor: pointer; z-index: 1; }
 .assign-cell:hover { opacity: 0.8; }
 .assign-grid .col-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
-                            font-size: 11px; max-height: 160px; overflow: hidden; }
+                            font-size: 11px; max-height: 200px; overflow: hidden; text-align: center; }
 
 /* ── print ───────────────────────────────────────────────────── */
 @media print {
@@ -3432,26 +3437,6 @@ function taExamConflictReasons(ta, exam) {
     try { examWd = new Date(exam.date + 'T00:00:00').getDay(); examWd = [6,0,1,2,3,4,5][examWd]; } catch(e) {}
   }
 
-  // PE cap check
-  const usedPE = (S.data.proctor_assignments || []).filter(a => a.ta_id === ta.id).reduce((sum, a) => {
-    const ex = (S.data.exams || []).find(e => e.id === a.exam_id);
-    return sum + (ex?.pe_value || 0);
-  }, 0);
-  const addPE = exam.pe_value || 1.0;
-  if (usedPE + addPE > (ta.max_pe ?? 2.0) + 0.001) {
-    reasons.push(`PE: ${(usedPE + addPE).toFixed(1)}/${Number(ta.max_pe ?? 2.0).toFixed(1)} (over cap)`);
-  }
-
-  // Time conflicts with other proctored exams
-  if (hasDates) {
-    (S.data.proctor_assignments || []).filter(a => a.ta_id === ta.id).forEach(a => {
-      const otherExam = (S.data.exams || []).find(e => e.id === a.exam_id);
-      if (otherExam && otherExam.date === exam.date && overlap(exam.start_min, exam.end_min, otherExam.start_min, otherExam.end_min)) {
-        reasons.push(`conflicts with ${otherExam.name}`);
-      }
-    });
-  }
-
   if (examWd !== null) {
     // Grad course conflicts
     for (const gcId of (ta.grad_course_ids || [])) {
@@ -3633,11 +3618,10 @@ function renderProctorGrid(container) {
     const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
     const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
     const timeLabel = (!exam.tbd && exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';
-    const line2 = [dateLabel, timeLabel].filter(Boolean).join(' ');
     const div = document.createElement('div');
     div.className = 'col-header';
-    div.title = `${courseLabel}: ${exam.name} (${line2})`;
-    div.innerHTML = `${courseLabel}: ${exam.name}<br><span style="opacity:0.7">${line2}</span>`;
+    div.title = `${courseLabel}: ${exam.name} (${dateLabel}${timeLabel ? ' ' + timeLabel : ''})`;
+    div.innerHTML = `${courseLabel}: ${exam.name}<br><span style="opacity:0.7">${dateLabel}</span>${timeLabel ? `<br><span style="opacity:0.7">${timeLabel}</span>` : ''}`;
     th.appendChild(div);
     hrow.appendChild(th);
   }

@@ -724,11 +724,23 @@ def solve_proctoring(data):
                         gc = gc_map.get(gc_id)
                         if not gc:
                             continue
+                        # Regular meeting conflicts
                         for gd, gs, ge in _get_meetings(gc):
                             if gd == wd and times_overlap(
                                     exam.get("start_min", 0), exam.get("end_min", 0), gs, ge):
                                 conflict = True
                                 break
+                        if conflict:
+                            break
+                        # Grad course exam conflicts (date-specific)
+                        exam_date = exam.get("date")
+                        if exam_date:
+                            for gc_ex in gc.get("exams", []):
+                                if gc_ex.get("date") == exam_date and times_overlap(
+                                        exam.get("start_min", 0), exam.get("end_min", 0),
+                                        gc_ex.get("start_min", 0), gc_ex.get("end_min", 0)):
+                                    conflict = True
+                                    break
                         if conflict:
                             break
                     if conflict:
