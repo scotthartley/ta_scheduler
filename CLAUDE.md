@@ -44,6 +44,7 @@ Install: `pip install -r requirements.txt`
 - The greedy lab solver runs synchronously on `/api/schedule`
 - The greedy proctoring solver runs synchronously on `/api/schedule-proctoring`
 - When pywebview is unavailable, falls back to plain Flask + browser on port 5050
+- `text_select=True` is set on `create_window` to enable text selection in the native window (not the pywebview default)
 
 **Frontend (`static/index.html`):**
 - Single HTML file — all CSS, JS, and HTML in one file
@@ -57,7 +58,7 @@ roles:              [{id, label, se_value}]
 grad_courses:       [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?}]
 labs:               [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?, roles[]}]
                     roles[]: [{role_id, count, preferred_experienced}]
-tas:                [{id, name, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
+tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
                       outside_proctoring[], other_commitments[]}]
 assignments:        [{lab_id, role_id, ta_id, locked}]
 exams:              [{id, name, course_name, section, date, start_min, end_min, tbd, proctor_count, pe_value}]
@@ -79,6 +80,8 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - Hours displayed: 7:00 AM – 7:00 PM (`GRID_START = 420`, `GRID_END = 1140`)
 - `HOUR_H = 75` px per hour; `PX_PER_MIN = GRID_H / GRID_MINS` (= 1.25 px/min)
 - Time snaps to 5-minute increments
+- The **main schedule grid** (Lab Sections, Graduate Courses, TAs tabs) uses pixel-based positioning via `minToY()` / `yToMin()`
+- The **Meeting Finder grid** uses percentage-based positioning so it scales to fill the available panel height without scrolling; cells and hour lines are positioned as `(offset / GRID_MINS) * 100 + '%'`
 
 ## Tab order (left to right)
 
@@ -137,6 +140,10 @@ New/empty schedules start with one default role: `{id: "role-primary-ta", label:
 `EMPTY_DATA` also initializes `exams: []` and `proctor_assignments: []`.
 
 Manual TA assignments default to `locked: true`.
+
+## Frontend utilities
+
+- `gmailCopyBtn(tas)` — takes an array of TA objects, returns a "Copy e-mail addresses" button (or `null` if none have emails) that copies `Name <email>, ...` to the clipboard; used in Summary tab headings and Meeting Finder
 
 ## Key conventions
 
