@@ -2617,13 +2617,30 @@ function renderMeetingFinder() {
   if (filteredTAs.length) {
     const hdr = el('p'); hdr.innerHTML = '<strong>Assigned TAs</strong>';
     taListDiv.appendChild(hdr);
+    const sorted = filteredTAs.slice().sort((a,b)=>a.name.localeCompare(b.name));
     const ul = el('ul','meeting-ta-ul');
-    filteredTAs.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(ta => {
+    sorted.forEach(ta => {
       const li = el('li');
       li.textContent = ta.name + (ta.email ? ` — ${ta.email}` : '');
       ul.appendChild(li);
     });
     taListDiv.appendChild(ul);
+
+    const withEmail = sorted.filter(ta => ta.email);
+    if (withEmail.length) {
+      const gmailStr = withEmail.map(ta => `${ta.name} <${ta.email}>`).join(', ');
+      const copyBtn = el('button', 'btn-sm');
+      copyBtn.textContent = 'Copy e-mail addresses';
+      copyBtn.style.marginTop = '8px';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(gmailStr).then(() => {
+          const orig = copyBtn.textContent;
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+        });
+      };
+      taListDiv.appendChild(copyBtn);
+    }
   }
 }
 
