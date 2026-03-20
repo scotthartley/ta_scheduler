@@ -636,12 +636,16 @@ def solve_proctoring(data):
         for d, s, e in _get_meetings(lab):
             ta_lab_times.setdefault(a["ta_id"], []).append((d, s, e))
 
-    # TA → set of lab course names (for familiarity bonus)
+    # TA → set of lab course names and sections (for familiarity bonus)
     ta_lab_courses = {}
+    ta_lab_sections = {}
     for a in assignments:
         lab = labs_by_id.get(a["lab_id"])
         if lab:
             ta_lab_courses.setdefault(a["ta_id"], set()).add(lab.get("name", ""))
+            sect = lab.get("section", "")
+            if sect:
+                ta_lab_sections.setdefault(a["ta_id"], set()).add((lab.get("name", ""), sect))
 
     def exam_weekday(exam):
         """Get weekday (0=Mon) from exam date string."""
@@ -672,12 +676,16 @@ def solve_proctoring(data):
         ta_used_pe = {}
         ta_assigned_exams = {}  # ta_id → set of exam_ids
         ta_proctored_times = {}  # ta_id → [(date, start, end)]
+        ta_proctored_courses = {}  # ta_id → set of course_names
+        ta_proctored_sections = {}  # ta_id → set of (course_name, section)
 
         for ta in tas:
             outside_pe = sum(op.get("pe_value", 0) for op in ta.get("outside_proctoring", []))
             ta_used_pe[ta["id"]] = outside_pe
             ta_assigned_exams[ta["id"]] = set()
             ta_proctored_times[ta["id"]] = []
+            ta_proctored_courses[ta["id"]] = set()
+            ta_proctored_sections[ta["id"]] = set()
 
         for a in locked:
             tid = a["ta_id"]
@@ -689,6 +697,12 @@ def solve_proctoring(data):
             ta_assigned_exams[tid].add(eid)
             ta_proctored_times[tid].append(
                 (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+            course_name = exam.get("course_name", "")
+            if course_name:
+                ta_proctored_courses[tid].add(course_name)
+            sect = exam.get("section", "")
+            if course_name and sect:
+                ta_proctored_sections[tid].add((course_name, sect))
 
         def eligible_tas(exam):
             pe_val = exam.get("pe_value", 1.0)
@@ -770,10 +784,21 @@ def solve_proctoring(data):
 
         def score(ta, exam):
             s = 1000
-            # Course familiarity bonus
             course_name = exam.get("course_name", "")
+            section = exam.get("section", "")
+            key = (course_name, section)
+            # Lab familiarity bonus (same course)
             if course_name and course_name in ta_lab_courses.get(ta["id"], set()):
                 s += 300
+            # Lab section bonus (same course + section)
+            if course_name and section and key in ta_lab_sections.get(ta["id"], set()):
+                s += 150
+            # Same-course proctoring bonus
+            if course_name and course_name in ta_proctored_courses.get(ta["id"], set()):
+                s += 200
+            # Same-section proctoring bonus
+            if course_name and section and key in ta_proctored_sections.get(ta["id"], set()):
+                s += 100
             # Load balancing
             s -= ta_used_pe[ta["id"]] * 500
             s += random.random()
@@ -797,6 +822,12 @@ def solve_proctoring(data):
             ta_assigned_exams[best["id"]].add(exam["id"])
             ta_proctored_times[best["id"]].append(
                 (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+            cname = exam.get("course_name", "")
+            sect = exam.get("section", "")
+            if cname:
+                ta_proctored_courses[best["id"]].add(cname)
+            if cname and sect:
+                ta_proctored_sections[best["id"]].add((cname, sect))
 
         return result
 
