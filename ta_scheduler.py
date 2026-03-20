@@ -754,6 +754,17 @@ def solve_proctoring(data):
                             break
                     if conflict:
                         continue
+                # Check date-specific TA conflicts
+                dc_date = exam.get("date")
+                if dc_date:
+                    for dc in ta.get("date_conflicts", []):
+                        if dc.get("date") == dc_date and times_overlap(
+                                exam.get("start_min", 0), exam.get("end_min", 0),
+                                dc.get("start_min", 0), dc.get("end_min", 0)):
+                            conflict = True
+                            break
+                if conflict:
+                    continue
                 result.append(ta)
             return result
 
@@ -896,8 +907,9 @@ def generate_docx(data):
     doc.add_heading("TA Assignments", 1)
     for ta in data.get("tas", []):
         doc.add_heading(ta["name"], 2)
+        email_str = f", Email: {ta['email']}" if ta.get('email') else ''
         doc.add_paragraph(
-            f"{ta.get('experience','').capitalize()}, Max SE: {ta.get('max_se', 2.0):.1f}"
+            f"{ta.get('experience','').capitalize()}, Max SE: {ta.get('max_se', 2.0):.1f}{email_str}"
         )
         ta_asgn = [a for a in assignments if a["ta_id"] == ta["id"]]
         outside = ta.get("outside_duties", [])

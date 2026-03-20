@@ -230,6 +230,8 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .meeting-outer { display: flex; flex-direction: column; gap: 8px; }
 .meeting-legend { display: flex; gap: 20px; font-size: 15px; align-items: center; }
 .legend-swatch { width: 18px; height: 18px; border-radius: 3px; display: inline-block; }
+.meeting-ta-ul { font-size:14px; margin:4px 0; padding-left:18px; }
+.ta-conflict-ul { margin:2px 0 10px; padding-left:18px; line-height:1.6; }
 .meeting-grid-wrap { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 6px;
                      display: flex; flex-direction: column; overflow: hidden; }
 .meeting-grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
@@ -436,6 +438,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
             </div>
           </div>
         </div>
+        <div id="ta-conflict-list"></div>
       </div>
     </div>
   </div>
@@ -502,6 +505,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
           </div>
         </div>
       </div>
+      <div id="meeting-ta-list"></div>
     </div>
   </div>
 
@@ -818,12 +822,14 @@ function selectItem(id) {
   $id('grid-placeholder').style.display = 'none';
   $id('grid-outer').style.display = 'flex';
   $id('item-form').style.display = 'block';
+  if (S.tab==='tas') renderTAConflictList(getSelectedItem());
 }
 
 function showGridPlaceholder() {
   $id('grid-placeholder').style.display = 'flex';
   $id('grid-outer').style.display = 'none';
   $id('item-form').style.display = 'none';
+  const lcd=$id('ta-conflict-list'); if(lcd) lcd.innerHTML='';
 }
 
 function createNewItem() {
@@ -833,7 +839,8 @@ function createNewItem() {
     S.data.grad_courses.push(item);
   } else if (S.tab === 'tas') {
     item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0, max_pe:2.0,
-            grad_course_ids:[], outside_duties:[], outside_proctoring:[], other_commitments:[]};
+            grad_course_ids:[], outside_duties:[], outside_proctoring:[], other_commitments:[],
+            email:'', date_conflicts:[]};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
     item = {id:uid(), name:'New Lab', section:'', day:0, start_min:540, end_min:660,
@@ -1026,6 +1033,10 @@ function renderTAForm(item, form) {
   taNameInp.title = "TA's full name";
   form.appendChild(fgRow('Name', taNameInp));
 
+  const emailInp = textInput(item.email||'', v => { item.email=v; markDirty(); });
+  emailInp.type = 'email';
+  form.appendChild(fgRow('Email', emailInp));
+
   // Experience
   const expG = el('div','form-group');
   const expL = el('label'); expL.textContent = 'Experience';
@@ -1098,7 +1109,94 @@ function renderTAForm(item, form) {
     ocDiv.appendChild(r);
   });
   form.appendChild(ocDiv);
+
+  // Date-Specific Conflicts
+  const dcHdr = el('div','form-group');
+  dcHdr.innerHTML = '<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Date-Specific Conflicts</label>';
+  form.appendChild(dcHdr);
+  const dcDiv = el('div','sublist');
+  (item.date_conflicts||[]).forEach((dc, i) => {
+    const r = el('div','sublist-item');
+    const lbl = document.createElement('input');
+    lbl.type='text'; lbl.value=dc.label||''; lbl.style.flex='1'; lbl.style.fontSize='12px';
+    lbl.oninput = () => { dc.label=lbl.value; markDirty(); };
+    const info = el('span','sl-label');
+    info.style.fontSize='11px';
+    info.textContent = ` ${dc.date||'?'}  ${fmtRange(dc.start_min, dc.end_min)}`;
+    const rm = el('button','btn-sm btn-danger','×');
+    rm.onclick = () => { item.date_conflicts.splice(i,1); markDirty(); renderItemForm(); };
+    r.append(lbl, info, rm);
+    dcDiv.appendChild(r);
+  });
+  form.appendChild(dcDiv);
+
+  const addDcBtn = el('button','btn-sm','+ Add Date Conflict');
+  addDcBtn.style.marginTop = '6px';
+  addDcBtn.onclick = () => {
+    if ($id('dc-inline-form')) { $id('dc-inline-form').remove(); return; }
+    const f = el('div','sublist'); f.id='dc-inline-form';
+    f.style.cssText = 'background:var(--gray-lt);padding:8px;border-radius:6px;margin-top:6px;';
+    const lblInp = document.createElement('input');
+    lblInp.type='text'; lblInp.placeholder='Label'; lblInp.style.width='100%'; lblInp.style.marginBottom='4px';
+    const dateInp = document.createElement('input');
+    dateInp.type='date'; dateInp.style.marginRight='4px';
+    const startSel = timeSelect(480, ()=>{});
+    const endSel   = timeSelect(600, ()=>{});
+    const saveBtn = el('button','btn-sm btn-primary','Add');
+    saveBtn.style.marginTop='6px';
+    saveBtn.onclick = () => {
+      if (!dateInp.value) { alert('Please select a date.'); return; }
+      item.date_conflicts = item.date_conflicts||[];
+      item.date_conflicts.push({label:lblInp.value||'Conflict', date:dateInp.value,
+        start_min:parseInt(startSel.value), end_min:parseInt(endSel.value)});
+      markDirty(); renderItemForm();
+    };
+    const row = el('div','form-row'); row.style.gap='4px';
+    row.append(dateInp, startSel, el('span',null,'–'), endSel);
+    f.append(lblInp, row, saveBtn);
+    addDcBtn.insertAdjacentElement('afterend', f);
+  };
+  form.appendChild(addDcBtn);
+
   form.appendChild(formActions(deleteCurrentItem));
+  if (item) renderTAConflictList(item);
+}
+
+function renderTAConflictList(ta) {
+  const div = $id('ta-conflict-list');
+  if (!div) return;
+  div.innerHTML = '';
+  if (!ta) return;
+  const gcMap = Object.fromEntries(S.data.grad_courses.map(gc=>[gc.id,gc]));
+  const courseExams = [];
+  (ta.grad_course_ids||[]).forEach(gcId => {
+    const gc = gcMap[gcId]; if (!gc) return;
+    (gc.exams||[]).forEach(ex => {
+      if (ex.date) courseExams.push({
+        sort: ex.date,
+        text: `${escHtml(displayName(gc))}: ${ex.date}  ${fmtRange(ex.start_min, ex.end_min)}`
+      });
+    });
+  });
+  courseExams.sort((a,b)=>a.sort.localeCompare(b.sort));
+  const dateCons = (ta.date_conflicts||[]).filter(dc=>dc.date)
+    .map(dc=>({sort:dc.date,
+      text:`${escHtml(dc.label||'Conflict')}: ${dc.date}  ${fmtRange(dc.start_min, dc.end_min)}`}))
+    .sort((a,b)=>a.sort.localeCompare(b.sort));
+  if (!courseExams.length && !dateCons.length) return;
+  div.style.cssText = 'padding:12px 20px;border-top:1px solid var(--border);font-size:14px;';
+  if (courseExams.length) {
+    const hdr = el('p'); hdr.innerHTML = '<strong>Course Exams</strong>'; div.appendChild(hdr);
+    const ul = el('ul','ta-conflict-ul');
+    courseExams.forEach(e => { const li=el('li'); li.innerHTML=e.text; ul.appendChild(li); });
+    div.appendChild(ul);
+  }
+  if (dateCons.length) {
+    const hdr = el('p'); hdr.innerHTML = '<strong>Date-Specific Conflicts</strong>'; div.appendChild(hdr);
+    const ul = el('ul','ta-conflict-ul');
+    dateCons.forEach(e => { const li=el('li'); li.innerHTML=e.text; ul.appendChild(li); });
+    div.appendChild(ul);
+  }
 }
 
 // ── Lab form ──
@@ -2319,6 +2417,9 @@ function renderSummary() {
     const meta = el('p','summary-sub');
     meta.textContent = `${(ta.experience||'').replace(/^\w/,ch=>ch.toUpperCase())}, Max SE: ${(ta.max_se??2).toFixed(1)}`;
     c.append(meta);
+    if (ta.email) {
+      const ep = el('p','summary-sub'); ep.textContent = ta.email; c.append(ep);
+    }
 
     const taAsgn    = d.assignments.filter(a => a.ta_id === ta.id);
     const outside   = ta.outside_duties ?? [];
@@ -2508,6 +2609,21 @@ function renderMeetingFinder() {
       }
     }
     flush(segStart, GRID_MINS, segBusy);
+  }
+
+  // TA list below grid
+  const taListDiv = $id('meeting-ta-list');
+  taListDiv.innerHTML = '';
+  if (filteredTAs.length) {
+    const hdr = el('p'); hdr.innerHTML = '<strong>Assigned TAs</strong>';
+    taListDiv.appendChild(hdr);
+    const ul = el('ul','meeting-ta-ul');
+    filteredTAs.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(ta => {
+      const li = el('li');
+      li.textContent = ta.name + (ta.email ? ` — ${ta.email}` : '');
+      ul.appendChild(li);
+    });
+    taListDiv.appendChild(ul);
   }
 }
 
