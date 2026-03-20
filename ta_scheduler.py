@@ -1045,5 +1045,6 @@ if __name__ == "__main__":
             width=1500,
             height=960,
             min_size=(900, 600),
+            text_select=True,
         )
         webview.start()
