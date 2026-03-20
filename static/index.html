@@ -233,8 +233,8 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .meeting-ta-ul { font-size:14px; margin:4px 0; padding-left:18px; }
 .ta-conflict-ul { margin:2px 0 10px; padding-left:18px; line-height:1.6; }
 .meeting-grid-wrap { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 6px;
-                     display: flex; flex-direction: column; overflow: hidden; }
-.meeting-grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+                     overflow: hidden; display: flex; flex-direction: column; }
+.meeting-grid-scroll { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .meeting-body { display: flex; }
 .meeting-day-col { flex: 1; position: relative; border-left: 1px solid var(--border); }
 .meeting-day-col:first-child { border-left: none; }
@@ -2587,12 +2587,19 @@ function renderMeetingFinder() {
       });
   });
 
+  // Make grid body fill remaining height
+  const mb = $id('meeting-body');
+  mb.style.flex = '1'; mb.style.minHeight = '0';
+
+  const mPct = (min) => ((min - GRID_START) / GRID_MINS * 100) + '%';
+
   // Time labels
   const tl = $id('meeting-time-labels');
-  tl.innerHTML = ''; tl.style.height = GRID_H + 'px'; tl.style.position='relative';
+  tl.innerHTML = '';
   for (let h=7; h<=19; h++) {
     const lbl = el('div','time-label', fmtTime(h*60));
-    lbl.style.top = minToY(h*60) + 'px';
+    lbl.style.top = mPct(h*60);
+    if (h === 19) lbl.style.transform = 'translateY(-100%)';
     tl.appendChild(lbl);
   }
 
@@ -2600,11 +2607,10 @@ function renderMeetingFinder() {
   for (let d=0; d<5; d++) {
     const col = $id(`meet-day-${d}`);
     col.innerHTML = '';
-    col.style.height = GRID_H + 'px';
 
     // Hour lines
     for (let h=7; h<=19; h++) {
-      const ln = el('div','hour-line'); ln.style.top=minToY(h*60)+'px'; col.appendChild(ln);
+      const ln = el('div','hour-line'); ln.style.top = mPct(h*60); col.appendChild(ln);
     }
 
     if (!numTAs) continue;
@@ -2620,8 +2626,8 @@ function renderMeetingFinder() {
         ? `rgba(253,230,138,${0.4+0.5*frac})`
         : `rgba(252,165,165,0.8)`;
       const div = el('div','meeting-cell');
-      div.style.top    = minToY(GRID_START + s) + 'px';
-      div.style.height = (minToY(GRID_START + e) - minToY(GRID_START + s)) + 'px';
+      div.style.top    = (s / GRID_MINS * 100) + '%';
+      div.style.height = ((e - s) / GRID_MINS * 100) + '%';
       div.style.background = color;
       div.title = `${fmtTime(GRID_START+s)}–${fmtTime(GRID_START+e)}: ${numTAs-b}/${numTAs} free`;
       col.appendChild(div);
