@@ -2316,6 +2316,23 @@ function meetingDeselectAll() {
 // ════════════════════════════════════════════════════════════════
 // SUMMARY
 // ════════════════════════════════════════════════════════════════
+function gmailCopyBtn(tas) {
+  const withEmail = tas.filter(ta => ta && ta.email);
+  if (!withEmail.length) return null;
+  const str = withEmail.map(ta => `${ta.name} <${ta.email}>`).join(', ');
+  const btn = el('button', 'btn-sm');
+  btn.textContent = 'Copy e-mail addresses';
+  btn.style.marginTop = '6px';
+  btn.onclick = () => {
+    navigator.clipboard.writeText(str).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+  };
+  return btn;
+}
+
 function buildTable(headers, rows, totalRows = 0) {
   const wrap = el('div', 'summary-table-wrap');
   const tbl = el('table', 'summary-table');
@@ -2357,21 +2374,24 @@ function renderSummary() {
     (a.name+' '+(a.section||'')).localeCompare(b.name+' '+(b.section||'')));
 
   for (const lab of sortedLabs) {
-    const h2 = el('h2','summary-h2'); h2.textContent = displayName(lab); c.append(h2);
+    const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
+    const h2 = el('h2','summary-h2'); h2.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const h2txt = el('span'); h2txt.textContent = displayName(lab); h2.append(h2txt);
+    const btn = gmailCopyBtn(labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean));
+    if (btn) { btn.style.marginTop = '0'; h2.append(btn); }
+    c.append(h2);
     const sub = el('p','summary-sub');
     sub.textContent = lab.day != null
       ? `${dayLong[lab.day]}, ${fmtRange(lab.start_min, lab.end_min)}`
       : '(time TBD)';
     c.append(sub);
 
-    const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
     if (labAsgn.length) {
-      const tbl = buildTable(['Role','TA','Status'], labAsgn.map(a => [
+      c.append(buildTable(['Role','TA','Status'], labAsgn.map(a => [
         rolesMap[a.role_id]?.label ?? a.role_id,
         tasMap[a.ta_id]?.name    ?? a.ta_id,
         a.locked ? 'Locked' : 'Assigned',
-      ]));
-      c.append(tbl);
+      ])));
     } else {
       c.append(el('p','summary-none','No assignments'));
     }
@@ -2390,14 +2410,18 @@ function renderSummary() {
     for (const exam of sortedExams) {
       const label = displayName({name: exam.course_name||'', section: exam.section||''});
       const sub2  = exam.name && exam.name !== label ? `${label} — ${exam.name}` : label || exam.name || 'Exam';
-      const h2e = el('h2','summary-h2'); h2e.textContent = sub2; c.append(h2e);
+      const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id);
+      const h2e = el('h2','summary-h2'); h2e.style.cssText = 'display:flex;align-items:center;gap:10px;';
+      const h2etxt = el('span'); h2etxt.textContent = sub2; h2e.append(h2etxt);
+      const examBtn = gmailCopyBtn(eAsgn.map(a => tasMap[a.ta_id]).filter(Boolean));
+      if (examBtn) { examBtn.style.marginTop = '0'; h2e.append(examBtn); }
+      c.append(h2e);
       const subp = el('p','summary-sub');
       subp.textContent = exam.date
         ? `${exam.date}, ${fmtRange(exam.start_min, exam.end_min)}`
         : '(date TBD)';
       c.append(subp);
 
-      const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id);
       const ul = el('ul','summary-proctor-list');
       for (const a of eAsgn) {
         const ta = tasMap[a.ta_id];
@@ -2626,21 +2650,8 @@ function renderMeetingFinder() {
     });
     taListDiv.appendChild(ul);
 
-    const withEmail = sorted.filter(ta => ta.email);
-    if (withEmail.length) {
-      const gmailStr = withEmail.map(ta => `${ta.name} <${ta.email}>`).join(', ');
-      const copyBtn = el('button', 'btn-sm');
-      copyBtn.textContent = 'Copy e-mail addresses';
-      copyBtn.style.marginTop = '8px';
-      copyBtn.onclick = () => {
-        navigator.clipboard.writeText(gmailStr).then(() => {
-          const orig = copyBtn.textContent;
-          copyBtn.textContent = 'Copied!';
-          setTimeout(() => { copyBtn.textContent = orig; }, 1500);
-        });
-      };
-      taListDiv.appendChild(copyBtn);
-    }
+    const copyBtn = gmailCopyBtn(sorted);
+    if (copyBtn) taListDiv.appendChild(copyBtn);
   }
 }
 
