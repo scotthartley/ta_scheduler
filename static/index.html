@@ -8,11 +8,19 @@
 /* ── reset & tokens ─────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
+  /* ── palette ── */
   --blue:       #007AFF;
   --blue-lt:    #E5F1FF;
+  --blue-dk:    #003D80;
   --green:      #34C759;
+  --green-lt:   #E3F9EB;
+  --green-dk:   #1A6B36;
   --amber:      #FF9500;
   --amber-lt:   #FFF3E0;
+  --amber-dk:   #7A4600;
+  --purple:     #AF52DE;
+  --purple-lt:  #F3E8FF;
+  --purple-dk:  #5E1A8A;
   --red:        #FF3B30;
   --gray:       #8E8E93;
   --gray-lt:    #F2F2F7;
@@ -22,19 +30,29 @@
   --panel:      #ffffff;
   --toolbar-bg: #EBEBEB;
   --sidebar-bg: #F6F6F6;
-  --HOUR_H:     80;         /* px per hour (JS reads this) */
+  /* ── warning surface ── */
+  --warn-bg:     #FFFBEB;
+  --warn-border: #FCD34D;
+  --warn-text:   #92400E;
+  --warn-text2:  #B45309;
+  /* ── type scale ── */
+  --fs-xs:   11px;
+  --fs-sm:   13px;
+  --fs-base: 15px;
+  --fs-lg:   17px;
+  --fs-xl:   19px;
 }
-body { font-family: system-ui, -apple-system, sans-serif; font-size: 15px;
+body { font-family: system-ui, -apple-system, sans-serif; font-size: var(--fs-base);
        color: var(--text); background: var(--gray-lt); height: 100vh;
        display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── header ─────────────────────────────────────────────────── */
 header { display: flex; align-items: center; gap: 15px; padding: 10px 20px;
          background: var(--toolbar-bg); color: var(--text); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-header h1 { font-size: 15px; font-weight: 600; letter-spacing: .5px; }
+header h1 { font-size: var(--fs-base); font-weight: 600; letter-spacing: .5px; }
 header .spacer { flex: 1; }
 header button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
-                border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px;
+                border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: var(--fs-sm);
                 box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 header button:hover { background: #E0E0E0; }
 #save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #fff; }
@@ -46,7 +64,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
              box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 .tab-btn { background: transparent; color: var(--text2);
            border: 1px solid var(--border); border-right: none; border-radius: 0; padding: 5px 16px;
-           cursor: pointer; font-size: 13px; font-weight: 600; transition: .15s; }
+           cursor: pointer; font-size: var(--fs-sm); font-weight: 600; transition: .15s; }
 .tab-group .tab-btn:first-child { border-radius: 7px 0 0 7px; }
 .tab-group .tab-btn:last-child  { border-right: 1px solid var(--border); border-radius: 0 7px 7px 0; }
 .tab-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
@@ -56,15 +74,16 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 #workspace { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 
 /* grid tabs layout */
-#grid-workspace { display: flex; flex: 1; overflow: hidden; }
+#grid-workspace { display: none; flex: 1; overflow: hidden; }
+#grid-workspace.active { display: flex; }
 
 /* ── left panel ─────────────────────────────────────────────── */
 .left-panel { width: 470px; flex-shrink: 0; border-right: 1px solid var(--border);
               background: var(--sidebar-bg); display: flex; flex-direction: column; overflow: hidden; }
 .panel-section { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .panel-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.panel-section-header span { font-weight: 600; font-size: 15px; flex: 1; }
-.btn-sm { font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+.panel-section-header span { font-weight: 600; font-size: var(--fs-base); flex: 1; }
+.btn-sm { font-size: var(--fs-sm); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
            background: var(--panel); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.07); }
 .btn-sm:hover { background: var(--gray-lt); }
 .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue);
@@ -73,54 +92,66 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
 .btn-danger:hover { background: #E0352B; }
 
+/* one delete affordance, used by sublists, grid blocks, grid cells and chips */
+.btn-x { display: inline-flex; align-items: center; justify-content: center;
+         border: none; background: none; border-radius: 4px; padding: 1px 5px;
+         color: var(--red); font-size: var(--fs-base); line-height: 1;
+         cursor: pointer; opacity: .65; transition: opacity .1s, background .1s; }
+.btn-x:hover { opacity: 1; background: rgba(255,59,48,.12); }
+
 #item-list { overflow-y: auto; flex: 1; }
 .item-row { padding: 9px 15px; cursor: pointer; border-left: 3px solid transparent;
              display: flex; align-items: center; gap: 8px; }
 .item-row:hover { background: rgba(0,0,0,0.04); }
 .item-row.selected { background: var(--blue-lt); border-left-color: var(--blue); }
-.item-row .item-name { flex: 1; font-size: 14px; }
-.item-row .item-badge { font-size: 12px; color: var(--text2); }
+.item-row .item-name { flex: 1; font-size: var(--fs-base); min-width: 0;
+                        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-row .item-badge { font-size: var(--fs-sm); color: var(--text2); }
 
-/* ── item form ──────────────────────────────────────────────── */
-#item-form { overflow-y: auto; padding: 12px; border-top: 1px solid var(--border);
+/* ── item form (left-panel editor, shared by items and exams) ── */
+.side-form { overflow-y: auto; padding: 12px; border-top: 1px solid var(--border);
               flex-shrink: 0; max-height: 55%; background: var(--panel); }
-#item-form h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+.side-form h3 { font-size: var(--fs-base); font-weight: 600; margin-bottom: 10px; }
 .form-group { margin-bottom: 10px; }
-.form-group label { display: block; font-size: 12px; color: var(--text2);
+.form-group label { display: block; font-size: var(--fs-sm); color: var(--text2);
                      margin-bottom: 2px; font-weight: 500; }
 .form-group input, .form-group select, .form-group textarea {
   width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: 14px; background: var(--panel); }
+  font-size: var(--fs-base); background: var(--panel); }
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
   outline: none; border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(0,122,255,0.2); }
+.form-label-strong { display: block; font-weight: 600; font-size: var(--fs-sm); color: var(--text2); }
+.form-label-strong.spaced { margin-top: 10px; }
 .form-row { display: flex; gap: 6px; }
 .form-row .form-group { flex: 1; }
 .form-actions { display: flex; gap: 6px; margin-top: 10px; }
-.help-text { font-size: 15px; color: var(--text2); margin-bottom: 5px; }
+.help-text { font-size: var(--fs-base); color: var(--text2); margin-bottom: 5px; }
 .sublist { margin-top: 4px; }
 .sublist-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
-                 font-size: 16px; padding: 4px 5px; background: var(--panel);
+                 font-size: var(--fs-base); padding: 4px 5px; background: var(--panel);
                  border: 1px solid var(--border); border-radius: 4px; }
 .sublist-item .sl-label { flex: 1; }
-.sublist-item button { font-size: 15px; padding: 2px 6px; }
+.sublist-item .sl-meta { font-size: var(--fs-xs); color: var(--text2); }
+.sublist-item input { font-size: var(--fs-sm); }
 .role-check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
                    padding: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
-.role-check-row label { font-size: 16px; flex: 1; }
+.role-check-row label { font-size: var(--fs-base); flex: 1; }
+.role-se-note { color: var(--text2); font-size: var(--fs-xs); margin-left: 4px; }
 .count-input { width: 50px !important; }
 .checkbox-group { display: flex; flex-direction: column; gap: 5px; }
-.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); }
 
 /* ── right panel / grid ─────────────────────────────────────── */
 .right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
 .grid-placeholder { flex: 1; display: flex; align-items: center; justify-content: center;
-                     color: var(--text2); font-size: 16px; }
+                     color: var(--text2); font-size: var(--fs-base); }
 
 .grid-outer { flex: 1; display: flex; flex-direction: column; overflow: hidden;
               border: 1px solid var(--border); border-radius: 6px;
               margin: 10px; }
 .day-header-spacer { width: 76px; flex-shrink: 0; }
-.day-header { flex: 1; text-align: center; font-size: 16px; font-weight: 600;
+.day-header { flex: 1; text-align: center; font-size: var(--fs-base); font-weight: 600;
                padding: 6px; border-left: 1px solid var(--border); color: var(--text2); }
 
 .grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
@@ -129,39 +160,38 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
                        border-radius: 5px 5px 0 0; }
 .grid-body { display: flex; position: relative; padding-top: 8px; }
 .time-labels { width: 76px; flex-shrink: 0; position: relative; }
-.time-label { position: absolute; right: 6px; font-size: 14px; color: var(--text2);
+.time-label { position: absolute; right: 6px; font-size: var(--fs-sm); color: var(--text2);
                transform: translateY(-50%); white-space: nowrap; }
 .days-area { flex: 1; display: flex; position: relative; }
 .day-col { flex: 1; position: relative; border-left: 1px solid var(--border);
             cursor: crosshair; user-select: none; }
-.hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid #e5e7eb;
+.hour-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border);
               pointer-events: none; }
-.halfhour-line { position: absolute; left: 0; right: 0; border-top: 1px dashed #f0f0f0;
+.halfhour-line { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(60,60,67,0.08);
                   pointer-events: none; }
 
 /* ── blocks ─────────────────────────────────────────────────── */
 .block { position: absolute; left: 2px; right: 2px; border-radius: 4px;
-          font-size: 14px; padding: 3px 5px; pointer-events: none; }
+          font-size: var(--fs-sm); padding: 3px 5px; pointer-events: none; }
 .block-editable { pointer-events: all; cursor: grab; user-select: none; }
 .block-editable:active { cursor: grabbing; }
-.block-lab     { background: #E5F1FF; border-left: 3px solid #007AFF; color: #003D80; }
-.block-course  { background: #FFF3E0; border-left: 3px solid #FF9500; color: #7A4600; }
-.block-commit  { background: #F3E8FF; border-left: 3px solid #AF52DE; color: #5E1A8A; }
+.block-lab     { background: var(--blue-lt);   border-left: 3px solid var(--blue);   color: var(--blue-dk); }
+.block-course  { background: var(--amber-lt);  border-left: 3px solid var(--amber);  color: var(--amber-dk); }
+.block-commit  { background: var(--purple-lt); border-left: 3px solid var(--purple); color: var(--purple-dk); }
 .block-preview { background: rgba(59,130,246,.25); border: 2px dashed var(--blue);
                   pointer-events: none; z-index: 10; }
 .block-ghost   { opacity: .45; pointer-events: none; z-index: 20; }
 .block-label { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.block-time  { opacity: .75; font-size: 12px; }
+.block-time  { opacity: .75; font-size: var(--fs-xs); }
 .block-resize-handle-top { position: absolute; top: 0; left: 0; right: 0; height: 6px;
                              cursor: ns-resize; border-radius: 3px 3px 0 0;
                              background: rgba(0,0,0,.12); }
 .block-resize-handle     { position: absolute; bottom: 0; left: 0; right: 0; height: 6px;
                              cursor: ns-resize; border-radius: 0 0 3px 3px;
                              background: rgba(0,0,0,.12); }
-.block-delete { position: absolute; top: 1px; right: 3px; font-size: 15px; line-height: 1;
-                 cursor: pointer; opacity: 0; transition: opacity .1s; }
-.block-editable:hover .block-delete { opacity: .45; }
-.block-delete:hover { opacity: 1 !important; color: var(--red); }
+.block-delete { position: absolute; top: 0; right: 1px; opacity: 0; }
+.block-editable:hover .block-delete       { opacity: .65; }
+.block-editable:hover .block-delete:hover { opacity: 1; }
 
 /* ── meeting finder grid ─────────────────────────────────────── */
 .meeting-cell { position: absolute; left: 0; right: 0; pointer-events: none; }
@@ -175,49 +205,62 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
                      background: var(--panel); }
 #meeting-workspace.active { display: flex; }
 .meeting-right { flex: 1; min-height: 0; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-.meeting-lab-row { padding: 9px 15px; display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.meeting-lab-row { padding: 9px 15px; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); cursor: pointer; }
 .meeting-lab-row:hover { background: rgba(0,0,0,0.04); }
 .meeting-lab-row input[type=checkbox] { cursor: pointer; }
 
 .sched-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .od-section-hdr { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.od-section-hdr h4 { margin: 0; font-size: 17px; }
+.od-section-hdr h4 { margin: 0; font-size: var(--fs-lg); }
+.section-h4 { margin-bottom: 8px; font-size: var(--fs-lg); }
 .sched-controls button { padding: 8px 17px; border-radius: 5px; border: 1px solid var(--border);
-                           background: var(--panel); cursor: pointer; font-size: 16px; }
+                           background: var(--panel); cursor: pointer; font-size: var(--fs-base); }
 .sched-controls button:hover { background: var(--gray-lt); }
 .view-toggle { display: flex; background: var(--gray-lt); border-radius: 7px; padding: 2px; gap: 2px;
                border: 1px solid var(--border); }
-.view-toggle button { border: none; border-radius: 5px; font-size: 13px; background: transparent; }
+.view-toggle button { border: none; border-radius: 5px; font-size: var(--fs-sm); background: transparent; }
 .view-toggle button.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12); color: var(--text); }
 
-#diagnostics { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px; }
-#diagnostics h4 { color: var(--red); margin-bottom: 8px; }
-#diagnostics ul { padding-left: 20px; font-size: 16px; }
-#diagnostics li { margin-bottom: 4px; }
+/* ── warning surface (solver diagnostics, TBD exams, conflict rows) ── */
+.warn-box { background: var(--warn-bg); border: 1px solid var(--warn-border);
+            border-radius: 6px; padding: 12px; }
+.warn-box h4 { color: var(--warn-text); margin-bottom: 8px; }
+.warn-box ul { padding-left: 20px; font-size: var(--fs-base); margin: 4px 0 0; }
+.warn-box li { margin-bottom: 4px; }
 
-.sched-table-wrap { overflow-x: auto; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.sched-table-wrap.grid-mode { border: none; border-radius: 0; overflow: visible; display: flex; justify-content: center; }
-.sched-table { border-collapse: separate; border-spacing: 0; min-width: 600px; width: 100%; }
-.sched-table th, .sched-table td { border-bottom: 1px solid #e5e7eb; padding: 8px 12px;
-                                     font-size: 14px; text-align: left; }
-.sched-table th { background: var(--gray-lt); font-weight: 600; color: var(--text2); text-align: center; }
-.sched-table .lab-header { background: #eff6ff; font-weight: 700; }
-.sched-table .ta-header  { background: #f0fdf4; font-weight: 700; }
+/* ── one table system ──────────────────────────────────────── */
+.data-table-wrap { overflow-x: auto; overflow-y: hidden; flex-shrink: 0;
+                   border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px; }
+.data-table-wrap.grid-mode { border: none; border-radius: 0; overflow: visible;
+                             display: flex; justify-content: center; }
+.data-table { border-collapse: separate; border-spacing: 0; min-width: 600px; width: 100%;
+              font-size: var(--fs-sm); }
+.data-table th, .data-table td { border-bottom: 1px solid var(--border);
+                                  padding: 8px 12px; text-align: left; }
+.data-table th { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
+.data-table td { background: var(--panel); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table .lab-header td      { background: var(--blue-lt);  font-weight: 700; }
+.data-table .ta-header td       { background: var(--green-lt); font-weight: 700; }
+.data-table .summary-total td   { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
+.data-table input { font-size: var(--fs-sm); padding: 2px 4px;
+                    border: 1px solid var(--border); border-radius: 4px; }
+.data-table input[type=number] { width: 60px; }
+
 .role-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.ta-chip { display: inline-flex; align-items: center; gap: 4px; background: #E5F1FF;
-            color: #003D80; border: 1px solid rgba(0,122,255,0.3); border-radius: 5px;
-            padding: 3px 8px; font-size: 12px; }
-.ta-chip.locked { background: #E3F9EB; color: #1A6B36; border-color: rgba(52,199,89,0.35); }
-.ta-chip .lock-btn { cursor: pointer; opacity: .6; font-size: 14px; }
-.ta-chip .lock-btn:hover { opacity: 1; }
-.ta-chip .rm-btn { cursor: pointer; color: var(--red); font-size: 16px; line-height: 1;
-                    margin-left: 1px; }
-.add-ta-btn { background: none; border: 1px dashed #93c5fd; border-radius: 3px;
-               padding: 3px 8px; font-size: 15px; cursor: pointer; color: var(--blue); }
+.ta-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--blue-lt);
+            color: var(--blue-dk); border: 1px solid rgba(0,122,255,0.3); border-radius: 5px;
+            padding: 3px 8px; font-size: var(--fs-xs); }
+.ta-chip.locked { background: var(--green-lt); color: var(--green-dk); border-color: rgba(52,199,89,0.35); }
+.lock-badge { font-size: var(--fs-sm); line-height: 1; opacity: .6; cursor: default; }
+.lock-badge.interactive { cursor: pointer; }
+.lock-badge.interactive:hover { opacity: 1; }
+.add-ta-btn { background: none; border: 1px dashed rgba(0,122,255,0.45); border-radius: 3px;
+               padding: 3px 8px; font-size: var(--fs-sm); cursor: pointer; color: var(--blue); }
 .add-ta-btn:hover { background: var(--blue-lt); }
-.ta-row-lab { display: inline-flex; align-items: center; gap: 5px; background: #f2f2f2;
-               border: 1px solid #d1d5db; border-radius: 3px; padding: 3px 8px;
-               font-size: 14px; color: var(--text2); margin: 2px; }
+.ta-row-lab { display: inline-flex; align-items: center; gap: 5px; background: var(--gray-lt);
+               border: 1px solid var(--border); border-radius: 3px; padding: 3px 8px;
+               font-size: var(--fs-sm); color: var(--text2); margin: 2px; }
 
 /* ── drag-and-drop chip reassignment ── */
 .ta-chip[draggable="true"]  { cursor: grab; }
@@ -228,10 +271,13 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 
 /* meeting finder */
 .meeting-outer { display: flex; flex-direction: column; gap: 8px; }
-.meeting-legend { display: flex; gap: 20px; font-size: 15px; align-items: center; }
-.legend-swatch { width: 18px; height: 18px; border-radius: 3px; display: inline-block; }
-.meeting-ta-ul { font-size:14px; margin:4px 0; padding-left:18px; }
+.meeting-legend { display: flex; gap: 20px; font-size: var(--fs-base); align-items: center; }
+.legend-swatch { width: 18px; height: 18px; border-radius: 3px; display: inline-block;
+                 border: 1px solid var(--border); }
+.meeting-ta-ul { font-size: var(--fs-sm); margin:4px 0; padding-left:18px; }
 .ta-conflict-ul { margin:2px 0 10px; padding-left:18px; line-height:1.6; }
+#ta-conflict-list:not(:empty) { padding: 12px 20px; border-top: 1px solid var(--border);
+                                 font-size: var(--fs-sm); }
 .meeting-grid-wrap { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 6px;
                      overflow: hidden; display: flex; flex-direction: column; }
 .meeting-grid-scroll { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
@@ -246,51 +292,59 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .modal-box { background: var(--panel); border-radius: 12px; padding: 24px; min-width: 420px;
               max-width: 90vw; max-height: 80vh; overflow-y: auto;
               box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10); }
-.modal-box h2 { font-size: 19px; font-weight: 700; margin-bottom: 15px; }
-.modal-box h3 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+.modal-box h2 { font-size: var(--fs-xl); font-weight: 700; margin-bottom: 15px; }
+.modal-box h3 { font-size: var(--fs-base); font-weight: 600; margin-bottom: 10px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal-list { max-height: 180px; overflow-y: auto; font-size: var(--fs-sm); margin-bottom: 4px; }
+.modal-list-row { padding: 4px 0; border-bottom: 1px solid var(--border); }
+.modal-list-row label { cursor: pointer; display: flex; align-items: baseline; gap: 5px; }
+.modal-note { font-size: var(--fs-sm); color: var(--text2); margin: 0 0 6px; }
 .assign-ta-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border);
                    border-radius: 5px; margin-bottom: 10px; }
 .assign-ta-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-                  border-bottom: 1px solid var(--border); cursor: pointer; font-size: 16px; }
+                  border-bottom: 1px solid var(--border); cursor: pointer; font-size: var(--fs-base); }
 .assign-ta-row:last-child { border-bottom: none; }
 .assign-ta-row:hover { background: var(--gray-lt); }
-.assign-ta-row .exp-badge { font-size: 12px; padding: 2px 6px; border-radius: 10px;
-                              background: #dcfce7; color: #166534; }
-.assign-ta-row .exp-badge.inexp { background: #fef3c7; color: #92400e; }
-.assign-ta-row .se-info { font-size: 14px; color: var(--text2); margin-left: auto; }
+.assign-ta-row.is-assigned   { background: var(--blue-lt); }
+.assign-ta-row.has-conflict  { background: var(--warn-bg); flex-wrap: wrap; }
+.assign-ta-row .exp-badge { font-size: var(--fs-xs); padding: 2px 6px; border-radius: 10px;
+                              background: var(--green-lt); color: var(--green-dk); }
+.assign-ta-row .exp-badge.inexp { background: var(--amber-lt); color: var(--warn-text); }
+.assign-ta-row .se-info { font-size: var(--fs-sm); color: var(--text2); margin-left: auto; }
+.assign-ta-row .ok-check { color: var(--green); }
+.assign-reason { color: var(--warn-text2); font-size: var(--fs-xs); margin-top: 2px; }
+.assign-divider { text-align: center; color: var(--text2); font-size: var(--fs-xs); padding: 6px 0 4px; }
 
 /* ── help modal ──────────────────────────────────────────────── */
-.help-modal h3 { margin: 14px 0 4px; font-size: 16px; color: var(--blue); }
-.help-modal p, .help-modal ul { font-size: 15px; color: var(--text); line-height: 1.5; margin-bottom: 6px; }
+.help-modal h3 { margin: 14px 0 4px; font-size: var(--fs-base); color: var(--blue); }
+.help-modal p, .help-modal ul { font-size: var(--fs-base); color: var(--text); line-height: 1.5; margin-bottom: 6px; }
 .help-modal ul { padding-left: 18px; }
 
 /* ── status bar ──────────────────────────────────────────────── */
 #status-bar { flex-shrink: 0; padding: 4px 17px; background: var(--toolbar-bg);
-              border-top: 1px solid var(--border); font-size: 14px;
+              border-top: 1px solid var(--border); font-size: var(--fs-sm);
               color: var(--text2); white-space: nowrap; overflow: hidden;
               text-overflow: ellipsis; }
 
 /* ── exam calendar ──────────────────────────────────────────── */
 .cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.cal-nav button { background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
-                  padding: 4px 10px; cursor: pointer; font-size: 14px; }
-.cal-nav button:hover { background: var(--gray-lt); }
-.cal-nav span { font-weight: 600; font-size: 15px; min-width: 140px; text-align: center; }
+.cal-nav span { font-weight: 600; font-size: var(--fs-base); min-width: 140px; text-align: center; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
             border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.cal-hdr { background: var(--gray-lt); text-align: center; font-size: 12px; font-weight: 600;
+.cal-hdr { background: var(--gray-lt); text-align: center; font-size: var(--fs-sm); font-weight: 600;
            padding: 6px 0; color: var(--text2); }
-.cal-day { background: var(--panel); min-height: 70px; padding: 4px; font-size: 12px;
+.cal-day { background: var(--panel); min-height: 70px; padding: 4px; font-size: var(--fs-sm);
            color: var(--text2); position: relative; }
-.cal-day.other-month { background: #fafafa; color: #ccc; }
+.cal-day.other-month { background: #fafafa; color: var(--text2); opacity: .45; }
 .cal-day .day-num { font-weight: 600; margin-bottom: 2px; }
-.cal-day.has-exam { background: #eff6ff; }
+.cal-day.has-exam { background: var(--blue-lt); }
 .cal-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
            background: var(--blue); margin: 1px; }
-.cal-exam-label { font-size: 10px; color: var(--blue); white-space: nowrap; overflow: hidden;
+.cal-exam-label { font-size: var(--fs-xs); color: var(--blue); white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; display: block; cursor: pointer; }
 .cal-exam-label:hover { text-decoration: underline; }
+.tbd-list { padding-left: 18px; margin-top: 4px; font-size: var(--fs-sm); }
+.tbd-list li { margin-bottom: 2px; cursor: pointer; }
 
 /* ── proctoring workspace ─────────────────────────────────────── */
 #exams-workspace {
@@ -310,34 +364,28 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   background: var(--panel);
 }
 #summary-workspace.active { display: block; }
-.summary-h1 { font-size: 1.4rem; font-weight: 700; margin: 24px 0 8px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+.summary-h1 { font-size: var(--fs-xl); font-weight: 700; margin: 24px 0 8px;
+              border-bottom: 2px solid var(--border); padding-bottom: 4px; }
 .summary-h1:first-child { margin-top: 0; }
-.summary-h2 { font-size: 1.1rem; font-weight: 600; margin: 16px 0 4px; }
-.summary-sub { color: #6b7280; font-size: 0.875rem; margin: 0 0 8px; }
-.summary-none { color: #9ca3af; font-style: italic; font-size: 0.875rem; }
-.summary-proctor-label { font-weight: 600; font-size: 0.875rem; margin: 12px 0 4px; }
-.summary-proctor-list { margin: 0 0 8px 16px; font-size: 0.875rem; }
-.summary-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
-.summary-table { border-collapse: separate; border-spacing: 0; font-size: 0.875rem; width: 100%; }
-.summary-table th, .summary-table td { border-bottom: 1px solid #e5e7eb; padding: 7px 12px; text-align: left; }
-.summary-table th { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
-.summary-table td { background: var(--panel); }
-.summary-table tbody tr:last-child td { border-bottom: none; }
-.summary-total td { font-weight: 600; background: var(--gray-lt); color: var(--text2); }
-.btn-run-proctor { padding: 8px 17px; border-radius: 5px; border: 1px solid var(--border);
-                   background: var(--panel); cursor: pointer; font-size: 16px; }
-.btn-run-proctor:hover { background: var(--gray-lt); }
+.summary-h2 { font-size: var(--fs-lg); font-weight: 600; margin: 16px 0 4px; }
+.summary-h2.with-action { display: flex; align-items: center; gap: 10px; }
+.summary-sub { color: var(--text2); font-size: var(--fs-sm); margin: 0 0 8px; }
+.summary-none { color: var(--text2); font-style: italic; font-size: var(--fs-sm); }
+.summary-proctor-label { font-weight: 600; font-size: var(--fs-sm); margin: 12px 0 4px; }
+.summary-proctor-list { margin: 0 0 8px 16px; font-size: var(--fs-sm); }
 
 /* ── TA summary tables ────────────────────────────────────────── */
 #sched-ta-summary, #proctor-ta-summary { margin-top: 20px; }
 
 /* ── assignment grid view ────────────────────────────────────── */
 .assign-grid-wrap { display: inline-block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.assign-grid { border-collapse: collapse; font-size: 12px; width: auto; }
+.assign-grid { border-collapse: collapse; font-size: var(--fs-sm); width: auto; }
 .assign-grid th.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; min-width: 120px;
                                font-weight: 600; border-right: 1px solid var(--border);
                                position: sticky; left: 0; top: 0; background: var(--gray-lt); z-index: 3; }
 .assign-grid thead th:not(.ta-name-col) { border-left: hidden; border-right: hidden; }
+.assign-grid thead th.col-head { vertical-align: bottom; padding: 4px; position: sticky;
+                                  top: 0; background: var(--gray-lt); z-index: 1; }
 .assign-grid td.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; font-weight: 400;
                                border-right: 1px solid var(--border);
                                position: sticky; left: 0; background: var(--panel); z-index: 1; }
@@ -350,20 +398,24 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     linear-gradient(to bottom right, transparent calc(50% - 0.6px), #888 calc(50% - 0.6px), #888 calc(50% + 0.6px), transparent calc(50% + 0.6px)),
     linear-gradient(to bottom left,  transparent calc(50% - 0.6px), #888 calc(50% - 0.6px), #888 calc(50% + 0.6px), transparent calc(50% + 0.6px));
 }
-.assign-cell.cell-assigned { background: #E5F1FF; color: #003D80; }
-.assign-cell.cell-locked   { background: #E3F9EB; color: #1A6B36; }
-.assign-cell .cell-rm { position: absolute; top: 0; right: 1px; font-size: 13px;
-                         color: var(--red); line-height: 1; cursor: pointer; z-index: 1; }
+.assign-cell.cell-assigned { background: var(--blue-lt);  color: var(--blue-dk); }
+.assign-cell.cell-locked   { background: var(--green-lt); color: var(--green-dk); }
+.assign-cell .cell-rm { position: absolute; top: 0; right: 0; z-index: 1; font-size: var(--fs-sm); }
 .assign-cell:hover { opacity: 0.8; }
 .assign-grid .col-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
-                            font-size: 11px; max-height: 200px; overflow: hidden; text-align: start;
+                            font-size: var(--fs-xs); max-height: 200px; overflow: hidden; text-align: start;
                             width: fit-content; margin: 0 auto; }
 
 /* ── print ───────────────────────────────────────────────────── */
 @media print {
-  header, nav.tabs, .left-panel, .sched-controls, #diagnostics { display: none !important; }
-  #schedule-workspace { display: block !important; padding: 0; }
-  .sched-table { font-size: 11px; }
+  header, nav.tabs, .left-panel, .sched-controls, .warn-box { display: none !important; }
+  body, #workspace { height: auto; overflow: visible; }
+  #schedule-workspace, #summary-workspace { display: block !important; padding: 0; }
+  .data-table-wrap { overflow: visible; margin-bottom: 10px; }
+  .data-table { font-size: 10px; min-width: 0; }
+  .data-table th, .data-table td { padding: 3px 6px; }
+  .summary-h1 { font-size: 14px; }
+  .summary-h2 { font-size: 12px; }
 }
 </style>
 </head>
@@ -400,7 +452,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 <div id="workspace">
 
   <!-- GRID WORKSPACE (Courses / TAs / Labs) -->
-  <div id="grid-workspace" style="display:flex;flex:1;overflow:hidden;">
+  <div id="grid-workspace" class="active">
     <!-- Left panel -->
     <div class="left-panel">
       <div class="panel-section">
@@ -410,7 +462,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
         </div>
       </div>
       <div id="item-list"></div>
-      <div id="item-form" style="display:none;"></div>
+      <div id="item-form" class="side-form" style="display:none;"></div>
     </div>
     <!-- Right panel -->
     <div class="right-panel">
@@ -446,16 +498,16 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   <!-- SCHEDULE WORKSPACE -->
   <div id="schedule-workspace">
     <div class="sched-controls">
-      <button class="btn-run" onclick="runSolver()" title="Auto-assign TAs to unfilled slots (locked assignments are preserved)">▶ Assign TAs</button>
+      <button id="btn-run-labs" onclick="runSolver()" title="Auto-assign TAs to unfilled slots (locked assignments are preserved)">▶ Assign TAs</button>
       <button onclick="clearAssignments()" title="Remove all solver-assigned (unlocked) assignments">Clear Unlocked</button>
       <div class="view-toggle" style="margin-left:8px;">
-        <button id="sched-table-btn" class="active" onclick="setSchedView('table')">☰ Table</button>
-        <button id="sched-grid-btn" onclick="setSchedView('grid')">⊞ Grid</button>
+        <button id="sched-table-btn" class="active" onclick="setViewMode('sched','table')">☰ Table</button>
+        <button id="sched-grid-btn" onclick="setViewMode('sched','grid')">⊞ Grid</button>
       </div>
       <div style="flex:1;"></div>
     </div>
     <div id="diagnostics" style="display:none;"></div>
-    <div class="sched-table-wrap"><div id="sched-table"></div></div>
+    <div class="data-table-wrap"><div id="sched-table"></div></div>
     <div id="outside-duties-section"></div>
     <div id="sched-ta-summary"></div>
   </div>
@@ -478,11 +530,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     <!-- Right panel: legend + grid -->
     <div class="meeting-right">
       <div><strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.</div>
-      <div class="meeting-legend">
-        <span><span class="legend-swatch" style="background:#bbf7d0;"></span> All free</span>
-        <span><span class="legend-swatch" style="background:#fde68a;"></span> Some busy</span>
-        <span><span class="legend-swatch" style="background:#fca5a5;"></span> All busy</span>
-      </div>
+      <div class="meeting-legend" id="meeting-legend"></div>
       <div class="meeting-grid-wrap">
         <div class="meeting-grid-scroll">
           <div class="day-headers-sticky">
@@ -519,7 +567,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
         </div>
       </div>
       <div id="exam-list" style="overflow-y:auto;overflow-x:hidden;flex:1;"></div>
-      <div id="exam-form" style="display:none;overflow-y:auto;padding:12px;border-top:1px solid var(--border);max-height:55%;background:var(--panel);"></div>
+      <div id="exam-form" class="side-form" style="display:none;"></div>
     </div>
     <div class="right-panel" style="padding:20px;">
       <div id="exam-calendar"></div>
@@ -529,16 +577,16 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   <!-- PROCTORING WORKSPACE -->
   <div id="proctoring-workspace">
     <div class="sched-controls">
-      <button class="btn-run-proctor" onclick="runProctorSolver()">▶ Assign Proctors</button>
-      <button onclick="clearProctorAssignments()">Clear Unlocked</button>
+      <button id="btn-run-proctors" onclick="runProctorSolver()" title="Auto-assign proctors to unfilled exam slots (locked assignments are preserved)">▶ Assign Proctors</button>
+      <button onclick="clearProctorAssignments()" title="Remove all solver-assigned (unlocked) proctor assignments">Clear Unlocked</button>
       <div class="view-toggle" style="margin-left:8px;">
-        <button id="proctor-table-btn" class="active" onclick="setProctorView('table')">☰ Table</button>
-        <button id="proctor-grid-btn" onclick="setProctorView('grid')">⊞ Grid</button>
+        <button id="proctor-table-btn" class="active" onclick="setViewMode('proctor','table')">☰ Table</button>
+        <button id="proctor-grid-btn" onclick="setViewMode('proctor','grid')">⊞ Grid</button>
       </div>
       <div style="flex:1;"></div>
     </div>
     <div id="proctor-diagnostics" style="display:none;"></div>
-    <div class="sched-table-wrap"><div id="proctor-table"></div></div>
+    <div class="data-table-wrap"><div id="proctor-table"></div></div>
     <div id="outside-proctoring-section"></div>
     <div id="proctor-pe-total"></div>
     <div id="proctor-ta-summary"></div>
@@ -563,10 +611,24 @@ const GRID_START = 420;   // 7:00 AM in minutes
 const GRID_END   = 1140;  // 7:00 PM in minutes
 const GRID_MINS  = GRID_END - GRID_START;
 const HOUR_H     = 75;    // px per hour
-const GRID_H     = (GRID_MINS / 60) * HOUR_H;  // 800 px
+const GRID_H     = (GRID_MINS / 60) * HOUR_H;  // 900 px
 const PX_PER_MIN = GRID_H / GRID_MINS;
 const SNAP       = 5;     // minute snap
 const DAYS       = ['M','T','W','R','F'];
+const DAY_SHORT  = ['Mon','Tue','Wed','Thu','Fri'];
+const DAY_LONG   = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+// Meeting Finder heat scale. `at(frac)` is what flush() paints; the legend is
+// built from the same array so the swatches always match the grid.
+const HEAT_STOPS = [
+  {label:'All free',  rgb:'187,247,208', alpha: () => 0.7},
+  {label:'Some busy', rgb:'253,230,138', alpha: f => 0.4 + 0.5 * f},
+  {label:'All busy',  rgb:'252,165,165', alpha: () => 0.8},
+];
+function heatColor(frac) {
+  const stop = frac === 0 ? HEAT_STOPS[0] : frac < 1 ? HEAT_STOPS[1] : HEAT_STOPS[2];
+  return `rgba(${stop.rgb},${stop.alpha(frac)})`;
+}
 
 // ════════════════════════════════════════════════════════════════
 // STATE
@@ -598,6 +660,56 @@ function uid() { return '_' + Math.random().toString(36).slice(2,10); }
 function displayName(item) {
   const n = item?.name || '(unnamed)';
   return item?.section ? `${n} ${item.section}` : n;
+}
+
+// The single source of truth for an item's meeting times. Mirrors the backend's
+// _get_meetings(): prefer meetings[], else fall back to the legacy top-level
+// day/start_min/end_min fields, else no meetings at all.
+function getMeetings(item) {
+  if (!item) return [];
+  if (item.meetings?.length) return item.meetings;
+  const d = item.day;
+  if (d === null || d === undefined) return [];
+  return [{day: d, start_min: item.start_min ?? 0, end_min: item.end_min ?? 0}];
+}
+
+// "M 9:00 AM–10:15 AM, W 9:00 AM–10:15 AM" — every meeting, not just the first.
+function fmtMeetings(item, dayNames = DAYS) {
+  const parts = getMeetings(item)
+    .filter(m => m.day >= 0 && m.day < dayNames.length)
+    .map(m => `${dayNames[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
+  return parts.length ? parts.join(', ') : '—';
+}
+
+// Course/section label for an exam — same rule as displayName() for items.
+function examLabel(exam, fallback = '—') {
+  if (!exam?.course_name) return fallback;
+  return displayName({name: exam.course_name, section: exam.section});
+}
+
+// "CHM 111 001 — Midterm 1", falling back to whichever half exists.
+function examFullLabel(exam) {
+  const label = examLabel(exam, '');
+  const name  = exam?.name || '';
+  if (label && name && name !== label) return `${label} — ${name}`;
+  return label || name || 'Exam';
+}
+
+// One lock indicator everywhere. Pass onToggle to make it clickable; omit it
+// where an enclosing element already handles the click.
+function lockBadge(locked, onToggle) {
+  const b = el('span', 'lock-badge' + (onToggle ? ' interactive' : ''), locked ? '🔒' : '🔓');
+  b.title = onToggle ? (locked ? 'Unlock' : 'Lock') : (locked ? 'Locked' : 'Assigned');
+  if (onToggle) b.onclick = e => { e.stopPropagation(); onToggle(); };
+  return b;
+}
+
+// One delete affordance everywhere.
+function xBtn(onClick, title = 'Remove', extraCls = '') {
+  const b = el('span', 'btn-x' + (extraCls ? ' ' + extraCls : ''), '×');
+  b.title = title;
+  b.onclick = e => { e.stopPropagation(); onClick(e); };
+  return b;
 }
 
 function minToY(m)  { return (m - GRID_START) * PX_PER_MIN; }
@@ -660,10 +772,15 @@ async function loadData() {
 async function saveData() {
   if (!currentFilePath) { await saveAsData(); return; }
   try {
-    await fetch('/api/data', {
+    const r = await fetch('/api/data', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(S.data)
     });
+    if (!r.ok) {
+      // No file is open server-side — fall back to Save As.
+      await saveAsData();
+      return;
+    }
     markClean();
   } catch(e) { alert('Save failed: ' + e); }
 }
@@ -716,7 +833,7 @@ async function exportDocx() {
 }
 
 async function runSolver() {
-  const btn = document.querySelector('.btn-run');
+  const btn = $id('btn-run-labs');
   btn.textContent = '⏳ Solving…'; btn.disabled = true;
   try {
     const r = await fetch('/api/schedule', {
@@ -738,46 +855,42 @@ async function runSolver() {
 // ════════════════════════════════════════════════════════════════
 // TAB MANAGEMENT
 // ════════════════════════════════════════════════════════════════
+const GRID_TABS = ['courses','tas','labs'];
+// tab → the workspace element it activates
+const TAB_WORKSPACE = {
+  courses: 'grid-workspace', tas: 'grid-workspace', labs: 'grid-workspace',
+  schedule: 'schedule-workspace', meeting: 'meeting-workspace',
+  exams: 'exams-workspace', proctoring: 'proctoring-workspace',
+  summary: 'summary-workspace',
+};
+// tab → the renderer that repaints it
+const TAB_RENDER = {
+  schedule: () => renderSchedule(),
+  meeting:  () => renderMeetingFinder(),
+  exams:    () => renderExamsTab(),
+  proctoring: () => renderProctoring(),
+  summary:  () => renderSummary(),
+};
+
 function switchTab(tab) {
   S.tab = tab; S.selId = null;
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab));
 
-  const isGrid = ['courses','tas','labs'].includes(tab);
-  $id('grid-workspace').style.display        = isGrid          ? 'flex'  : 'none';
-  $id('schedule-workspace').classList.toggle('active', tab==='schedule');
-  $id('meeting-workspace').classList.toggle('active',  tab==='meeting');
-  $id('exams-workspace').classList.toggle('active',    tab==='exams');
-  $id('proctoring-workspace').classList.toggle('active', tab==='proctoring');
-  $id('summary-workspace').classList.toggle('active',  tab==='summary');
+  const active = TAB_WORKSPACE[tab];
+  new Set(Object.values(TAB_WORKSPACE)).forEach(id =>
+    $id(id).classList.toggle('active', id === active));
 
-  if (isGrid) {
-    renderLeftPanel(); showGridPlaceholder();
-  } else if (tab === 'schedule') {
-    renderSchedule();
-  } else if (tab === 'meeting') {
-    renderMeetingFinder();
-  } else if (tab === 'exams') {
-    renderExamsTab();
-  } else if (tab === 'proctoring') {
-    renderProctoring();
-  } else if (tab === 'summary') {
-    renderSummary();
-  }
+  if (GRID_TABS.includes(tab)) { renderLeftPanel(); showGridPlaceholder(); }
+  else TAB_RENDER[tab]?.();
 }
 
 function renderAll() {
-  if (['courses','tas','labs'].includes(S.tab)) {
+  if (GRID_TABS.includes(S.tab)) {
     renderLeftPanel();
     if (S.selId) { renderGrid(); renderItemForm(); } else showGridPlaceholder();
-  } else if (S.tab === 'schedule') {
-    renderSchedule();
-  } else if (S.tab === 'meeting') {
-    renderMeetingFinder();
-  } else if (S.tab === 'exams') {
-    renderExamsTab();
-  } else if (S.tab === 'proctoring') {
-    renderProctoring();
+  } else {
+    TAB_RENDER[S.tab]?.();
   }
 }
 
@@ -951,54 +1064,62 @@ function formActions(onDel) {
   d.appendChild(db);
   return d;
 }
+// Bold section heading inside a form (e.g. "Meeting Times", "Exams").
+function formHeading(text, spaced = true) {
+  const g = el('div','form-group');
+  const l = el('label','form-label-strong' + (spaced ? ' spaced' : ''));
+  l.textContent = text;
+  g.appendChild(l);
+  return g;
+}
+// Name (flexible) + Section (fixed width) — identical in the course and lab forms.
+function nameSectionRow(item) {
+  const row = el('div','form-row');
+  const nG = el('div','form-group'); nG.style.flex='1';
+  const nL = el('label'); nL.textContent='Name';
+  const nInp = textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); });
+  nInp.title = 'Course or lab section name';
+  nL.appendChild(nInp); nG.appendChild(nL); row.appendChild(nG);
+
+  const sG = el('div','form-group'); sG.style.width='72px';
+  const sL = el('label'); sL.textContent='Section';
+  const sInp = textInput(item.section||'', v => { item.section=v; markDirty(); renderLeftPanel(); });
+  sInp.title = 'Section identifier (e.g. A, B, 001)';
+  sInp.style.width='100%';
+  sL.appendChild(sInp); sG.appendChild(sL); row.appendChild(sG);
+  return row;
+}
+// Editable list of an item's meeting times — identical in the course and lab forms.
+function meetingsSublist(item) {
+  const div = el('div','sublist');
+  const meetings = getMeetings(item);
+  meetings.forEach((m, i) => {
+    const r = el('div','sublist-item');
+    const info = el('span','sl-label', `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
+    r.append(info, xBtn(() => {
+      normalizeMeetings(item);
+      item.meetings.splice(i, 1);
+      syncTopLevel(item);
+      markDirty(); renderGrid(); renderItemForm();
+    }, 'Remove meeting'));
+    div.appendChild(r);
+  });
+  if (!meetings.length) div.appendChild(el('span','help-text','No times set'));
+  return div;
+}
 
 // ── Course form ──
 function renderCourseForm(item, form) {
   form.innerHTML = '';
   form.appendChild(el('h3',null,'Edit Course'));
-  const cnRow = el('div','form-row');
-  const cnG = el('div','form-group'); cnG.style.flex='1';
-  const cnL = el('label'); cnL.textContent='Name';
-  const cnInp = textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); });
-  cnInp.title = 'Course or lab section name';
-  cnL.appendChild(cnInp);
-  cnG.appendChild(cnL); cnRow.appendChild(cnG);
-  const csG = el('div','form-group'); csG.style.width='72px';
-  const csL = el('label'); csL.textContent='Section';
-  const csInp = textInput(item.section||'', v => { item.section=v; markDirty(); renderLeftPanel(); });
-  csInp.title = 'Section identifier (e.g. A, B, 001)';
-  csInp.style.width='100%';
-  csL.appendChild(csInp); csG.appendChild(csL); cnRow.appendChild(csG);
-  form.appendChild(cnRow);
+  form.appendChild(nameSectionRow(item));
 
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Meeting Times</label>'));
+  form.appendChild(formHeading('Meeting Times', false));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
-
-  const meetings = item.meetings?.length
-    ? item.meetings
-    : (item.day !== null && item.day !== undefined && item.start_min
-        ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
-
-  const mtgDiv = el('div','sublist');
-  meetings.forEach((m, i) => {
-    const r = el('div','sublist-item');
-    const info = el('span','sl-label', `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
-    info.style.flex = '1';
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => {
-      normalizeMeetings(item);
-      item.meetings.splice(i, 1);
-      syncTopLevel(item);
-      markDirty(); renderGrid(); renderItemForm();
-    };
-    r.append(info, rm);
-    mtgDiv.appendChild(r);
-  });
-  if (!meetings.length) mtgDiv.appendChild(el('span','help-text','No times set'));
-  form.appendChild(mtgDiv);
+  form.appendChild(meetingsSublist(item));
 
   // Date range for regular meetings
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Meeting Date Range</label>'));
+  form.appendChild(formHeading('Meeting Date Range'));
   const drRow = el('div','form-row');
   const dsG = el('div','form-group'); dsG.style.flex='1';
   const dsL = el('label'); dsL.textContent='Start';
@@ -1015,20 +1136,15 @@ function renderCourseForm(item, form) {
   form.appendChild(drRow);
 
   // Exam list
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Exams</label>'));
+  form.appendChild(formHeading('Exams'));
   const exDiv = el('div','sublist');
   const exams = item.exams||[];
   exams.forEach((ex, i) => {
     const r = el('div','sublist-item');
-    const dateStr = ex.date ? ex.date : (ex.date_raw ? ex.date_raw : '(TBD)');
-    const label = ex.date
-      ? `${ex.date}  ${fmtRange(ex.start_min, ex.end_min)}`
-      : `${dateStr}  ${fmtRange(ex.start_min, ex.end_min)}`;
-    const info = el('span','sl-label', label);
-    info.style.flex = '1';
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { item.exams.splice(i, 1); markDirty(); renderItemForm(); };
-    r.append(info, rm);
+    const dateStr = ex.date || ex.date_raw || '(TBD)';
+    const info = el('span','sl-label', `${dateStr}  ${fmtRange(ex.start_min, ex.end_min)}`);
+    r.append(info, xBtn(() => { item.exams.splice(i, 1); markDirty(); renderItemForm(); },
+                        'Remove exam'));
     exDiv.appendChild(r);
   });
   if (!exams.length) exDiv.appendChild(el('span','help-text','No exams'));
@@ -1083,7 +1199,7 @@ function renderTAForm(item, form) {
   form.appendChild(sepeRow);
 
   // Grad courses
-  form.appendChild(el('div','form-group',`<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Grad Courses</label>`));
+  form.appendChild(formHeading('Grad Courses'));
   const gcDiv = el('div','checkbox-group');
   S.data.grad_courses.forEach(gc => {
     const row = el('div','checkbox-row');
@@ -1096,49 +1212,44 @@ function renderTAForm(item, form) {
       markDirty(); renderGrid();
     };
     row.appendChild(cb);
-    const gcDayStr = gc.meetings?.length > 1 ? ' ('+gc.meetings.map(m=>'MTWRF'[m.day]).join('')+')'
-      : gc.day !== undefined ? ` (${DAYS[gc.day]})` : '';
-    row.appendChild(el('span',null,escHtml(displayName(gc)) + gcDayStr));
+    const days = getMeetings(gc).map(m => DAYS[m.day]).join('');
+    row.appendChild(el('span',null,escHtml(displayName(gc)) + (days ? ` (${days})` : '')));
     gcDiv.appendChild(row);
   });
   if (!S.data.grad_courses.length) gcDiv.appendChild(el('span','help-text','No courses defined'));
   form.appendChild(gcDiv);
 
   // Other commitments note
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Other Commitments</label>'));
+  form.appendChild(formHeading('Other Commitments'));
   form.appendChild(el('p','help-text','Draw on grid to add time blocks; click to remove'));
   const ocDiv = el('div','sublist');
   (item.other_commitments||[]).forEach((oc,i) => {
     const r = el('div','sublist-item');
     const lbl = document.createElement('input'); lbl.type='text';
-    lbl.value=oc.label||''; lbl.style.flex='1'; lbl.style.fontSize='12px';
+    lbl.value=oc.label||''; lbl.style.flex='1';
     lbl.placeholder='Label';
     lbl.oninput = () => { oc.label=lbl.value; markDirty(); renderGrid(); };
-    const info = el('span','sl-label', ` ${DAYS[oc.day]} ${fmtRange(oc.start_min,oc.end_min)}`);
-    info.style.fontSize='11px'; info.style.color='var(--text2)';
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { item.other_commitments.splice(i,1); markDirty(); renderGrid(); renderItemForm(); };
-    r.append(lbl, info, rm);
+    const info = el('span','sl-meta', ` ${DAYS[oc.day]} ${fmtRange(oc.start_min,oc.end_min)}`);
+    r.append(lbl, info, xBtn(() => {
+      item.other_commitments.splice(i,1); markDirty(); renderGrid(); renderItemForm();
+    }, 'Remove commitment'));
     ocDiv.appendChild(r);
   });
   form.appendChild(ocDiv);
 
   // Date-Specific Conflicts
-  const dcHdr = el('div','form-group');
-  dcHdr.innerHTML = '<label style="font-weight:600;font-size:12px;margin-top:10px;display:block;">Date-Specific Conflicts</label>';
-  form.appendChild(dcHdr);
+  form.appendChild(formHeading('Date-Specific Conflicts'));
   const dcDiv = el('div','sublist');
   (item.date_conflicts||[]).forEach((dc, i) => {
     const r = el('div','sublist-item');
     const lbl = document.createElement('input');
-    lbl.type='text'; lbl.value=dc.label||''; lbl.style.flex='1'; lbl.style.fontSize='12px';
+    lbl.type='text'; lbl.value=dc.label||''; lbl.style.flex='1';
     lbl.oninput = () => { dc.label=lbl.value; markDirty(); };
-    const info = el('span','sl-label');
-    info.style.fontSize='11px';
+    const info = el('span','sl-meta');
     info.textContent = ` ${dc.date||'?'}  ${fmtRange(dc.start_min, dc.end_min)}`;
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { item.date_conflicts.splice(i,1); markDirty(); renderItemForm(); };
-    r.append(lbl, info, rm);
+    r.append(lbl, info, xBtn(() => {
+      item.date_conflicts.splice(i,1); markDirty(); renderItemForm();
+    }, 'Remove conflict'));
     dcDiv.appendChild(r);
   });
   form.appendChild(dcDiv);
@@ -1172,7 +1283,7 @@ function renderTAForm(item, form) {
   form.appendChild(addDcBtn);
 
   form.appendChild(formActions(deleteCurrentItem));
-  if (item) renderTAConflictList(item);
+  renderTAConflictList(item);
 }
 
 function renderTAConflictList(ta) {
@@ -1197,7 +1308,6 @@ function renderTAConflictList(ta) {
       text:`${escHtml(dc.label||'Conflict')}: ${dc.date}  ${fmtRange(dc.start_min, dc.end_min)}`}))
     .sort((a,b)=>a.sort.localeCompare(b.sort));
   if (!courseExams.length && !dateCons.length) return;
-  div.style.cssText = 'padding:12px 20px;border-top:1px solid var(--border);font-size:14px;';
   if (courseExams.length) {
     const hdr = el('p'); hdr.innerHTML = '<strong>Course Exams</strong>'; div.appendChild(hdr);
     const ul = el('ul','ta-conflict-ul');
@@ -1216,51 +1326,15 @@ function renderTAConflictList(ta) {
 function renderLabForm(item, form) {
   form.innerHTML = '';
   form.appendChild(el('h3',null,'Edit Lab'));
+  form.appendChild(nameSectionRow(item));
 
-  const lnRow = el('div','form-row');
-  const lnG = el('div','form-group'); lnG.style.flex='1';
-  const lnL = el('label'); lnL.textContent='Name';
-  const lnInp = textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); });
-  lnInp.title = 'Course or lab section name';
-  lnL.appendChild(lnInp);
-  lnG.appendChild(lnL); lnRow.appendChild(lnG);
-  const lsG = el('div','form-group'); lsG.style.width='72px';
-  const lsL = el('label'); lsL.textContent='Section';
-  const lsInp = textInput(item.section||'', v => { item.section=v; markDirty(); renderLeftPanel(); });
-  lsInp.title = 'Section identifier (e.g. A, B, 001)';
-  lsInp.style.width='100%';
-  lsL.appendChild(lsInp); lsG.appendChild(lsL); lnRow.appendChild(lsG);
-  form.appendChild(lnRow);
-
-  form.appendChild(el('div','form-group','<label style="font-weight:600;font-size:12px;">Meeting Times</label>'));
+  form.appendChild(formHeading('Meeting Times', false));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
-
-  const labMeetings = item.meetings?.length
-    ? item.meetings
-    : (item.day !== null && item.day !== undefined && item.start_min
-        ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
-
-  const labMtgDiv = el('div','sublist');
-  labMeetings.forEach((m, i) => {
-    const r = el('div','sublist-item');
-    const info = el('span','sl-label', `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
-    info.style.flex = '1';
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => {
-      normalizeMeetings(item);
-      item.meetings.splice(i, 1);
-      syncTopLevel(item);
-      markDirty(); renderGrid(); renderItemForm();
-    };
-    r.append(info, rm);
-    labMtgDiv.appendChild(r);
-  });
-  if (!labMeetings.length) labMtgDiv.appendChild(el('span','help-text','No times set'));
-  form.appendChild(labMtgDiv);
+  form.appendChild(meetingsSublist(item));
 
   // Roles
   const rolesHdr = el('div','form-group');
-  const rolesLbl = el('label'); rolesLbl.style.fontWeight='600'; rolesLbl.style.fontSize='12px';
+  const rolesLbl = el('label','form-label-strong');
   rolesLbl.textContent = 'Role Requirements';
   const manageBtn = el('button','btn-sm', '⚙ Manage Roles');
   manageBtn.style.marginLeft = '8px';
@@ -1288,13 +1362,12 @@ function renderLabForm(item, form) {
       const lbl = document.createElement('label');
       lbl.style.flex = '1';
       lbl.innerHTML = escHtml(role.label) +
-        `<span style="color:var(--text2);font-size:11px;margin-left:4px;">(${role.se_value} SE)</span>`;
+        `<span class="role-se-note">(${role.se_value} SE)</span>`;
 
       const cntInp = document.createElement('input');
       cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
       cntInp.value=rr.count; cntInp.className='count-input';
       cntInp.title='Number of TAs needed';
-      cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; markDirty(); };
 
       const expInp = document.createElement('input'); expInp.type='number';
       expInp.min='0'; expInp.max=rr.count||10;
@@ -1419,34 +1492,20 @@ function renderGrid() {
 
 function getBlocksForItem(item) {
   const blocks = [];
-  if (S.tab === 'courses') {
-    const meetings = item.meetings?.length
-      ? item.meetings
-      : (item.day !== null && item.day !== undefined && item.start_min
-          ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
-    meetings.forEach((m, i) => {
+  if (S.tab === 'courses' || S.tab === 'labs') {
+    const eraseType = S.tab === 'courses' ? 'course-meeting' : 'lab-meeting';
+    getMeetings(item).forEach((m, i) => {
       if (m.day === null || m.day === undefined || !m.start_min) return;
       blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
-                   label:displayName(item), editable:true, eraseType:'course-meeting', commitIndex:i});
-    });
-  } else if (S.tab === 'labs') {
-    const meetings = item.meetings?.length
-      ? item.meetings
-      : (item.day !== null && item.day !== undefined && item.start_min
-          ? [{day: item.day, start_min: item.start_min, end_min: item.end_min}] : []);
-    meetings.forEach((m, i) => {
-      if (m.day === null || m.day === undefined || !m.start_min) return;
-      blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
-                   label:displayName(item), editable:true, eraseType:'lab-meeting', commitIndex:i});
+                   label:displayName(item), editable:true, eraseType, commitIndex:i});
     });
   } else if (S.tab === 'tas') {
     // Grad courses (non-editable) — show all meeting days
+    const gcMap = Object.fromEntries(S.data.grad_courses.map(gc=>[gc.id,gc]));
     (item.grad_course_ids||[]).forEach(gcId => {
-      const gc = S.data.grad_courses.find(c=>c.id===gcId);
+      const gc = gcMap[gcId];
       if (!gc) return;
-      const gcMeetings = gc.meetings?.length ? gc.meetings
-        : (gc.day !== undefined && gc.start_min ? [{day:gc.day, start_min:gc.start_min, end_min:gc.end_min}] : []);
-      gcMeetings.forEach(m => {
+      getMeetings(gc).forEach(m => {
         blocks.push({type:'course', day:m.day, start:m.start_min, end:m.end_min,
                      label:gc.name, editable:false});
       });
@@ -1490,10 +1549,8 @@ function renderBlock(b) {
   }
 
   if (b.editable) {
-    const delBtn = el('span','block-delete','×');
-    delBtn.title = 'Delete';
+    const delBtn = xBtn(() => eraseBlock(div), 'Delete', 'block-delete');
     delBtn.onmousedown = e => e.stopPropagation();
-    delBtn.onclick     = e => { e.stopPropagation(); eraseBlock(div); };
     div.appendChild(delBtn);
     div.appendChild(el('div','block-resize-handle'));
   }
@@ -1696,8 +1753,6 @@ function applyBlockChange(eraseType, commitIndex, day, startMin, endMin) {
       item.meetings[idx] = {day, start_min: startMin, end_min: endMin};
     }
     syncTopLevel(item);
-  } else if (eraseType === 'course-time' || eraseType === 'lab-time') {
-    item.day = day; item.start_min = startMin; item.end_min = endMin;
   } else if (eraseType === 'commitment') {
     const idx = parseInt(commitIndex);
     if (!isNaN(idx) && item.other_commitments?.[idx]) {
@@ -1717,8 +1772,6 @@ function eraseBlock(block) {
     const idx = parseInt(block.dataset.commitIndex);
     if (!isNaN(idx)) item.meetings.splice(idx, 1);
     syncTopLevel(item);
-  } else if (type === 'course-time' || type === 'lab-time') {
-    item.day = null; item.start_min = null; item.end_min = null;
   } else if (type === 'commitment') {
     const idx = parseInt(block.dataset.commitIndex);
     if (!isNaN(idx)) item.other_commitments.splice(idx, 1);
@@ -1729,6 +1782,14 @@ function eraseBlock(block) {
 // ════════════════════════════════════════════════════════════════
 // SCHEDULE TAB
 // ════════════════════════════════════════════════════════════════
+// Show (or hide, when html is empty) a solver-diagnostics warning panel.
+function showWarnBox(div, html) {
+  if (!div) return;
+  div.classList.toggle('warn-box', !!html);
+  div.innerHTML = html || '';
+  div.style.display = html ? 'block' : 'none';
+}
+
 function clearAssignments() {
   S.data.assignments = S.data.assignments.filter(a => a.locked);
   S.schedDiag = {}; S.schedStatus = null;
@@ -1740,36 +1801,21 @@ function renderSchedule(diag, status) {
   diag = S.schedDiag;
   status = S.schedStatus;
   // Diagnostics
-  const diagDiv = $id('diagnostics');
   const unfilled = diag.unfilled_roles || [];
-  const blocking = diag.blocking_grad_courses || [];
-  if (status === 'infeasible') {
-    let html = '<h4>⚠ Infeasible Schedule</h4>';
-    if (diag.error) html += `<p>${escHtml(diag.error)}</p>`;
-    if (blocking.length) {
-      html += '<p><strong>Blocking grad courses (most impact first):</strong></p><ul>' +
-        blocking.map(b => `<li>${escHtml(b.name)} — blocks ${b.blocked_ta_count} TA(s) from ${b.affected_lab_count} lab(s)</li>`).join('') + '</ul>';
-    }
-    diagDiv.style.cssText = '';
-    diagDiv.innerHTML = html;
-    diagDiv.style.display = 'block';
-  } else if (status === 'partial') {
-    const unfulfilled_exp = diag.unfulfilled_experience || [];
-    let html = '<h4 style="color:#92400e;">⚠ Partial Schedule</h4>';
+  const unfulfilledExp = diag.unfulfilled_experience || [];
+  let html = '';
+  if (status === 'partial') {
+    html = '<h4>⚠ Partial Schedule</h4>';
     if (unfilled.length) {
       html += '<p><strong>Slots not fully filled:</strong></p><ul>' +
         unfilled.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
     }
-    if (unfulfilled_exp.length) {
+    if (unfulfilledExp.length) {
       html += '<p><strong>Experience preferences not fully met:</strong></p><ul>' +
-        unfulfilled_exp.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.exp_assigned}/${u.exp_preferred} experienced</li>`).join('') + '</ul>';
+        unfulfilledExp.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.exp_assigned}/${u.exp_preferred} experienced</li>`).join('') + '</ul>';
     }
-    diagDiv.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;';
-    diagDiv.innerHTML = html;
-    diagDiv.style.display = 'block';
-  } else {
-    diagDiv.style.display = 'none';
   }
+  showWarnBox($id('diagnostics'), html);
 
   const tbl = $id('sched-table');
   tbl.innerHTML = '';
@@ -1788,7 +1834,7 @@ function renderLabView(container) {
     return;
   }
 
-  const table = el('table','sched-table');
+  const table = el('table','data-table');
   const thead = el('thead'); const thr = el('tr');
   ['Lab','Day/Time','Role','Count','Net SE','Assigned TAs'].forEach(h => {
     const th = el('th',null,h); thr.appendChild(th);
@@ -1797,8 +1843,7 @@ function renderLabView(container) {
   const tbody = el('tbody');
 
   S.data.labs.forEach(lab => {
-    const timeStr = lab.day!==null && lab.start_min
-      ? `${DAYS[lab.day]} ${fmtRange(lab.start_min, lab.end_min)}` : '—';
+    const timeStr = fmtMeetings(lab);
 
     const activeRoles = (lab.roles||[]).filter(rr=>rr.count>0);
 
@@ -1824,7 +1869,7 @@ function renderLabView(container) {
       }
       tr.appendChild(el('td',null,timeStr));
       const roleLabel = escHtml(role?.label||rr.role_id) +
-        (rr.preferred_experienced>0 ? ` <span style="color:var(--text2);font-size:11px;">(${rr.preferred_experienced} exp pref)</span>` : '');
+        (rr.preferred_experienced>0 ? ` <span class="role-se-note">(${rr.preferred_experienced} exp pref)</span>` : '');
       const roleTd = el('td'); roleTd.innerHTML = roleLabel;
       tr.appendChild(roleTd);
       tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
@@ -1838,17 +1883,12 @@ function renderLabView(container) {
         const chip = el('div', `ta-chip${a.locked?' locked':''}`);
         chip.innerHTML = escHtml(ta?.name||a.ta_id);
 
-        const lockBtn = el('span','lock-btn', a.locked ? '🔒' : '🔓');
-        lockBtn.title = a.locked ? 'Unlock' : 'Lock';
-        lockBtn.onclick = () => { a.locked = !a.locked; markDirty(); renderSchedule(); };
-
-        const rmBtn = el('span','rm-btn','×');
-        rmBtn.title = 'Remove assignment';
-        rmBtn.onclick = () => {
+        chip.appendChild(lockBadge(a.locked,
+          () => { a.locked = !a.locked; markDirty(); renderSchedule(); }));
+        chip.appendChild(xBtn(() => {
           S.data.assignments = S.data.assignments.filter(x => x!==a);
           markDirty(); renderSchedule();
-        };
-        chip.appendChild(lockBtn); chip.appendChild(rmBtn);
+        }, 'Remove assignment'));
 
         chip.draggable = true;
         chip.addEventListener('dragstart', e => {
@@ -1885,7 +1925,7 @@ function renderLabView(container) {
       // Add-TA button
       const addBtn = el('button','add-ta-btn','+ TA');
       addBtn.title = 'Manually assign a TA to this role';
-      addBtn.onclick = () => openAssignModal(lab, rr, rolesMap, tasMap);
+      addBtn.onclick = () => openAssignModal(lab, rr, rolesMap);
       roleDiv.appendChild(addBtn);
       assignCell.appendChild(roleDiv);
       tr.appendChild(assignCell);
@@ -1897,409 +1937,214 @@ function renderLabView(container) {
   container.appendChild(table);
 }
 
-function renderTAView(container) {
-  const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
-  const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
+// ── shared cell builders ──
+function strongCell(text) { const s = el('strong'); s.textContent = text; return s; }
 
-  if (!S.data.tas.length) {
-    container.appendChild(el('p','help-text','No TAs defined'));
-    return;
-  }
-
-  const table = el('table','sched-table');
-  const thead = el('thead'); const thr = el('tr');
-  ['TA','Experience','Max SE','Used SE','Assigned Labs'].forEach(h => {
-    thr.appendChild(el('th',null,h));
-  });
-  thead.appendChild(thr); table.appendChild(thead);
-  const tbody = el('tbody');
-
-  S.data.tas.forEach(ta => {
-    const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
-    const usedSE = taAssigns.reduce((sum,a) => {
-      const lab = labsMap[a.lab_id];
-      const rr = lab?.roles?.find(r=>r.role_id===a.role_id);
-      const role = S.data.roles.find(r=>r.id===a.role_id);
-      return sum + (role?.se_value||0);
-    },0) + (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0);
-
-    const tr = el('tr');
-    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
-    tr.appendChild(el('td',null,ta.experience==='experienced'?'Experienced':'Inexperienced'));
-    tr.appendChild(el('td',null,Number(ta.max_se).toFixed(1)));
-    tr.appendChild(el('td',null,usedSE.toFixed(1)));
-
-    const labsCell = el('td');
-    taAssigns.forEach(a => {
-      const lab  = labsMap[a.lab_id];
-      const role = rolesMap[a.role_id];
-      const chip = el('span','ta-row-lab');
-      chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
-      if (a.locked) chip.textContent += ' 🔒';
-
-      labsCell.appendChild(chip);
-    });
-
-    tr.appendChild(labsCell);
-    tbody.appendChild(tr);
-  });
-
-  table.appendChild(tbody);
-  container.appendChild(table);
+function numCell(value, onChange) {
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.step = '0.5'; inp.min = '0';
+  inp.value = Number(value).toFixed(1);
+  inp.onchange = () => { onChange(parseFloat(inp.value) || 0); };
+  return inp;
 }
 
-// ── TA Summary table (always visible below lab view) ──
-function renderTASummary(container) {
+// A read-only chip naming one assignment, optionally with a lock badge.
+function assignChip(text, {locked, onToggle} = {}) {
+  const chip = el('span','ta-row-lab');
+  chip.append(document.createTextNode(text));
+  if (locked !== undefined) chip.append(lockBadge(locked, onToggle));
+  return chip;
+}
+
+// ── TA Summary table (always visible below the lab / exam views) ──
+// Both the lab and the proctoring tab render the same table shape; they differ
+// only in their column spec.
+function renderTASummaryTable(container, headers, rowFn) {
   if (!container) return;
   container.innerHTML = '';
   if (!S.data.tas.length) return;
 
+  container.appendChild(el('h4','section-h4','TA Summary'));
+
+  // Assignment counts, computed once — the comparator ran a full filter per
+  // comparison before.
+  const labCount = {};
+  (S.data.assignments||[]).forEach(a => { labCount[a.ta_id] = (labCount[a.ta_id]||0) + 1; });
+  const sortedTAs = [...S.data.tas].sort((a,b) =>
+    (labCount[b.id]||0) - (labCount[a.id]||0) || a.name.localeCompare(b.name));
+
+  container.appendChild(buildTable(headers, sortedTAs.map(rowFn)));
+}
+
+function renderTASummary(container) {
   const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
   const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
 
-  const hdr = el('h4',null,'TA Summary');
-  hdr.style.cssText = 'margin-bottom:8px;font-size:17px;';
-  container.appendChild(hdr);
-
-  const table = el('table','sched-table');
-  const thead = el('thead'); const thr = el('tr');
-  ['TA','Experience','Max SE','Used SE','Assigned Labs'].forEach(h => thr.appendChild(el('th',null,h)));
-  thead.appendChild(thr); table.appendChild(thead);
-  const tbody = el('tbody');
-
-  const sortedTAs = [...S.data.tas].sort((a,b) => {
-    const aCount = S.data.assignments.filter(x=>x.ta_id===a.id).length;
-    const bCount = S.data.assignments.filter(x=>x.ta_id===b.id).length;
-    return bCount - aCount || a.name.localeCompare(b.name);
-  });
-
-  sortedTAs.forEach(ta => {
-    const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
-    const usedSE = taAssigns.reduce((sum,a) => {
-      const role = S.data.roles.find(r=>r.id===a.role_id);
-      return sum + (role?.se_value||0);
-    },0) + (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0);
-
-    const tr = el('tr');
-    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
-    tr.appendChild(el('td',null,ta.experience==='experienced'?'Experienced':'Inexperienced'));
-
-    // Editable Max SE
-    const seTd = el('td');
-    const seInp = document.createElement('input');
-    seInp.type='number'; seInp.step='0.5'; seInp.min='0';
-    seInp.value = Number(ta.max_se).toFixed(1);
-    seInp.style.cssText='width:60px;font-size:13px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;';
-    seInp.onchange = () => { ta.max_se=parseFloat(seInp.value)||0; markDirty(); };
-    seTd.appendChild(seInp);
-    tr.appendChild(seTd);
-
-    tr.appendChild(el('td',null,usedSE.toFixed(1)));
-
-    const labsCell = el('td');
-    taAssigns.forEach(a => {
-      const lab  = labsMap[a.lab_id];
-      const role = rolesMap[a.role_id];
-      const chip = el('span','ta-row-lab');
-      chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
-      if (a.locked) chip.textContent += ' 🔒';
-      labsCell.appendChild(chip);
+  renderTASummaryTable(container,
+    ['TA','Experience','Max SE','Used SE','Assigned Labs'],
+    ta => {
+      const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
+      const usedSE = taAssigns.reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0)
+        + (ta.outside_duties||[]).reduce((s,d)=>s+(d.se_value||0),0);
+      return [
+        strongCell(ta.name),
+        ta.experience==='experienced'?'Experienced':'Inexperienced',
+        numCell(ta.max_se ?? 2.0, v => { ta.max_se = v; markDirty(); }),
+        usedSE.toFixed(1),
+        taAssigns.map(a => assignChip(
+          (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id),
+          {locked: a.locked, onToggle: () => { a.locked = !a.locked; markDirty(); renderSchedule(); }})),
+      ];
     });
-    tr.appendChild(labsCell);
-    tbody.appendChild(tr);
-  });
-
-  table.appendChild(tbody);
-  const wrap = el('div','sched-table-wrap'); wrap.appendChild(table); container.appendChild(wrap);
 }
 
-// ── Outside Duties table ──
-function renderOutsideDuties() {
-  const sec = $id('outside-duties-section');
+// ── Outside load tables (SE duties on the lab tab, PE duties on the proctoring
+//    tab). One renderer and one add-modal, parameterised by the load field. ──
+const LOAD_SECTIONS = {
+  duties: {
+    field: 'outside_duties', valueKey: 'se_value', unit: 'SE',
+    sectionId: 'outside-duties-section',
+    title: 'Outside Duties', addLabel: '+ Add Duty',
+    addTitle: "Add an outside duty that counts toward a TA's SE but has no fixed meeting time",
+    hint: "Duties that count toward a TA's SE but have no fixed meeting time",
+    modalTitle: 'Add Outside Duty', placeholder: 'e.g. Grading',
+    defaultValue: 0.5, defaultLabel: 'Duty',
+    // Outside duties count toward Used SE, so refresh the summary too.
+    afterChange: () => renderTASummary($id('sched-ta-summary')),
+  },
+  proctoring: {
+    field: 'outside_proctoring', valueKey: 'pe_value', unit: 'PE',
+    sectionId: 'outside-proctoring-section',
+    title: 'Outside Proctoring', addLabel: '+ Add Outside Proctoring',
+    addTitle: "Add a proctoring duty that counts toward a TA's PE but is not associated with a specific exam",
+    hint: "Proctoring duties that count toward a TA's PE but are not associated with a specific exam",
+    modalTitle: 'Add Outside Proctoring', placeholder: 'e.g. Makeup exam',
+    defaultValue: 1.0, defaultLabel: 'Proctoring',
+    afterChange: () => { updateProctorPETotals(); renderProctorTASummary($id('proctor-ta-summary')); },
+  },
+};
+
+function renderLoadSection(which) {
+  const cfg = LOAD_SECTIONS[which];
+  const sec = $id(cfg.sectionId);
   if (!sec) return;
   sec.innerHTML = '';
 
   const hdr = el('div','od-section-hdr');
-  hdr.appendChild(el('h4',null,'Outside Duties'));
-  const addBtn = el('button','btn-sm','+ Add Duty');
-  addBtn.title = "Add an outside duty that counts toward a TA's SE but has no fixed meeting time";
-  addBtn.onclick = openAddDutyModal;
+  hdr.appendChild(el('h4',null,cfg.title));
+  const addBtn = el('button','btn-sm',cfg.addLabel);
+  addBtn.title = cfg.addTitle;
+  addBtn.onclick = () => openAddLoadModal(which);
   hdr.appendChild(addBtn);
   sec.appendChild(hdr);
-  sec.appendChild(el('p','help-text','Duties that count toward a TA\'s SE but have no fixed meeting time'));
+  sec.appendChild(el('p','help-text',cfg.hint));
 
   const rows = [];
-  S.data.tas.forEach(ta => (ta.outside_duties||[]).forEach((od,i) => rows.push({ta,od,i})));
-
+  S.data.tas.forEach(ta => (ta[cfg.field]||[]).forEach((entry,i) => rows.push({ta,entry,i})));
   if (!rows.length) return;
 
-  const table = el('table','sched-table');
-  const thead = el('thead'); const thr = el('tr');
-  ['TA','Duty','SE',''].forEach(h => thr.appendChild(el('th',null,h)));
-  thead.appendChild(thr); table.appendChild(thead);
+  sec.appendChild(buildTable(['TA','Duty',cfg.unit,''], rows.map(({ta, entry, i}) => {
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text'; nameInp.value = entry.label||''; nameInp.style.width = '100%';
+    nameInp.oninput = () => { entry.label = nameInp.value; markDirty(); };
 
-  const tbody = el('tbody');
-  rows.forEach(({ta, od, i}) => {
-    const tr = el('tr');
-    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
+    const valInp = document.createElement('input');
+    valInp.type = 'number'; valInp.step = '0.5'; valInp.min = '0';
+    valInp.value = entry[cfg.valueKey] || 0;
+    valInp.oninput = () => {
+      entry[cfg.valueKey] = parseFloat(valInp.value) || 0;
+      markDirty(); cfg.afterChange();
+    };
 
-    const nameTd = el('td');
-    const nameInp = document.createElement('input'); nameInp.type='text';
-    nameInp.value = od.label||''; nameInp.style.cssText='font-size:13px;width:100%;';
-    nameInp.oninput = () => { od.label=nameInp.value; markDirty(); };
-    nameTd.appendChild(nameInp); tr.appendChild(nameTd);
-
-    const seTd = el('td');
-    const seInp = document.createElement('input'); seInp.type='number';
-    seInp.step='0.5'; seInp.min='0'; seInp.value=od.se_value||0;
-    seInp.style.cssText='width:60px;font-size:13px;';
-    seInp.oninput = () => { od.se_value=parseFloat(seInp.value)||0; markDirty(); };
-    seTd.appendChild(seInp); tr.appendChild(seTd);
-
-    const rmTd = el('td');
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { ta.outside_duties.splice(i,1); markDirty(); renderOutsideDuties(); };
-    rmTd.appendChild(rm); tr.appendChild(rmTd);
-
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  const wrapOD = el('div','sched-table-wrap'); wrapOD.appendChild(table); sec.appendChild(wrapOD);
+    return [
+      strongCell(ta.name), nameInp, valInp,
+      xBtn(() => {
+        ta[cfg.field].splice(i,1);
+        markDirty(); renderLoadSection(which); cfg.afterChange();
+      }, 'Remove'),
+    ];
+  })));
 }
 
-function openAddDutyModal() {
+function renderOutsideDuties()     { renderLoadSection('duties'); }
+function renderOutsideProctoring() { renderLoadSection('proctoring'); }
+
+function openAddLoadModal(which) {
+  const cfg = LOAD_SECTIONS[which];
   if (!S.data.tas.length) { alert('No TAs defined.'); return; }
-  const html = `
+  showModal(`
     <div class="modal-box">
-      <h2>Add Outside Duty</h2>
-      <div class="form-group"><label>TA<br><select id="od-ta-sel" style="width:100%;margin-top:4px;"></select></label></div>
-      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="od-label" type="text" placeholder="e.g. Grading" style="width:100%;margin-top:4px;"></label></div>
-      <div class="form-group" style="margin-top:10px;"><label>SE value<br><input id="od-se" type="number" step="0.5" min="0" value="0.5" style="width:80px;margin-top:4px;"></label></div>
+      <h2>${escHtml(cfg.modalTitle)}</h2>
+      <div class="form-group"><label>TA<br><select id="load-ta-sel" style="width:100%;margin-top:4px;"></select></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="load-label" type="text" placeholder="${escHtml(cfg.placeholder)}" style="width:100%;margin-top:4px;"></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>${cfg.unit} value<br><input id="load-value" type="number" step="0.5" min="0" value="${cfg.defaultValue}" style="width:80px;margin-top:4px;"></label></div>
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Cancel</button>
-        <button class="btn-sm btn-primary" onclick="confirmAddDuty()">Add</button>
+        <button class="btn-sm btn-primary" onclick="confirmAddLoad('${which}')">Add</button>
       </div>
-    </div>`;
-  showModal(html);
-  const sel = $id('od-ta-sel');
+    </div>`);
+  const sel = $id('load-ta-sel');
   S.data.tas.forEach(ta => {
     const o = document.createElement('option'); o.value=ta.id; o.textContent=ta.name;
     sel.appendChild(o);
   });
 }
 
-function confirmAddDuty() {
-  const ta = S.data.tas.find(t => t.id === $id('od-ta-sel').value);
+function confirmAddLoad(which) {
+  const cfg = LOAD_SECTIONS[which];
+  const ta = S.data.tas.find(t => t.id === $id('load-ta-sel').value);
   if (!ta) return;
-  const label = $id('od-label').value.trim() || 'Duty';
-  const se_value = parseFloat($id('od-se').value) || 0;
-  ta.outside_duties = ta.outside_duties || [];
-  ta.outside_duties.push({label, se_value});
+  ta[cfg.field] = ta[cfg.field] || [];
+  ta[cfg.field].push({
+    label: $id('load-label').value.trim() || cfg.defaultLabel,
+    [cfg.valueKey]: parseFloat($id('load-value').value) || 0,
+  });
   markDirty();
   closeModal();
-  renderOutsideDuties();
+  renderLoadSection(which);
+  cfg.afterChange();
 }
 
-// ── Outside Proctoring table ──
-function renderOutsideProctoring() {
-  const sec = $id('outside-proctoring-section');
-  if (!sec) return;
-  sec.innerHTML = '';
-
-  const hdr = el('div','od-section-hdr');
-  hdr.appendChild(el('h4',null,'Outside Proctoring'));
-  const addBtn = el('button','btn-sm','+ Add Outside Proctoring');
-  addBtn.title = "Add a proctoring duty that counts toward a TA's PE but is not associated with a specific exam";
-  addBtn.onclick = openAddOutsideProctorModal;
-  hdr.appendChild(addBtn);
-  sec.appendChild(hdr);
-  sec.appendChild(el('p','help-text','Proctoring duties that count toward a TA\'s PE but are not associated with a specific exam'));
-
-  const rows = [];
-  S.data.tas.forEach(ta => (ta.outside_proctoring||[]).forEach((op,i) => rows.push({ta,op,i})));
-
-  if (!rows.length) return;
-
-  const table = el('table','sched-table');
-  const thead = el('thead'); const thr = el('tr');
-  ['TA','Duty','PE',''].forEach(h => thr.appendChild(el('th',null,h)));
-  thead.appendChild(thr); table.appendChild(thead);
-
-  const tbody = el('tbody');
-  rows.forEach(({ta, op, i}) => {
-    const tr = el('tr');
-    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
-
-    const nameTd = el('td');
-    const nameInp = document.createElement('input'); nameInp.type='text';
-    nameInp.value = op.label||''; nameInp.style.cssText='font-size:13px;width:100%;';
-    nameInp.oninput = () => { op.label=nameInp.value; markDirty(); };
-    nameTd.appendChild(nameInp); tr.appendChild(nameTd);
-
-    const peTd = el('td');
-    const peInp = document.createElement('input'); peInp.type='number';
-    peInp.step='0.5'; peInp.min='0'; peInp.value=op.pe_value||0;
-    peInp.style.cssText='width:60px;font-size:13px;';
-    peInp.oninput = () => { op.pe_value=parseFloat(peInp.value)||0; markDirty(); updateProctorPETotals(); };
-    peTd.appendChild(peInp); tr.appendChild(peTd);
-
-    const rmTd = el('td');
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { ta.outside_proctoring.splice(i,1); markDirty(); renderOutsideProctoring(); updateProctorPETotals(); renderProctorTASummary($id('proctor-ta-summary')); };
-    rmTd.appendChild(rm); tr.appendChild(rmTd);
-
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  const wrapOP = el('div','sched-table-wrap'); wrapOP.appendChild(table); sec.appendChild(wrapOP);
-}
-
-function openAddOutsideProctorModal() {
-  if (!S.data.tas.length) { alert('No TAs defined.'); return; }
-  const html = `
-    <div class="modal-box">
-      <h2>Add Outside Proctoring</h2>
-      <div class="form-group"><label>TA<br><select id="op-ta-sel" style="width:100%;margin-top:4px;"></select></label></div>
-      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="op-label" type="text" placeholder="e.g. Makeup exam" style="width:100%;margin-top:4px;"></label></div>
-      <div class="form-group" style="margin-top:10px;"><label>PE value<br><input id="op-pe" type="number" step="0.5" min="0" value="1.0" style="width:80px;margin-top:4px;"></label></div>
-      <div class="modal-footer">
-        <button class="btn-sm" onclick="closeModal()">Cancel</button>
-        <button class="btn-sm btn-primary" onclick="confirmAddOutsideProctor()">Add</button>
-      </div>
-    </div>`;
-  showModal(html);
-  const sel = $id('op-ta-sel');
+// ── Assignment modal (shared by lab roles and exam proctoring) ──
+// config: {titleHtml, subtitleHtml?, isAssigned(ta), loadInfo(ta),
+//          conflictReasons(ta), onToggle(ta, isAssigned)}
+function openAssignPicker(cfg) {
+  const eligible = [], conflicted = [], assigned = [];
   S.data.tas.forEach(ta => {
-    const o = document.createElement('option'); o.value=ta.id; o.textContent=ta.name;
-    sel.appendChild(o);
-  });
-}
-
-function confirmAddOutsideProctor() {
-  const ta = S.data.tas.find(t => t.id === $id('op-ta-sel').value);
-  if (!ta) return;
-  const label = $id('op-label').value.trim() || 'Proctoring';
-  const pe_value = parseFloat($id('op-pe').value) || 0;
-  ta.outside_proctoring = ta.outside_proctoring || [];
-  ta.outside_proctoring.push({label, pe_value});
-  markDirty();
-  closeModal();
-  renderOutsideProctoring();
-  updateProctorPETotals();
-  renderProctorTASummary($id('proctor-ta-summary'));
-}
-
-// ── Assignment modal ──
-function openAssignModal(lab, rr, rolesMap, tasMap) {
-  const role = rolesMap[rr.role_id];
-  const existing = new Set(
-    S.data.assignments
-      .filter(a => a.lab_id===lab.id && a.role_id===rr.role_id)
-      .map(a => a.ta_id)
-  );
-
-  // Compute TA used SE
-  function usedSE(ta) {
-    return S.data.assignments
-      .filter(a => a.ta_id===ta.id)
-      .reduce((sum,a) => {
-        const r = S.data.roles.find(r2=>r2.id===a.role_id);
-        return sum + (r?.se_value||0);
-      }, (ta.outside_duties||[]).reduce((s,d)=>s+d.se_value,0));
-  }
-
-  // Split TAs into eligible and conflicted
-  const eligible = [];
-  const conflicted = [];
-
-  const labMeetings = lab.meetings
-    ? lab.meetings.map(m => [m.day, m.start_min, m.end_min])
-    : (lab.day !== null && lab.start_min ? [[lab.day, lab.start_min, lab.end_min]] : []);
-
-  S.data.tas.forEach(ta => {
-    if (existing.has(ta.id)) return;
-    const reasons = [];
-    const addSE = role?.se_value || 0;
-    if (usedSE(ta) + addSE > ta.max_se + 0.001) {
-      reasons.push(`SE: ${(usedSE(ta)+addSE).toFixed(1)}/${Number(ta.max_se).toFixed(1)} (over cap)`);
-    }
-    for (const gcId of (ta.grad_course_ids || [])) {
-      const gc = S.data.grad_courses.find(c => c.id === gcId);
-      if (!gc) continue;
-      const gcMeetings = gc.meetings
-        ? gc.meetings.map(m => [m.day, m.start_min, m.end_min])
-        : [[gc.day, gc.start_min, gc.end_min]];
-      for (const [ld, ls, le] of labMeetings) {
-        for (const [gd, gs, ge] of gcMeetings) {
-          if (ld === gd && overlap(ls, le, gs, ge)) {
-            reasons.push(`conflicts with ${gc.name}`);
-          }
-        }
-      }
-    }
-    for (const oc of (ta.other_commitments || [])) {
-      for (const [ld, ls, le] of labMeetings) {
-        if (oc.day === ld && overlap(ls, le, oc.start_min, oc.end_min)) {
-          reasons.push(`conflicts with commitment (${fmtTime(oc.start_min)}–${fmtTime(oc.end_min)})`);
-        }
-      }
-    }
-    if (reasons.length === 0) eligible.push(ta);
-    else conflicted.push({ ta, reasons });
+    if (cfg.isAssigned(ta)) { assigned.push(ta); return; }
+    const reasons = cfg.conflictReasons(ta);
+    if (reasons.length) conflicted.push({ta, reasons});
+    else eligible.push(ta);
   });
 
-  const html = `
+  showModal(`
     <div class="modal-box">
-      <h2>Assign TA — ${escHtml(displayName(lab))}</h2>
-      <h3>Role: ${escHtml(role?.label||rr.role_id)}</h3>
+      <h2>${cfg.titleHtml}</h2>
+      ${cfg.subtitleHtml ? `<h3>${cfg.subtitleHtml}</h3>` : ''}
       <div class="assign-ta-list" id="assign-ta-list"></div>
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Close</button>
       </div>
-    </div>`;
-  showModal(html);
+    </div>`);
 
   const listDiv = $id('assign-ta-list');
 
   function makeRow(ta, isAssigned, reasons) {
-    const row = el('div','assign-ta-row');
-    if (isAssigned) row.style.background = '#eff6ff';
-    else if (reasons) row.style.background = '#fffbeb';
-
-    const expBadge = el('span', `exp-badge${ta.experience!=='experienced'?' inexp':''}`,
-                        ta.experience==='experienced'?'exp':'inexp');
-    const name = el('span',null,escHtml(ta.name));
-    const seInfo = el('span','se-info',`SE: ${usedSE(ta).toFixed(1)}/${Number(ta.max_se).toFixed(1)}`);
-    const checkmark = el('span',null, isAssigned ? ' ✓' : '');
-    checkmark.style.color = 'var(--green)';
-    row.append(expBadge, name, checkmark, seInfo);
-
-    if (reasons) {
-      const reasonEl = el('div', 'help-text', '⚠ ' + reasons.join('; '));
-      reasonEl.style.cssText = 'color:#b45309;font-size:0.78em;margin-top:2px;';
-      row.appendChild(reasonEl);
-      row.style.flexWrap = 'wrap';
-    }
-
-    row.onclick = () => {
-      if (isAssigned) {
-        S.data.assignments = S.data.assignments.filter(
-          a => !(a.lab_id===lab.id && a.role_id===rr.role_id && a.ta_id===ta.id)
-        );
-      } else {
-        S.data.assignments.push({lab_id:lab.id, role_id:rr.role_id, ta_id:ta.id, locked:true});
-      }
-      markDirty();
-      closeModal();
-      renderSchedule();
-    };
+    const row = el('div','assign-ta-row'
+      + (isAssigned ? ' is-assigned' : reasons ? ' has-conflict' : ''));
+    row.append(
+      el('span', `exp-badge${ta.experience!=='experienced'?' inexp':''}`,
+         ta.experience==='experienced'?'exp':'inexp'),
+      el('span', null, escHtml(ta.name)),
+      el('span', 'ok-check', isAssigned ? ' ✓' : ''),
+      el('span', 'se-info', cfg.loadInfo(ta)),
+    );
+    if (reasons) row.appendChild(el('div','assign-reason','⚠ ' + reasons.join('; ')));
+    row.onclick = () => { cfg.onToggle(ta, isAssigned); markDirty(); closeModal(); cfg.rerender(); };
     return row;
   }
 
-  // Already-assigned TAs (shown at top)
-  S.data.tas.filter(ta => existing.has(ta.id)).forEach(ta => {
-    listDiv.appendChild(makeRow(ta, true, null));
-  });
+  assigned.forEach(ta => listDiv.appendChild(makeRow(ta, true, null)));
 
   if (!eligible.length && !conflicted.length) {
     listDiv.appendChild(el('div','help-text','No TAs available'));
@@ -2309,11 +2154,51 @@ function openAssignModal(lab, rr, rolesMap, tasMap) {
   eligible.forEach(ta => listDiv.appendChild(makeRow(ta, false, null)));
 
   if (conflicted.length) {
-    const divider = el('div', null, '— or override conflict —');
-    divider.style.cssText = 'text-align:center;color:#9ca3af;font-size:0.82em;padding:6px 0 4px;';
-    listDiv.appendChild(divider);
+    listDiv.appendChild(el('div','assign-divider','— or override conflict —'));
     conflicted.forEach(({ta, reasons}) => listDiv.appendChild(makeRow(ta, false, reasons)));
   }
+}
+
+function openAssignModal(lab, rr, rolesMap) {
+  const role = rolesMap[rr.role_id];
+  const addSE = role?.se_value || 0;
+  const existing = new Set(
+    S.data.assignments
+      .filter(a => a.lab_id===lab.id && a.role_id===rr.role_id)
+      .map(a => a.ta_id)
+  );
+
+  // usedSE was recomputed three times per row before; do it once per TA.
+  const rolesById = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const usedSE = {};
+  S.data.tas.forEach(ta => { usedSE[ta.id] = (ta.outside_duties||[]).reduce((s,d)=>s+(d.se_value||0),0); });
+  S.data.assignments.forEach(a => {
+    if (a.ta_id in usedSE) usedSE[a.ta_id] += rolesById[a.role_id]?.se_value || 0;
+  });
+
+  openAssignPicker({
+    titleHtml: `Assign TA — ${escHtml(displayName(lab))}`,
+    subtitleHtml: `Role: ${escHtml(role?.label||rr.role_id)}`,
+    isAssigned: ta => existing.has(ta.id),
+    loadInfo: ta => `SE: ${usedSE[ta.id].toFixed(1)}/${Number(ta.max_se).toFixed(1)}`,
+    conflictReasons: ta => {
+      // Cap check is modal-only; the shared helper covers the time conflicts.
+      const reasons = [];
+      if (usedSE[ta.id] + addSE > ta.max_se + 0.001) {
+        reasons.push(`SE: ${(usedSE[ta.id]+addSE).toFixed(1)}/${Number(ta.max_se).toFixed(1)} (over cap)`);
+      }
+      return reasons.concat(taLabConflictReasons(ta, lab));
+    },
+    onToggle: (ta, isAssigned) => {
+      if (isAssigned) {
+        S.data.assignments = S.data.assignments.filter(
+          a => !(a.lab_id===lab.id && a.role_id===rr.role_id && a.ta_id===ta.id));
+      } else {
+        S.data.assignments.push({lab_id:lab.id, role_id:rr.role_id, ta_id:ta.id, locked:true});
+      }
+    },
+    rerender: renderSchedule,
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2353,9 +2238,11 @@ function gmailCopyBtn(tas) {
   return btn;
 }
 
+// The one table builder. A cell may be a string, a DOM node, or an array of
+// nodes, so schedule tables with live inputs and chips go through it too.
 function buildTable(headers, rows, totalRows = 0) {
-  const wrap = el('div', 'summary-table-wrap');
-  const tbl = el('table', 'summary-table');
+  const wrap = el('div', 'data-table-wrap');
+  const tbl = el('table', 'data-table');
   const thead = tbl.createTHead();
   const hrow = thead.insertRow();
   for (const h of headers) {
@@ -2369,7 +2256,9 @@ function buildTable(headers, rows, totalRows = 0) {
     if (totalRows > 0 && i >= rows.length - totalRows) tr.classList.add('summary-total');
     for (const col of cols) {
       const td = tr.insertCell();
-      td.textContent = col;
+      if (Array.isArray(col)) td.append(...col);
+      else if (col instanceof Node) td.append(col);
+      else td.textContent = col;
     }
   });
   wrap.append(tbl);
@@ -2385,8 +2274,6 @@ function renderSummary() {
   const tasMap    = Object.fromEntries(d.tas.map(t => [t.id, t]));
   const labsMap   = Object.fromEntries(d.labs.map(l => [l.id, l]));
   const examsMap  = Object.fromEntries((d.exams||[]).map(e => [e.id, e]));
-  const dayLong   = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
-  const dayShort  = ['Mon','Tue','Wed','Thu','Fri'];
 
   // ── Section 1: Lab Assignments ───────────────────────────────────────
   const h1 = el('h1','summary-h1'); h1.textContent = 'Lab Assignments'; c.append(h1);
@@ -2395,15 +2282,14 @@ function renderSummary() {
 
   for (const lab of sortedLabs) {
     const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
-    const h2 = el('h2','summary-h2'); h2.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    const h2 = el('h2','summary-h2 with-action');
     const h2txt = el('span'); h2txt.textContent = displayName(lab); h2.append(h2txt);
     const btn = gmailCopyBtn(labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean));
     if (btn) { btn.style.marginTop = '0'; h2.append(btn); }
     c.append(h2);
     const sub = el('p','summary-sub');
-    sub.textContent = lab.day != null
-      ? `${dayLong[lab.day]}, ${fmtRange(lab.start_min, lab.end_min)}`
-      : '(time TBD)';
+    const labTimes = fmtMeetings(lab, DAY_LONG);
+    sub.textContent = labTimes === '—' ? '(time TBD)' : labTimes;
     c.append(sub);
 
     if (labAsgn.length) {
@@ -2428,10 +2314,9 @@ function renderSummary() {
         .localeCompare((b.course_name||'')+' '+(b.section||'')+' '+(b.date||'')));
 
     for (const exam of sortedExams) {
-      const label = displayName({name: exam.course_name||'', section: exam.section||''});
-      const sub2  = exam.name && exam.name !== label ? `${label} — ${exam.name}` : label || exam.name || 'Exam';
+      const sub2  = examFullLabel(exam);
       const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id);
-      const h2e = el('h2','summary-h2'); h2e.style.cssText = 'display:flex;align-items:center;gap:10px;';
+      const h2e = el('h2','summary-h2 with-action');
       const h2etxt = el('span'); h2etxt.textContent = sub2; h2e.append(h2etxt);
       const examBtn = gmailCopyBtn(eAsgn.map(a => tasMap[a.ta_id]).filter(Boolean));
       if (examBtn) { examBtn.style.marginTop = '0'; h2e.append(examBtn); }
@@ -2484,10 +2369,7 @@ function renderSummary() {
         const role = rolesMap[a.role_id] ?? {};
         const se   = role.se_value ?? 0;
         totalSE += se;
-        const timeStr = lab.day != null
-          ? `${dayShort[lab.day]} ${fmtRange(lab.start_min, lab.end_min)}`
-          : '—';
-        seRows.push([displayName(lab)||'—', role.label||'—', timeStr, se.toFixed(1)]);
+        seRows.push([displayName(lab)||'—', role.label||'—', fmtMeetings(lab, DAY_SHORT), se.toFixed(1)]);
       }
       for (const od of outside) {
         const se = od.se_value ?? 0;
@@ -2507,11 +2389,8 @@ function renderSummary() {
         const exam  = examsMap[pa.exam_id] ?? {};
         const pe    = exam.pe_value ?? 0;
         totalPE += pe;
-        const elabel = displayName({name: exam.course_name||'', section: exam.section||''});
-        const eDisp  = exam.name && exam.name !== elabel
-          ? `${elabel} — ${exam.name}` : elabel || exam.name || 'Exam';
         peRows.push([
-          eDisp,
+          examFullLabel(exam),
           exam.date || '—',
           exam.date ? fmtRange(exam.start_min, exam.end_min) : '—',
           pe.toFixed(1),
@@ -2578,6 +2457,10 @@ function renderMeetingFinder() {
 
   // Build unavailability grid: busy[day][minute] = count
   const busy = Array.from({length:5}, () => new Uint8Array(GRID_MINS));
+  const gcMap   = Object.fromEntries(S.data.grad_courses.map(gc=>[gc.id,gc]));
+  const labsMap = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
+  const labsByTa = {};
+  S.data.assignments.forEach(a => (labsByTa[a.ta_id] = labsByTa[a.ta_id] || []).push(a.lab_id));
 
   filteredTAs.forEach(ta => {
     const mark = (day, s, e) => {
@@ -2586,25 +2469,23 @@ function renderMeetingFinder() {
       const hi = Math.min(GRID_MINS, e - GRID_START);
       for (let m = lo; m < hi; m++) busy[day][m]++;
     };
-    (ta.grad_course_ids||[]).forEach(id => {
-      const gc = S.data.grad_courses.find(c=>c.id===id);
-      if (!gc) return;
-      const meetings = gc.meetings?.length
-        ? gc.meetings : [{day:gc.day, start_min:gc.start_min, end_min:gc.end_min}];
-      meetings.forEach(m => mark(m.day, m.start_min, m.end_min));
-    });
+    const markAll = src => getMeetings(src).forEach(m => mark(m.day, m.start_min, m.end_min));
+
+    (ta.grad_course_ids||[]).forEach(id => markAll(gcMap[id]));
     (ta.other_commitments||[]).forEach(oc => mark(oc.day, oc.start_min, oc.end_min));
-    // Mark assigned lab sections
-    S.data.assignments
-      .filter(a => a.ta_id === ta.id)
-      .forEach(a => {
-        const lab = S.data.labs.find(l => l.id === a.lab_id);
-        if (!lab) return;
-        const meetings = lab.meetings?.length
-          ? lab.meetings
-          : [{day: lab.day, start_min: lab.start_min, end_min: lab.end_min}];
-        meetings.forEach(m => mark(m.day, m.start_min, m.end_min));
-      });
+    (labsByTa[ta.id]||[]).forEach(labId => markAll(labsMap[labId]));
+  });
+
+  // Legend — built from the same stops flush() paints with, so it can't drift.
+  const legend = $id('meeting-legend');
+  legend.innerHTML = '';
+  HEAT_STOPS.forEach((stop, i) => {
+    const item = el('span');
+    const sw = el('span','legend-swatch');
+    // Mid-range alpha for the graded "some busy" band.
+    sw.style.background = `rgba(${stop.rgb},${stop.alpha(i === 1 ? 0.5 : i === 0 ? 0 : 1)})`;
+    item.append(sw, document.createTextNode(' ' + stop.label));
+    legend.appendChild(item);
   });
 
   // Make grid body fill remaining height
@@ -2639,16 +2520,10 @@ function renderMeetingFinder() {
     let segStart = 0, segBusy = busy[d][0];
     const flush = (s, e, b) => {
       if (e <= s || !numTAs) return;
-      const frac = b / numTAs;
-      const color = frac === 0
-        ? `rgba(187,247,208,0.7)`
-        : frac < 1
-        ? `rgba(253,230,138,${0.4+0.5*frac})`
-        : `rgba(252,165,165,0.8)`;
       const div = el('div','meeting-cell');
       div.style.top    = (s / GRID_MINS * 100) + '%';
       div.style.height = ((e - s) / GRID_MINS * 100) + '%';
-      div.style.background = color;
+      div.style.background = heatColor(b / numTAs);
       div.title = `${fmtTime(GRID_START+s)}–${fmtTime(GRID_START+e)}: ${numTAs-b}/${numTAs} free`;
       col.appendChild(div);
     };
@@ -2705,17 +2580,15 @@ function renderRolesList() {
     const r = el('div','sublist-item');
 
     const lblInp = document.createElement('input'); lblInp.type='text';
-    lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.style.flex='1'; lblInp.style.fontSize='12px';
+    lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.style.flex='1';
     lblInp.oninput = () => { role.label=lblInp.value; markDirty(); };
 
     const seInp = document.createElement('input'); seInp.type='number';
-    seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value; seInp.style.width='52px'; seInp.style.fontSize='12px';
+    seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value; seInp.style.width='52px';
     seInp.oninput = () => { role.se_value=parseFloat(seInp.value)||0; markDirty(); };
 
-    const rm = el('button','btn-sm btn-danger','×');
-    rm.onclick = () => { S.data.roles.splice(i,1); markDirty(); renderRolesList(); };
-
-    r.append(lblInp, el('span',null,'SE:'), seInp, rm);
+    r.append(lblInp, el('span',null,'SE:'), seInp,
+             xBtn(() => { S.data.roles.splice(i,1); markDirty(); renderRolesList(); }, 'Remove role'));
     div.appendChild(r);
   });
 }
@@ -2778,30 +2651,30 @@ async function importClassList() {
     showModal(`<div class="modal-box">
       <h2>Import Class Info</h2>
       ${grad.length ? `
-        <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Graduate Courses (${grad.length})</h3>
+        <h3>Graduate Courses (${grad.length})</h3>
         <div style="margin-bottom:6px;">
           <button class="btn-sm" onclick="importSelectAllGrad(true)">Select All</button>
           <button class="btn-sm" onclick="importSelectAllGrad(false)">Deselect All</button>
         </div>
-        <div id="import-grad-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
+        <div id="import-grad-list" class="modal-list"></div>
       ` : ''}
       ${undergrad.length ? `
-        <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Lab Sections</h3>
-        <p style="font-size:12px;color:var(--text2);margin:0 0 6px;">Select courses to import all sections:</p>
+        <h3>Lab Sections</h3>
+        <p class="modal-note">Select courses to import all sections:</p>
         <div style="margin-bottom:6px;">
           <button class="btn-sm" onclick="importLabSelectAll(true)">Select All</button>
           <button class="btn-sm" onclick="importLabSelectAll(false)">Deselect All</button>
         </div>
-        <div id="import-lab-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
+        <div id="import-lab-list" class="modal-list"></div>
       ` : ''}
       ${examCourses.length ? `
-        <h3 style="font-size:13px;font-weight:600;margin:12px 0 4px;">Courses with Exams (${examCourses.length})</h3>
-        <p style="font-size:12px;color:var(--text2);margin:0 0 6px;">Import exam sessions for proctoring:</p>
+        <h3>Courses with Exams (${examCourses.length})</h3>
+        <p class="modal-note">Import exam sessions for proctoring:</p>
         <div style="margin-bottom:6px;">
           <button class="btn-sm" onclick="importExamSelectAll(true)">Select All</button>
           <button class="btn-sm" onclick="importExamSelectAll(false)">Deselect All</button>
         </div>
-        <div id="import-exam-list" style="max-height:180px;overflow-y:auto;font-size:13px;margin-bottom:4px;"></div>
+        <div id="import-exam-list" class="modal-list"></div>
       ` : ''}
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Cancel</button>
@@ -2815,12 +2688,9 @@ function renderImportGradList() {
   const div = $id('import-grad-list'); if (!div) return;
   div.innerHTML = (S._importGrad || []).map((c, i) => {
     const chk = S._importGradChk.has(i) ? ' checked' : '';
-    const dname = c.section ? `${escHtml(c.name)} ${escHtml(c.section)}` : escHtml(c.name);
-    const meetStr = (c.meetings?.length ? c.meetings : [{day:c.day, start_min:c.start_min, end_min:c.end_min}])
-      .map(m => `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`).join(', ');
-    return `<div style="padding:4px 0;border-bottom:1px solid #eee;">
-      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
-        <input type="checkbox" data-grad-idx="${i}"${chk}> ${dname} — ${meetStr}
+    return `<div class="modal-list-row">
+      <label>
+        <input type="checkbox" data-grad-idx="${i}"${chk}> ${escHtml(displayName(c))} — ${fmtMeetings(c)}
       </label></div>`;
   }).join('');
   div.querySelectorAll('input[data-grad-idx]').forEach(cb => {
@@ -2839,8 +2709,8 @@ function renderImportLabList() {
   div.innerHTML = (S._importCourses || []).map(course => {
     const key = `${course.subject} ${course.number}`;
     const chk = S._importChecked.has(key) ? ' checked' : '';
-    return `<div style="padding:4px 0;border-bottom:1px solid #eee;">
-      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+    return `<div class="modal-list-row">
+      <label>
         <input type="checkbox" data-lab-key="${escHtml(key)}"${chk}>
         ${escHtml(key)} — ${escHtml(course.title)} (${course.sections.length} section(s))
       </label></div>`;
@@ -2860,8 +2730,8 @@ function renderImportExamList() {
   const div = $id('import-exam-list'); if (!div) return;
   div.innerHTML = (S._importExamCourses||[]).map(course => {
     const chk = S._importExamChecked.has(course.name) ? ' checked' : '';
-    return `<div style="padding:4px 0;border-bottom:1px solid #eee;">
-      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+    return `<div class="modal-list-row">
+      <label>
         <input type="checkbox" data-exam-key="${escHtml(course.name)}"${chk}>
         ${escHtml(course.name)} (${course.exams.length} exam${course.exams.length>1?'s':''})
       </label></div>`;
@@ -2983,16 +2853,16 @@ function showConflictDialog(conflicts) {
   closeModal();
   S._conflictOverwrite = new Set(conflicts.map(c => c.key));
   const rows = conflicts.map(c => `
-    <div style="padding:4px 0;border-bottom:1px solid #eee;">
-      <label style="cursor:pointer;display:flex;align-items:baseline;gap:5px;">
+    <div class="modal-list-row">
+      <label>
         <input type="checkbox" data-conflict-key="${escHtml(c.key)}" checked>
         ${escHtml(c.label)}
       </label>
     </div>`).join('');
   showModal(`<div class="modal-box">
     <h2>Import Conflicts (${conflicts.length} item${conflicts.length > 1 ? 's' : ''} already exist)</h2>
-    <p style="font-size:13px;color:var(--text2);margin:0 0 8px;">Checked items will be overwritten. Uncheck to keep existing data.</p>
-    <div style="max-height:260px;overflow-y:auto;font-size:13px;margin-bottom:8px;">${rows}</div>
+    <p class="modal-note">Checked items will be overwritten. Uncheck to keep existing data.</p>
+    <div class="modal-list" style="max-height:260px;">${rows}</div>
     <div class="modal-footer">
       <button class="btn-sm" onclick="closeModal()">Cancel</button>
       <button class="btn-sm" onclick="performImport(new Set())">Skip All</button>
@@ -3051,15 +2921,11 @@ function renderExamList() {
   sorted.forEach(exam => {
     const row = el('div','item-row'+(exam.id===S.examSelId?' selected':''));
     row.onclick = () => { S.examSelId = exam.id; jumpCalToExam(exam); renderExamsTab(); };
-    const courseLabel = exam.course_name
-      ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name)
-      : '';
-    const displayName = courseLabel
+    const courseLabel = examLabel(exam, '');
+    const label = courseLabel
       ? `${courseLabel}: ${exam.name||'(unnamed)'}`
       : (exam.name||'(unnamed)');
-    const name = el('span','item-name', escHtml(displayName));
-    name.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-    row.appendChild(name);
+    row.appendChild(el('span','item-name', escHtml(label)));
     const badge = el('span','item-badge', exam.tbd ? 'TBD' : (exam.date||''));
     row.appendChild(badge);
     list.appendChild(row);
@@ -3177,8 +3043,6 @@ function renderExamForm(exam) {
 function duplicateExam(src) {
   S.data.exams = S.data.exams||[];
   const copy = Object.assign({}, src, {id: uid(), name: src.name + ' (copy)'});
-  // Deep-copy any nested objects
-  if (src.tbd !== undefined) copy.tbd = src.tbd;
   S.data.exams.push(copy);
   S.examSelId = copy.id;
   markDirty();
@@ -3247,14 +3111,14 @@ function renderExamCalendar() {
 
   // Nav — enable prev/next within the range [minMonth, maxMonth]
   const nav = el('div','cal-nav');
-  const prevBtn = el('button',null,'◀');
+  const prevBtn = el('button','btn-sm','◀');
   if (curKey > minMonth) {
     prevBtn.onclick = () => {
       S.examCalMonth--; if(S.examCalMonth<0){S.examCalMonth=11;S.examCalYear--;}
       renderExamCalendar();
     };
   } else { prevBtn.disabled=true; prevBtn.style.opacity='0.3'; }
-  const nextBtn = el('button',null,'▶');
+  const nextBtn = el('button','btn-sm','▶');
   if (curKey < maxMonth) {
     nextBtn.onclick = () => {
       S.examCalMonth++; if(S.examCalMonth>11){S.examCalMonth=0;S.examCalYear++;}
@@ -3307,14 +3171,12 @@ function renderExamCalendar() {
 
   // TBD exams list below calendar
   if (tbdExams.length) {
-    const tbdDiv = el('div');
-    tbdDiv.style.cssText = 'margin-top:12px;padding:8px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;';
+    const tbdDiv = el('div','warn-box');
+    tbdDiv.style.marginTop = '12px';
     tbdDiv.appendChild(el('strong',null,'TBD Exams'));
-    const ul = document.createElement('ul');
-    ul.style.cssText = 'padding-left:18px;margin-top:4px;font-size:14px;';
+    const ul = el('ul','tbd-list');
     tbdExams.forEach(ex => {
       const li = document.createElement('li');
-      li.style.cssText = 'margin-bottom:2px;cursor:pointer;';
       li.textContent = ex.name + (ex.course_name ? ` (${ex.course_name})` : '');
       li.onclick = () => { S.examSelId = ex.id; renderExamsTab(); };
       ul.appendChild(li);
@@ -3334,7 +3196,7 @@ function clearProctorAssignments() {
 }
 
 async function runProctorSolver() {
-  const btn = document.querySelector('.btn-run-proctor');
+  const btn = $id('btn-run-proctors');
   btn.textContent = '⏳ Solving…'; btn.disabled = true;
   try {
     const r = await fetch('/api/schedule-proctoring', {
@@ -3367,7 +3229,7 @@ function updateProctorPETotals() {
   if (outsidePE > 0) {
     totalLine += ` (${examPE.toFixed(1)} from exams, ${outsidePE.toFixed(1)} from outside proctoring)`;
   }
-  peDiv.style.cssText = 'margin:8px 0;font-size:13px;';
+  peDiv.style.cssText = 'margin:8px 0;font-size:var(--fs-sm);';
   peDiv.innerHTML = totalLine + '<br>' +
     `<strong>PE Available from TAs:</strong> ${totalAvailablePE.toFixed(1)}`;
 }
@@ -3376,19 +3238,14 @@ function renderProctoring(diag, status) {
   if (diag !== undefined) { S.proctorDiag = diag||{}; S.proctorStatus = status||null; }
   diag = S.proctorDiag; status = S.proctorStatus;
 
-  const diagDiv = $id('proctor-diagnostics');
   const unfilled = diag.unfilled_proctors||[];
+  let html = '';
   if (status === 'partial' && unfilled.length) {
-    let html = '<h4 style="color:#92400e;">⚠ Partial Proctoring Schedule</h4>';
-    html += '<p><strong>Slots not fully filled:</strong></p>' +
-      '<ul style="margin:4px 0 0 0;padding-left:1.5em;">' +
+    html = '<h4>⚠ Partial Proctoring Schedule</h4>' +
+      '<p><strong>Slots not fully filled:</strong></p><ul>' +
       unfilled.map(u => `<li><strong>${escHtml(u.exam_name)}</strong>: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
-    diagDiv.style.cssText = 'background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px;';
-    diagDiv.innerHTML = html;
-    diagDiv.style.display = 'block';
-  } else {
-    diagDiv.style.display = 'none';
   }
+  showWarnBox($id('proctor-diagnostics'), html);
 
   const tbl = $id('proctor-table');
   tbl.innerHTML = '';
@@ -3401,20 +3258,23 @@ function renderProctoring(diag, status) {
   renderProctorTASummary($id('proctor-ta-summary'));
 }
 
-function renderProctorExamView(container) {
-  const tasMap = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
-  const exams = [...(S.data.exams||[])].sort((a,b) => {
-    const aLabel = a.course_name ? (a.section ? `${a.course_name} ${a.section}` : a.course_name) : '—';
-    const bLabel = b.course_name ? (b.section ? `${b.course_name} ${b.section}` : b.course_name) : '—';
-    const cmp = aLabel.localeCompare(bLabel);
+// Exams sorted the way both proctoring views show them.
+function sortedExamsForProctoring() {
+  return [...(S.data.exams||[])].sort((a,b) => {
+    const cmp = examLabel(a).localeCompare(examLabel(b));
     if (cmp !== 0) return cmp;
     if (a.tbd && !b.tbd) return 1;
     if (!a.tbd && b.tbd) return -1;
     return (a.date||'').localeCompare(b.date||'') || (a.start_min||0)-(b.start_min||0);
   });
+}
+
+function renderProctorExamView(container) {
+  const tasMap = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
+  const exams = sortedExamsForProctoring();
   if (!exams.length) { container.appendChild(el('p','help-text','No exams defined')); return; }
 
-  const table = el('table','sched-table');
+  const table = el('table','data-table');
   const thead = el('thead'); const thr = el('tr');
   ['Course/Section','Exam','Date/Time','Count','PE','Assigned Proctors'].forEach(h => thr.appendChild(el('th',null,h)));
   thead.appendChild(thr); table.appendChild(thead);
@@ -3422,10 +3282,7 @@ function renderProctorExamView(container) {
 
   exams.forEach(exam => {
     const tr = el('tr');
-    const courseLabel = exam.course_name
-      ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name)
-      : '—';
-    tr.appendChild(el('td',null,escHtml(courseLabel)));
+    tr.appendChild(el('td',null,escHtml(examLabel(exam))));
     tr.appendChild(el('td',null,escHtml(exam.name)));
     tr.appendChild(el('td',null, exam.tbd ? 'TBD' : `${exam.date||'—'} ${fmtRange(exam.start_min||0, exam.end_min||0)}`));
 
@@ -3447,16 +3304,12 @@ function renderProctorExamView(container) {
         e.dataTransfer.effectAllowed = 'move';
       });
       chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
-      const lockBtn = el('span','lock-btn', a.locked?'🔒':'🔓');
-      lockBtn.title = a.locked?'Unlock':'Lock';
-      lockBtn.onclick = () => { a.locked=!a.locked; markDirty(); renderProctoring(); };
-      const rmBtn = el('span','rm-btn','×');
-      rmBtn.title = 'Remove';
-      rmBtn.onclick = () => {
-        S.data.proctor_assignments = S.data.proctor_assignments.filter(x=>x!==a);
-        markDirty(); renderProctoring();
-      };
-      chip.append(lockBtn, rmBtn);
+      chip.append(
+        lockBadge(a.locked, () => { a.locked=!a.locked; markDirty(); renderProctoring(); }),
+        xBtn(() => {
+          S.data.proctor_assignments = S.data.proctor_assignments.filter(x=>x!==a);
+          markDirty(); renderProctoring();
+        }, 'Remove assignment'));
       roleDiv.appendChild(chip);
     });
     roleDiv.addEventListener('dragover', e => {
@@ -3492,231 +3345,72 @@ function renderProctorExamView(container) {
   container.appendChild(table);
 }
 
-function renderProctorTAView(container) {
-  const examsMap = Object.fromEntries((S.data.exams||[]).map(e=>[e.id,e]));
-  if (!S.data.tas.length) { container.appendChild(el('p','help-text','No TAs defined')); return; }
-
-  const table = el('table','sched-table');
-  const thead = el('thead'); const thr = el('tr');
-  ['TA','Max PE','Used PE','Assigned Exams'].forEach(h => thr.appendChild(el('th',null,h)));
-  thead.appendChild(thr); table.appendChild(thead);
-  const tbody = el('tbody');
-
-  S.data.tas.forEach(ta => {
-    const taAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
-    const usedPE = taAssigns.reduce((sum,a) => {
-      const exam = examsMap[a.exam_id];
-      return sum + (exam?.pe_value||0);
-    }, 0);
-
-    const tr = el('tr');
-    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
-    tr.appendChild(el('td',null,Number(ta.max_pe??2.0).toFixed(1)));
-    tr.appendChild(el('td',null,usedPE.toFixed(1)));
-
-    const examsCell = el('td');
-    taAssigns.forEach(a => {
-      const exam = examsMap[a.exam_id];
-      const chip = el('span','ta-row-lab');
-      chip.textContent = (exam?.name||a.exam_id) + (a.locked?' 🔒':'');
-      examsCell.appendChild(chip);
-    });
-    tr.appendChild(examsCell);
-    tbody.appendChild(tr);
-  });
-
-  table.appendChild(tbody);
-  container.appendChild(table);
-}
-
 // ── Proctor TA Summary table (always visible below exam view) ──
 function renderProctorTASummary(container) {
-  if (!container) return;
-  container.innerHTML = '';
-  if (!S.data.tas.length) return;
-
   const examsMap = Object.fromEntries((S.data.exams||[]).map(e=>[e.id,e]));
   const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
   const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
 
-  const hdr = el('h4',null,'TA Summary');
-  hdr.style.cssText = 'margin-bottom:8px;font-size:17px;';
-  container.appendChild(hdr);
-
-  const table = el('table','sched-table');
-  const thead = el('thead'); const thr = el('tr');
-  ['TA','Max PE','Used PE','Lab Assignments','Assigned Exams'].forEach(h => thr.appendChild(el('th',null,h)));
-  thead.appendChild(thr); table.appendChild(thead);
-  const tbody = el('tbody');
-
-  const sortedTAs = [...S.data.tas].sort((a,b) => {
-    const aCount = (S.data.assignments||[]).filter(x=>x.ta_id===a.id).length;
-    const bCount = (S.data.assignments||[]).filter(x=>x.ta_id===b.id).length;
-    return bCount - aCount || a.name.localeCompare(b.name);
-  });
-
-  sortedTAs.forEach(ta => {
-    const taProctorAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
-    const usedPE = taProctorAssigns.reduce((sum,a) => {
-      const exam = examsMap[a.exam_id];
-      return sum + (exam?.pe_value||0);
-    }, 0) + (ta.outside_proctoring||[]).reduce((s,op)=>s+(op.pe_value||0), 0);
-
-    const tr = el('tr');
-    tr.appendChild(el('td',null,`<strong>${escHtml(ta.name)}</strong>`));
-
-    // Editable Max PE
-    const peTd = el('td');
-    const peInp = document.createElement('input');
-    peInp.type='number'; peInp.step='0.5'; peInp.min='0';
-    peInp.value = Number(ta.max_pe??2.0).toFixed(1);
-    peInp.style.cssText='width:60px;font-size:13px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;';
-    peInp.onchange = () => { ta.max_pe=parseFloat(peInp.value)||0; markDirty(); updateProctorPETotals(); };
-    peTd.appendChild(peInp);
-    tr.appendChild(peTd);
-
-    tr.appendChild(el('td',null,usedPE.toFixed(1)));
-
-    // Lab assignments column
-    const labsCell = el('td');
-    const taLabAssigns = (S.data.assignments||[]).filter(a=>a.ta_id===ta.id);
-    taLabAssigns.forEach(a => {
-      const lab = labsMap[a.lab_id];
-      const role = rolesMap[a.role_id];
-      const chip = el('span','ta-row-lab');
-      chip.textContent = (displayName(lab)||a.lab_id) + ' / ' + (role?.label||a.role_id);
-      labsCell.appendChild(chip);
+  renderTASummaryTable(container,
+    ['TA','Max PE','Used PE','Lab Assignments','Assigned Exams'],
+    ta => {
+      const taProctorAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
+      const usedPE = taProctorAssigns.reduce((sum,a) => sum + (examsMap[a.exam_id]?.pe_value||0), 0)
+        + (ta.outside_proctoring||[]).reduce((s,op)=>s+(op.pe_value||0), 0);
+      return [
+        strongCell(ta.name),
+        numCell(ta.max_pe ?? 2.0, v => { ta.max_pe = v; markDirty(); updateProctorPETotals(); }),
+        usedPE.toFixed(1),
+        (S.data.assignments||[]).filter(a=>a.ta_id===ta.id).map(a => assignChip(
+          (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id))),
+        taProctorAssigns.map(a => {
+          const exam = examsMap[a.exam_id];
+          const course = examLabel(exam, '');
+          return assignChip((course ? `${course} — ` : '') + (exam?.name||a.exam_id),
+            {locked: a.locked, onToggle: () => { a.locked = !a.locked; markDirty(); renderProctoring(); }});
+        }),
+      ];
     });
-    tr.appendChild(labsCell);
-
-    // Assigned exams column
-    const examsCell = el('td');
-    taProctorAssigns.forEach(a => {
-      const exam = examsMap[a.exam_id];
-      const chip = el('span','ta-row-lab');
-      const courseLabel = exam ? (exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '') : '';
-      chip.textContent = (courseLabel ? `${courseLabel} — ` : '') + (exam?.name||a.exam_id) + (a.locked?' 🔒':'');
-      examsCell.appendChild(chip);
-    });
-    tr.appendChild(examsCell);
-    tbody.appendChild(tr);
-  });
-
-  table.appendChild(tbody);
-  const wrapPS = el('div','sched-table-wrap'); wrapPS.appendChild(table); container.appendChild(wrapPS);
 }
 
 function openProctorAssignModal(exam) {
+  const addPE = exam.pe_value || 1.0;
   const existing = new Set(
     (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id).map(a=>a.ta_id)
   );
 
-  function usedPE(ta) {
-    return (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id).reduce((sum,a) => {
-      const ex = (S.data.exams||[]).find(e=>e.id===a.exam_id);
-      return sum + (ex?.pe_value||0);
-    }, 0);
-  }
-
-  // Get exam weekday (skip date-based checks for TBD exams)
-  let examWd = null;
-  const hasDates = !exam.tbd && exam.date;
-  if (hasDates) {
-    try { examWd = new Date(exam.date+'T00:00:00').getDay(); examWd = [6,0,1,2,3,4,5][examWd]; } catch(e) {}
-  }
-  // Convert JS getDay (0=Sun) to our model (0=Mon): Sun=6,Mon=0,Tue=1...
-
-  const eligible = [], conflicted = [];
-
-  S.data.tas.forEach(ta => {
-    if (existing.has(ta.id)) return;
-    const reasons = [];
-    const addPE = exam.pe_value||1.0;
-    if (usedPE(ta) + addPE > (ta.max_pe??2.0) + 0.001) {
-      reasons.push(`PE: ${(usedPE(ta)+addPE).toFixed(1)}/${Number(ta.max_pe??2.0).toFixed(1)} (over cap)`);
-    }
-    // Check time conflicts with other proctored exams on same date (skip for TBD)
-    if (hasDates) (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id).forEach(a => {
-      const otherExam = (S.data.exams||[]).find(e=>e.id===a.exam_id);
-      if (otherExam && otherExam.date===exam.date && overlap(exam.start_min, exam.end_min, otherExam.start_min, otherExam.end_min)) {
-        reasons.push(`conflicts with ${otherExam.name}`);
-      }
-    });
-    // Check grad course conflicts
-    if (examWd !== null) {
-      for (const gcId of (ta.grad_course_ids||[])) {
-        const gc = S.data.grad_courses.find(c=>c.id===gcId);
-        if (!gc) continue;
-        const gcMtgs = gc.meetings?.length ? gc.meetings : (gc.day!==undefined?[{day:gc.day,start_min:gc.start_min,end_min:gc.end_min}]:[]);
-        for (const m of gcMtgs) {
-          if (m.day===examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
-            const inRange = !gc.date_start || !gc.date_end ||
-              (exam.date >= gc.date_start && exam.date <= gc.date_end);
-            if (inRange) reasons.push(`conflicts with ${gc.name}`);
-          }
-        }
-        // Check grad course exam conflicts
-        if (hasDates) {
-          for (const gcEx of (gc.exams||[])) {
-            if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
-              reasons.push(`conflicts with ${gc.name} exam`);
-            }
-          }
-        }
-      }
-      // Check lab assignment conflicts
-      S.data.assignments.filter(a=>a.ta_id===ta.id).forEach(a => {
-        const lab = S.data.labs.find(l=>l.id===a.lab_id);
-        if (!lab) return;
-        const mtgs = lab.meetings?.length ? lab.meetings : (lab.day!==undefined?[{day:lab.day,start_min:lab.start_min,end_min:lab.end_min}]:[]);
-        for (const m of mtgs) {
-          if (m.day===examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
-            const inRange = !lab.date_start || !lab.date_end ||
-              (exam.date >= lab.date_start && exam.date <= lab.date_end);
-            if (inRange) reasons.push(`conflicts with lab ${lab.name}`);
-          }
-        }
-      });
-      // Other commitments
-      for (const oc of (ta.other_commitments||[])) {
-        if (oc.day===examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
-          reasons.push(`conflicts with commitment`);
-        }
-      }
-    }
-    if (reasons.length===0) eligible.push(ta);
-    else conflicted.push({ta, reasons});
+  const examsMap = Object.fromEntries((S.data.exams||[]).map(e=>[e.id,e]));
+  const usedPE = {};
+  S.data.tas.forEach(ta => { usedPE[ta.id] = 0; });
+  (S.data.proctor_assignments||[]).forEach(a => {
+    if (a.ta_id in usedPE) usedPE[a.ta_id] += examsMap[a.exam_id]?.pe_value || 0;
   });
 
-  const html = `
-    <div class="modal-box">
-      <h2>Assign Proctor — ${escHtml(exam.name)}</h2>
-      <div class="assign-ta-list" id="proctor-assign-list"></div>
-      <div class="modal-footer">
-        <button class="btn-sm" onclick="closeModal()">Close</button>
-      </div>
-    </div>`;
-  showModal(html);
+  const hasDates = !exam.tbd && exam.date;
 
-  const listDiv = $id('proctor-assign-list');
-
-  function makeRow(ta, isAssigned, reasons) {
-    const row = el('div','assign-ta-row');
-    if (isAssigned) row.style.background = '#eff6ff';
-    else if (reasons) row.style.background = '#fffbeb';
-    const expBadge = el('span',`exp-badge${ta.experience!=='experienced'?' inexp':''}`,
-                        ta.experience==='experienced'?'exp':'inexp');
-    const name = el('span',null,escHtml(ta.name));
-    const peInfo = el('span','se-info',`PE: ${usedPE(ta).toFixed(1)}/${Number(ta.max_pe??2.0).toFixed(1)}`);
-    const checkmark = el('span',null, isAssigned?' ✓':'');
-    checkmark.style.color = 'var(--green)';
-    row.append(expBadge, name, checkmark, peInfo);
-    if (reasons) {
-      const reasonEl = el('div','help-text','⚠ '+reasons.join('; '));
-      reasonEl.style.cssText='color:#b45309;font-size:0.78em;margin-top:2px;';
-      row.appendChild(reasonEl); row.style.flexWrap='wrap';
-    }
-    row.onclick = () => {
+  openAssignPicker({
+    titleHtml: `Assign Proctor — ${escHtml(exam.name)}`,
+    isAssigned: ta => existing.has(ta.id),
+    loadInfo: ta => `PE: ${usedPE[ta.id].toFixed(1)}/${Number(ta.max_pe??2.0).toFixed(1)}`,
+    conflictReasons: ta => {
+      // Cap and same-date double-booking are modal-only; the shared helper
+      // covers labs, grad courses and commitments.
+      const reasons = [];
+      if (usedPE[ta.id] + addPE > (ta.max_pe??2.0) + 0.001) {
+        reasons.push(`PE: ${(usedPE[ta.id]+addPE).toFixed(1)}/${Number(ta.max_pe??2.0).toFixed(1)} (over cap)`);
+      }
+      if (hasDates) {
+        (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id).forEach(a => {
+          const other = examsMap[a.exam_id];
+          if (other && other.date===exam.date &&
+              overlap(exam.start_min, exam.end_min, other.start_min, other.end_min)) {
+            reasons.push(`conflicts with ${other.name}`);
+          }
+        });
+      }
+      return reasons.concat(taExamConflictReasons(ta, exam));
+    },
+    onToggle: (ta, isAssigned) => {
       if (isAssigned) {
         S.data.proctor_assignments = S.data.proctor_assignments.filter(
           a=>!(a.exam_id===exam.id && a.ta_id===ta.id));
@@ -3724,72 +3418,55 @@ function openProctorAssignModal(exam) {
         S.data.proctor_assignments = S.data.proctor_assignments||[];
         S.data.proctor_assignments.push({exam_id:exam.id, ta_id:ta.id, locked:true});
       }
-      markDirty(); closeModal(); renderProctoring();
-    };
-    return row;
-  }
-
-  // Already assigned
-  S.data.tas.filter(ta=>existing.has(ta.id)).forEach(ta => listDiv.appendChild(makeRow(ta,true,null)));
-  eligible.forEach(ta => listDiv.appendChild(makeRow(ta,false,null)));
-  if (conflicted.length) {
-    const divider = el('div',null,'— or override conflict —');
-    divider.style.cssText='text-align:center;color:#9ca3af;font-size:0.82em;padding:6px 0 4px;';
-    listDiv.appendChild(divider);
-    conflicted.forEach(({ta,reasons}) => listDiv.appendChild(makeRow(ta,false,reasons)));
-  }
+    },
+    rerender: renderProctoring,
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
 // VIEW-MODE SETTERS
 // ════════════════════════════════════════════════════════════════
-function setSchedView(mode) {
-  S.schedViewMode = mode;
-  const tb = $id('sched-table-btn'), gb = $id('sched-grid-btn');
-  if (tb) tb.classList.toggle('active', mode === 'table');
-  if (gb) gb.classList.toggle('active', mode === 'grid');
-  const wrap = $id('sched-table') && $id('sched-table').parentElement;
-  if (wrap) wrap.classList.toggle('grid-mode', mode === 'grid');
-  renderSchedule();
-}
-function setProctorView(mode) {
-  S.proctorViewMode = mode;
-  const tb = $id('proctor-table-btn'), gb = $id('proctor-grid-btn');
-  if (tb) tb.classList.toggle('active', mode === 'table');
-  if (gb) gb.classList.toggle('active', mode === 'grid');
-  const wrap = $id('proctor-table') && $id('proctor-table').parentElement;
-  if (wrap) wrap.classList.toggle('grid-mode', mode === 'grid');
-  renderProctoring();
+const VIEW_MODES = {
+  sched:   {stateKey:'schedViewMode',   tableId:'sched-table',   rerender:() => renderSchedule()},
+  proctor: {stateKey:'proctorViewMode', tableId:'proctor-table', rerender:() => renderProctoring()},
+};
+
+function setViewMode(which, mode) {
+  const cfg = VIEW_MODES[which];
+  S[cfg.stateKey] = mode;
+  $id(`${which}-table-btn`)?.classList.toggle('active', mode === 'table');
+  $id(`${which}-grid-btn`)?.classList.toggle('active', mode === 'grid');
+  $id(cfg.tableId)?.parentElement?.classList.toggle('grid-mode', mode === 'grid');
+  cfg.rerender();
 }
 
 // ════════════════════════════════════════════════════════════════
 // CONFLICT-DETECTION HELPERS
 // ════════════════════════════════════════════════════════════════
-function taLabConflictReasons(ta, lab) {
-  const reasons = [];
-  const labMeetings = lab.meetings
-    ? lab.meetings.map(m => [m.day, m.start_min, m.end_min])
-    : (lab.day !== null && lab.start_min ? [[lab.day, lab.start_min, lab.end_min]] : []);
+// These two are the single source of truth for "why can't this TA take this
+// slot?" — both the assignment grids and the assign modals call them. The
+// SE/PE cap check is deliberately left to the caller, which knows the role.
 
-  // SE cap check
-  const usedSE = S.data.assignments
-    .filter(a => a.ta_id === ta.id)
-    .reduce((sum, a) => {
-      const r = S.data.roles.find(r2 => r2.id === a.role_id);
-      return sum + (r?.se_value || 0);
-    }, (ta.outside_duties || []).reduce((s, d) => s + d.se_value, 0));
-  // (no role/SE value here since we don't know the role — caller may want to check separately)
+// Lookup maps rebuilt on demand; both helpers run once per grid cell, so they
+// must not scan S.data.grad_courses / S.data.labs per call.
+function conflictMaps() {
+  return {
+    gc:   Object.fromEntries(S.data.grad_courses.map(c => [c.id, c])),
+    labs: Object.fromEntries(S.data.labs.map(l => [l.id, l])),
+  };
+}
+
+function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
+  const reasons = [];
+  const labMeetings = getMeetings(lab);
 
   // Grad course conflicts
   for (const gcId of (ta.grad_course_ids || [])) {
-    const gc = S.data.grad_courses.find(c => c.id === gcId);
+    const gc = maps.gc[gcId];
     if (!gc) continue;
-    const gcMeetings = gc.meetings
-      ? gc.meetings.map(m => [m.day, m.start_min, m.end_min])
-      : [[gc.day, gc.start_min, gc.end_min]];
-    for (const [ld, ls, le] of labMeetings) {
-      for (const [gd, gs, ge] of gcMeetings) {
-        if (ld === gd && overlap(ls, le, gs, ge)) {
+    for (const lm of labMeetings) {
+      for (const gm of getMeetings(gc)) {
+        if (lm.day === gm.day && overlap(lm.start_min, lm.end_min, gm.start_min, gm.end_min)) {
           reasons.push(`conflicts with ${gc.name}`);
         }
       }
@@ -3797,8 +3474,8 @@ function taLabConflictReasons(ta, lab) {
   }
   // Other commitment conflicts
   for (const oc of (ta.other_commitments || [])) {
-    for (const [ld, ls, le] of labMeetings) {
-      if (oc.day === ld && overlap(ls, le, oc.start_min, oc.end_min)) {
+    for (const lm of labMeetings) {
+      if (oc.day === lm.day && overlap(lm.start_min, lm.end_min, oc.start_min, oc.end_min)) {
         reasons.push(`conflicts with commitment (${fmtTime(oc.start_min)}–${fmtTime(oc.end_min)})`);
       }
     }
@@ -3806,51 +3483,50 @@ function taLabConflictReasons(ta, lab) {
   return reasons;
 }
 
-function taExamConflictReasons(ta, exam) {
+function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
   const reasons = [];
   const hasDates = !exam.tbd && exam.date;
   let examWd = null;
   if (hasDates) {
-    try { examWd = new Date(exam.date + 'T00:00:00').getDay(); examWd = [6,0,1,2,3,4,5][examWd]; } catch(e) {}
+    // JS getDay() is 0=Sun; our model is 0=Mon.
+    try { examWd = [6,0,1,2,3,4,5][new Date(exam.date + 'T00:00:00').getDay()]; } catch(e) {}
   }
+  if (examWd === null || examWd === undefined) return reasons;
 
-  if (examWd !== null) {
-    // Grad course conflicts
-    for (const gcId of (ta.grad_course_ids || [])) {
-      const gc = S.data.grad_courses.find(c => c.id === gcId);
-      if (!gc) continue;
-      const gcMtgs = gc.meetings?.length ? gc.meetings : (gc.day !== undefined ? [{day:gc.day, start_min:gc.start_min, end_min:gc.end_min}] : []);
-      for (const m of gcMtgs) {
-        if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
-          const inRange = !gc.date_start || !gc.date_end || (exam.date >= gc.date_start && exam.date <= gc.date_end);
-          if (inRange) reasons.push(`conflicts with ${gc.name}`);
-        }
-      }
-      if (hasDates) {
-        for (const gcEx of (gc.exams || [])) {
-          if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
-            reasons.push(`conflicts with ${gc.name} exam`);
-          }
-        }
+  const inRange = item => !item.date_start || !item.date_end ||
+    (exam.date >= item.date_start && exam.date <= item.date_end);
+
+  // Grad course conflicts
+  for (const gcId of (ta.grad_course_ids || [])) {
+    const gc = maps.gc[gcId];
+    if (!gc) continue;
+    for (const m of getMeetings(gc)) {
+      if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
+          && inRange(gc)) {
+        reasons.push(`conflicts with ${gc.name}`);
       }
     }
-    // Lab assignment conflicts
-    S.data.assignments.filter(a => a.ta_id === ta.id).forEach(a => {
-      const lab = S.data.labs.find(l => l.id === a.lab_id);
-      if (!lab) return;
-      const mtgs = lab.meetings?.length ? lab.meetings : (lab.day !== undefined ? [{day:lab.day, start_min:lab.start_min, end_min:lab.end_min}] : []);
-      for (const m of mtgs) {
-        if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)) {
-          const inRange = !lab.date_start || !lab.date_end || (exam.date >= lab.date_start && exam.date <= lab.date_end);
-          if (inRange) reasons.push(`conflicts with lab ${lab.name}`);
-        }
+    for (const gcEx of (gc.exams || [])) {
+      if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
+        reasons.push(`conflicts with ${gc.name} exam`);
       }
-    });
-    // Other commitment conflicts
-    for (const oc of (ta.other_commitments || [])) {
-      if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
-        reasons.push(`conflicts with commitment`);
+    }
+  }
+  // Lab assignment conflicts
+  S.data.assignments.filter(a => a.ta_id === ta.id).forEach(a => {
+    const lab = maps.labs[a.lab_id];
+    if (!lab) return;
+    for (const m of getMeetings(lab)) {
+      if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
+          && inRange(lab)) {
+        reasons.push(`conflicts with lab ${lab.name}`);
       }
+    }
+  });
+  // Other commitment conflicts
+  for (const oc of (ta.other_commitments || [])) {
+    if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
+      reasons.push(`conflicts with commitment`);
     }
   }
   return reasons;
@@ -3859,46 +3535,33 @@ function taExamConflictReasons(ta, exam) {
 // ════════════════════════════════════════════════════════════════
 // GRID VIEWS
 // ════════════════════════════════════════════════════════════════
-function renderScheduleGrid(container) {
+// TA × slot matrix, shared by the Schedule Labs and Schedule Proctoring tabs.
+// A column carries {key, headHtml, headTitle, label} and everything else is
+// supplied by the caller.
+function renderAssignGrid(container, cfg) {
   container.innerHTML = '';
-  const cols = [];
-  const sortedLabs = [...S.data.labs].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  for (const lab of sortedLabs) {
-    for (const rq of (lab.roles || [])) {
-      if (!rq.count) continue;
-      const role = S.data.roles.find(r => r.id === rq.role_id);
-      if (!role) continue;
-      cols.push({ lab, role, rq });
-    }
-  }
-  if (!cols.length) { container.innerHTML = '<p style="color:var(--text2)">No lab roles configured.</p>'; return; }
+  const cols = cfg.columns;
+  if (!cols.length) { container.innerHTML = `<p style="color:var(--text2)">${cfg.emptyColumns}</p>`; return; }
 
   const tas = [...S.data.tas].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   if (!tas.length) { container.innerHTML = '<p style="color:var(--text2)">No TAs configured.</p>'; return; }
 
-  const tbl = document.createElement('table');
-  tbl.className = 'assign-grid';
+  const tbl = el('table','assign-grid');
 
   // Header row
-  const thead = tbl.createTHead();
-  const hrow = thead.insertRow();
-  const thName = document.createElement('th');
-  thName.className = 'ta-name-col';
-  thName.textContent = '';
+  const hrow = tbl.createTHead().insertRow();
+  const thName = el('th','ta-name-col'); thName.textContent = '';
   hrow.appendChild(thName);
-
   for (const col of cols) {
-    const th = document.createElement('th');
-    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--gray-lt); z-index:1;';
-    const div = document.createElement('div');
-    div.className = 'col-header';
-    div.title = `${displayName(col.lab)} (${col.role.label})`;
-    div.innerHTML = `${displayName(col.lab)}<br><span style="opacity:0.7">${col.role.label}</span>`;
+    const th = el('th','col-head');
+    const div = el('div','col-header', col.headHtml);
+    div.title = col.headTitle;
     th.appendChild(div);
     hrow.appendChild(th);
   }
 
   // Body rows
+  const maps = conflictMaps();
   const tbody = tbl.createTBody();
   for (const ta of tas) {
     const row = tbody.insertRow();
@@ -3910,163 +3573,103 @@ function renderScheduleGrid(container) {
       const td = row.insertCell();
       td.className = 'assign-cell';
 
-      const asgn = S.data.assignments.find(a => a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id);
-      const conflicts = !asgn ? taLabConflictReasons(ta, col.lab) : [];
-
+      const asgn = cfg.findAssignment(ta, col);
       if (asgn) {
         td.classList.add(asgn.locked ? 'cell-locked' : 'cell-assigned');
-        // Remove button
-        const rm = document.createElement('span');
-        rm.className = 'cell-rm';
-        rm.textContent = '×';
-        rm.title = 'Remove assignment';
-        rm.onclick = (e) => {
-          e.stopPropagation();
-          S.data.assignments = S.data.assignments.filter(a => !(a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id));
-          markDirty();
-          renderSchedule();
-        };
-        td.appendChild(rm);
-        if (asgn.locked) {
-          const lk = document.createElement('span');
-          lk.textContent = '🔒';
-          lk.style.fontSize = '11px';
-          td.appendChild(lk);
-        } else {
-          const lk = document.createElement('span');
-          lk.textContent = '✓';
-          lk.style.cssText = 'font-size:13px; color:#003D80;';
-          td.appendChild(lk);
-        }
-        td.title = `${ta.name} → ${displayName(col.lab)} (${col.role.label})${asgn.locked ? ' [locked]' : ''}`;
-        td.onclick = () => { asgn.locked = !asgn.locked; markDirty(); renderSchedule(); };
+        td.append(
+          xBtn(() => cfg.onRemove(ta, col), 'Remove assignment', 'cell-rm'),
+          lockBadge(asgn.locked),
+        );
+        td.title = `${ta.name} → ${col.label}${asgn.locked ? ' [locked]' : ''}`;
+        td.onclick = () => cfg.onToggleLock(asgn);
       } else {
-        if (conflicts.length > 0) {
+        const conflicts = cfg.conflictFn(ta, col, maps);
+        if (conflicts.length) {
           td.classList.add('cell-conflict');
           td.title = conflicts.join('; ');
         } else {
-          td.title = `Click to assign ${ta.name} → ${displayName(col.lab)} (${col.role.label})`;
+          td.title = `Click to assign ${ta.name} → ${col.label}`;
         }
-        td.onclick = () => {
-          S.data.assignments.push({ lab_id: col.lab.id, role_id: col.role.id, ta_id: ta.id, locked: true });
-          markDirty();
-          renderSchedule();
-        };
+        td.onclick = () => cfg.onAdd(ta, col);
       }
     }
   }
 
-  const gridWrap = document.createElement('div');
-  gridWrap.className = 'assign-grid-wrap';
+  const gridWrap = el('div','assign-grid-wrap');
   gridWrap.appendChild(tbl);
   container.appendChild(gridWrap);
 }
 
-function renderProctorGrid(container) {
-  container.innerHTML = '';
-  const exams = [...(S.data.exams || [])].sort((a, b) => {
-    const aLabel = a.course_name ? (a.section ? `${a.course_name} ${a.section}` : a.course_name) : '—';
-    const bLabel = b.course_name ? (b.section ? `${b.course_name} ${b.section}` : b.course_name) : '—';
-    const cmp = aLabel.localeCompare(bLabel);
-    if (cmp !== 0) return cmp;
-    if (a.tbd && !b.tbd) return 1;
-    if (!a.tbd && b.tbd) return -1;
-    return (a.date || '').localeCompare(b.date || '') || (a.start_min || 0) - (b.start_min || 0);
-  });
-  if (!exams.length) { container.innerHTML = '<p style="color:var(--text2)">No exams defined.</p>'; return; }
-
-  const tas = [...S.data.tas].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  if (!tas.length) { container.innerHTML = '<p style="color:var(--text2)">No TAs configured.</p>'; return; }
-
-  const tbl = document.createElement('table');
-  tbl.className = 'assign-grid';
-
-  // Header row
-  const thead = tbl.createTHead();
-  const hrow = thead.insertRow();
-  const thName = document.createElement('th');
-  thName.className = 'ta-name-col';
-  thName.textContent = '';
-  hrow.appendChild(thName);
-
-  for (const exam of exams) {
-    const th = document.createElement('th');
-    th.style.cssText = 'vertical-align:bottom; padding:4px; position:sticky; top:0; background:var(--gray-lt); z-index:1;';
-    const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
-    const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
-    const timeLabel = (!exam.tbd && exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';
-    const div = document.createElement('div');
-    div.className = 'col-header';
-    div.title = `${courseLabel}: ${exam.name} (${dateLabel}${timeLabel ? ' ' + timeLabel : ''})`;
-    div.innerHTML = `${courseLabel}: ${exam.name}<br><span style="opacity:0.7">${dateLabel}</span>${timeLabel ? `<br><span style="opacity:0.7">${timeLabel}</span>` : ''}`;
-    th.appendChild(div);
-    hrow.appendChild(th);
-  }
-
-  // Body rows
-  const tbody = tbl.createTBody();
-  for (const ta of tas) {
-    const row = tbody.insertRow();
-    const tdName = row.insertCell();
-    tdName.className = 'ta-name-col';
-    tdName.textContent = ta.name || '(unnamed)';
-
-    for (const exam of exams) {
-      const td = row.insertCell();
-      td.className = 'assign-cell';
-
-      const asgn = (S.data.proctor_assignments || []).find(a => a.exam_id === exam.id && a.ta_id === ta.id);
-      const conflicts = !asgn ? taExamConflictReasons(ta, exam) : [];
-
-      if (asgn) {
-        td.classList.add(asgn.locked ? 'cell-locked' : 'cell-assigned');
-        const rm = document.createElement('span');
-        rm.className = 'cell-rm';
-        rm.textContent = '×';
-        rm.title = 'Remove assignment';
-        rm.onclick = (e) => {
-          e.stopPropagation();
-          S.data.proctor_assignments = S.data.proctor_assignments.filter(a => !(a.exam_id === exam.id && a.ta_id === ta.id));
-          markDirty();
-          renderProctoring();
-        };
-        td.appendChild(rm);
-        if (asgn.locked) {
-          const lk = document.createElement('span');
-          lk.textContent = '🔒';
-          lk.style.fontSize = '11px';
-          td.appendChild(lk);
-        } else {
-          const lk = document.createElement('span');
-          lk.textContent = '✓';
-          lk.style.cssText = 'font-size:13px; color:#003D80;';
-          td.appendChild(lk);
-        }
-        const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
-        td.title = `${ta.name} → ${courseLabel}: ${exam.name}${asgn.locked ? ' [locked]' : ''}`;
-        td.onclick = () => { asgn.locked = !asgn.locked; markDirty(); renderProctoring(); };
-      } else {
-        if (conflicts.length > 0) {
-          td.classList.add('cell-conflict');
-          td.title = conflicts.join('; ');
-        } else {
-          const courseLabel = exam.course_name ? (exam.section ? `${exam.course_name} ${exam.section}` : exam.course_name) : '—';
-          td.title = `Click to assign ${ta.name} → ${courseLabel}: ${exam.name}`;
-        }
-        td.onclick = () => {
-          S.data.proctor_assignments = S.data.proctor_assignments || [];
-          S.data.proctor_assignments.push({ exam_id: exam.id, ta_id: ta.id, locked: true });
-          markDirty();
-          renderProctoring();
-        };
-      }
+function renderScheduleGrid(container) {
+  const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const columns = [];
+  for (const lab of [...S.data.labs].sort((a,b) => (a.name||'').localeCompare(b.name||''))) {
+    for (const rq of (lab.roles || [])) {
+      if (!rq.count) continue;
+      const role = rolesMap[rq.role_id];
+      if (!role) continue;
+      const name = displayName(lab);
+      columns.push({
+        lab, role,
+        label: `${name} (${role.label})`,
+        headTitle: `${name} (${role.label})`,
+        headHtml: `${escHtml(name)}<br><span style="opacity:0.7">${escHtml(role.label)}</span>`,
+      });
     }
   }
 
-  const gridWrap = document.createElement('div');
-  gridWrap.className = 'assign-grid-wrap';
-  gridWrap.appendChild(tbl);
-  container.appendChild(gridWrap);
+  renderAssignGrid(container, {
+    columns,
+    emptyColumns: 'No lab roles configured.',
+    findAssignment: (ta, col) => S.data.assignments.find(
+      a => a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id),
+    conflictFn: (ta, col, maps) => taLabConflictReasons(ta, col.lab, maps),
+    onAdd: (ta, col) => {
+      S.data.assignments.push({lab_id: col.lab.id, role_id: col.role.id, ta_id: ta.id, locked: true});
+      markDirty(); renderSchedule();
+    },
+    onRemove: (ta, col) => {
+      S.data.assignments = S.data.assignments.filter(
+        a => !(a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id));
+      markDirty(); renderSchedule();
+    },
+    onToggleLock: asgn => { asgn.locked = !asgn.locked; markDirty(); renderSchedule(); },
+  });
+}
+
+function renderProctorGrid(container) {
+  const columns = sortedExamsForProctoring().map(exam => {
+    const course = examLabel(exam);
+    const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
+    const timeLabel = (!exam.tbd && exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';
+    return {
+      exam,
+      label: `${course}: ${exam.name}`,
+      headTitle: `${course}: ${exam.name} (${dateLabel}${timeLabel ? ' ' + timeLabel : ''})`,
+      headHtml: `${escHtml(course)}: ${escHtml(exam.name)}`
+        + `<br><span style="opacity:0.7">${escHtml(dateLabel)}</span>`
+        + (timeLabel ? `<br><span style="opacity:0.7">${escHtml(timeLabel)}</span>` : ''),
+    };
+  });
+
+  renderAssignGrid(container, {
+    columns,
+    emptyColumns: 'No exams defined.',
+    findAssignment: (ta, col) => (S.data.proctor_assignments || []).find(
+      a => a.exam_id === col.exam.id && a.ta_id === ta.id),
+    conflictFn: (ta, col, maps) => taExamConflictReasons(ta, col.exam, maps),
+    onAdd: (ta, col) => {
+      S.data.proctor_assignments = S.data.proctor_assignments || [];
+      S.data.proctor_assignments.push({exam_id: col.exam.id, ta_id: ta.id, locked: true});
+      markDirty(); renderProctoring();
+    },
+    onRemove: (ta, col) => {
+      S.data.proctor_assignments = S.data.proctor_assignments.filter(
+        a => !(a.exam_id === col.exam.id && a.ta_id === ta.id));
+      markDirty(); renderProctoring();
+    },
+    onToggleLock: asgn => { asgn.locked = !asgn.locked; markDirty(); renderProctoring(); },
+  });
 }
 
 // ════════════════════════════════════════════════════════════════

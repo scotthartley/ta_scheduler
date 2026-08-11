@@ -62,7 +62,7 @@ grad_courses:       [{id, name, section, day, start_min, end_min, meetings?, exa
 labs:               [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?, roles[]}]
                     roles[]: [{role_id, count, preferred_experienced}]
 tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
-                      outside_proctoring[], other_commitments[]}]
+                      outside_proctoring[], other_commitments[], date_conflicts[]}]
 assignments:        [{lab_id, role_id, ta_id, locked}]
 exams:              [{id, name, course_name, section, date, start_min, end_min, tbd, proctor_count, pe_value}]
 proctor_assignments: [{exam_id, ta_id, locked}]
@@ -76,7 +76,9 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - `pe_value`: PE (proctoring equivalent) units as a float
 - `max_pe`: maximum PE a TA can be assigned (default 2.0)
 - `outside_proctoring[]`: `[{label, pe_value}]` — external proctoring duties counted toward max_pe
-- `tbd`: if true, the exam has no date/time yet and is skipped by the proctoring solver
+- `other_commitments[]`: `[{label, day, start_min, end_min}]` — recurring weekly blocks
+- `date_conflicts[]`: `[{label, date, start_min, end_min}]` — one-off blocks on a specific date; read by the proctoring solver
+- `tbd`: if true, the exam has no date/time yet. It is skipped by the proctoring solver *and* by its diagnostics, so a TBD exam never reports the schedule as partial.
 
 ## Grid
 
@@ -106,6 +108,12 @@ The solver runs up to 50 random-tiebreak iterations and keeps the result with th
 
 Locked assignments are always preserved; the solver fills remaining slots.
 
+Only `random.random()` in `score()` varies between iterations, so everything else is
+hoisted out of `_greedy_pass()` and computed once: the `static_conflicts` frozenset of
+`(ta_id, lab_id)` pairs, the `lab_meetings` map, and `sorted_slots`. `initial_state()`
+returns a fresh mutable state per pass. Changing what `eligible_tas()` reads means
+re-checking whether it still belongs in the precomputed set.
+
 ## Solver (greedy — proctoring)
 
 Endpoint: `/api/schedule-proctoring`
@@ -116,11 +124,21 @@ Hard constraints:
 3. No conflict with assigned lab meetings (exam weekday vs. lab weekday)
 4. No conflict with grad course regular meetings (weekday) or grad course exams (date-specific)
 5. No conflict with other_commitments (weekday)
-6. TBD exams (no date/time) are skipped
+6. No conflict with the TA's `date_conflicts[]` (date-specific)
+7. TBD exams (no date/time) are skipped
 
-Scoring: base 1000 + course familiarity bonus (+300 if TA is assigned a lab for the same course) − load-balancing penalty (current PE × 500) + random tiebreak.
+Scoring (higher is better): base 1000, then
 
-Also runs up to 50 iterations, keeping the best result.
+- +300 lab familiarity — TA is assigned a lab for the same course
+- +150 lab section — TA is assigned the lab for that same course *and* section
+- +200 same-course proctoring — TA already proctors another exam for that course
+- +100 same-section proctoring — …for that same course and section
+- − load-balancing penalty (current PE × 500)
+- + random tiebreak
+
+Also runs up to 50 iterations, keeping the best result. It gets the same
+hoisting treatment as the lab solver: `exam_wd`, the `static_conflicts` frozenset of
+`(ta_id, exam_id)` pairs, and `sorted_slots` are all computed once.
 
 ## CSV import
 
@@ -141,12 +159,44 @@ The "Import Class Info" button (visible on Lab Sections and Exams tabs) opens a 
 New/empty schedules start with one default role: `{id: "role-primary-ta", label: "Primary TA", se_value: 1.0}`.
 
 `EMPTY_DATA` also initializes `exams: []` and `proctor_assignments: []`.
+`load_data()` returns a `copy.deepcopy` of it, so callers can never mutate the module-level default.
 
 Manual TA assignments default to `locked: true`.
 
 ## Frontend utilities
 
-- `gmailCopyBtn(tas)` — takes an array of TA objects, returns a "Copy e-mail addresses" button (or `null` if none have emails) that copies `Name <email>, ...` to the clipboard; used in Summary tab headings and Meeting Finder
+**Extend these rather than writing a parallel copy** — the lab and proctoring sides
+of every feature go through the same primitive.
+
+Data accessors:
+- `getMeetings(item)` — the only way to read an item's meeting times. Returns `[{day, start_min, end_min}]`, preferring `meetings[]` and falling back to the legacy top-level fields. Mirrors the backend's `_get_meetings()`.
+- `fmtMeetings(item, dayNames = DAYS)` — every meeting formatted and joined (`"M 9:00 AM–10:15 AM, W 9:00 AM–10:15 AM"`), or `"—"`. Pass `DAY_SHORT` / `DAY_LONG` for longer forms. Backend twin: `fmt_meetings(item, day_names)`.
+- `displayName(item)` — `"CHM 111 001"` from `{name, section}`.
+- `examLabel(exam, fallback='—')` — `displayName` for exams (course + section).
+- `examFullLabel(exam)` — `"CHM 111 001 — Midterm 1"`, degrading to whichever half exists.
+
+Rendering primitives:
+- `buildTable(headers, rows, totalRows)` — the one table builder; emits `.data-table` inside a `.data-table-wrap`. A cell may be a string, a DOM node, or an array of nodes, so tables with live inputs and chips go through it too. The last `totalRows` rows get `.summary-total`.
+- `renderAssignGrid(container, cfg)` — the TA × slot matrix behind both Grid views. `cfg` supplies `columns`, `conflictFn`, `findAssignment`, `onAdd`, `onRemove`, `onToggleLock`.
+- `renderTASummaryTable(container, headers, rowFn)` — the "TA Summary" table under both schedule tabs.
+- `renderLoadSection(which)` / `openAddLoadModal(which)` — Outside Duties (SE) and Outside Proctoring (PE), driven by the `LOAD_SECTIONS` config.
+- `openAssignPicker(cfg)` — the assign-a-TA modal for both lab roles and exam proctoring.
+- `lockBadge(locked, onToggle?)` — the only 🔒/🔓 renderer. Interactive when given `onToggle`, static otherwise (for cells whose parent already handles the click).
+- `xBtn(onClick, title, extraCls?)` — the only delete affordance (`.btn-x`).
+- `showWarnBox(div, html)` — shows/hides a `.warn-box` diagnostics panel.
+- `gmailCopyBtn(tas)` — "Copy e-mail addresses" button (or `null` if no TA has an email) that copies `Name <email>, ...`; used in Summary headings and Meeting Finder.
+- `escHtml(s)` — required for anything user-named that reaches `innerHTML`.
+
+Conflict detection (single source of truth, used by both the grids and the modals):
+- `taLabConflictReasons(ta, lab, maps?)` and `taExamConflictReasons(ta, exam, maps?)` return human-readable reason strings. They deliberately **exclude** the SE/PE cap check, which the caller adds because only it knows the role. Pass `conflictMaps()` when calling in a loop.
+
+## Styling
+
+- All type goes through five tokens in `:root`: `--fs-xs` 11, `--fs-sm` 13, `--fs-base` 15, `--fs-lg` 17, `--fs-xl` 19. No literal `font-size` outside the print block.
+- Colors go through the `:root` palette (`--blue-lt`/`--blue-dk`, `--green-lt`/`--green-dk`, `--amber-lt`/`--amber-dk`, `--purple-lt`/`--purple-dk`) and the warning set (`--warn-bg`, `--warn-border`, `--warn-text`, `--warn-text2`).
+- One table system: `.data-table` inside `.data-table-wrap`, with `.lab-header` / `.ta-header` / `.summary-total` as row modifiers. The wrap uses `overflow-x: auto; overflow-y: hidden` — do not collapse those into the `overflow` shorthand, which resets the x-axis and kills horizontal scrolling.
+- Workspace tabs are shown/hidden purely with the `.active` class (see `TAB_WORKSPACE`), never inline `style.display`.
+- The Meeting Finder legend and heatmap are both driven by `HEAT_STOPS` / `heatColor()` so they cannot drift apart.
 
 ## Key conventions
 
@@ -154,3 +204,4 @@ Manual TA assignments default to `locked: true`.
 - `EMPTY_DATA` in `ta_scheduler.py` defines the schema for a blank schedule
 - Native file dialogs use `_file_dialog()` via pywebview (`webview.FileDialog`)
 - `_get_meetings(item)` in the solver returns all `(day, start_min, end_min)` tuples for an item, falling back to the top-level fields for legacy entries without a `meetings` array
+- `POST /api/data` returns 400 when no file is open; the frontend falls back to Save As

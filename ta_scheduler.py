@@ -1,5 +1,5 @@
+import copy
 import csv
-import io
 import json
 import os
 import random
@@ -8,7 +8,7 @@ import socket
 import threading
 import traceback
 
-from flask import Flask, jsonify, make_response, request, send_file
+from flask import Flask, jsonify, request, send_file
 
 # When frozen by PyInstaller, data files live under sys._MEIPASS.
 _BASE_DIR = getattr(__import__("sys"), "_MEIPASS",
@@ -43,13 +43,13 @@ def set_data_file(path):
 def load_data():
     p = get_data_file()
     if not p or not os.path.exists(p):
-        return EMPTY_DATA
+        return copy.deepcopy(EMPTY_DATA)
     with open(p) as f:
         data = json.load(f)
     # Backward compat: fill missing keys
     for key in EMPTY_DATA:
         if key not in data:
-            data[key] = EMPTY_DATA[key] if key == "roles" else []
+            data[key] = copy.deepcopy(EMPTY_DATA[key]) if key == "roles" else []
     return data
 
 
@@ -94,6 +94,18 @@ def fmt_time(minutes):
     ampm = "PM" if h >= 12 else "AM"
     h12 = h - 12 if h > 12 else (12 if h == 0 else h)
     return f"{h12}:{m:02d} {ampm}"
+
+
+DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+DAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+
+def fmt_meetings(item, day_names=None):
+    """Every meeting of an item: 'Mon 9:00 AM–10:15 AM, Wed 9:00 AM–10:15 AM'."""
+    names = day_names or DAY_SHORT
+    parts = [f"{names[d]} {fmt_time(s)}–{fmt_time(e)}"
+             for d, s, e in _get_meetings(item) if 0 <= d < len(names)]
+    return ", ".join(parts) if parts else "—"
 
 
 # ── CSV import helpers ────────────────────────────────────────────────────────
@@ -175,6 +187,8 @@ def get_data():
 
 @app.route("/api/data", methods=["POST"])
 def post_data():
+    if not get_data_file():
+        return jsonify({"error": "No file is open — use Save As to choose one."}), 400
     data = request.get_json()
     save_data_to_file(data)
     return jsonify({"status": "ok"})
@@ -417,24 +431,32 @@ def solve(data):
     labs_by_id = {lab["id"]: lab for lab in labs}
     locked_assignments = [a for a in assignments_in if a.get("locked")]
 
-    # ── helpers (no mutable state — safe across iterations) ────────────────
+    # ── precomputed, input-only data (constant across all iterations) ──────
 
-    def static_conflict(ta, lab):
-        """True if ta has a fixed time conflict with lab (courses or commitments)."""
-        lab_mtgs = _get_meetings(lab)
+    lab_meetings = {lab["id"]: _get_meetings(lab) for lab in labs}
+
+    # Every fixed time block a TA already owns: grad courses + other commitments.
+    ta_fixed_times = {}
+    for ta in tas:
+        fixed = []
         for gc_id in ta.get("grad_course_ids", []):
             gc = gc_map.get(gc_id)
-            if not gc:
-                continue
-            for gd, gs, ge in _get_meetings(gc):
-                for ld, ls, le in lab_mtgs:
-                    if ld == gd and times_overlap(ls, le, gs, ge):
-                        return True
+            if gc:
+                fixed.extend(_get_meetings(gc))
         for oc in ta.get("other_commitments", []):
-            for ld, ls, le in lab_mtgs:
-                if oc["day"] == ld and times_overlap(ls, le, oc["start_min"], oc["end_min"]):
-                    return True
-        return False
+            fixed.append((oc["day"], oc["start_min"], oc["end_min"]))
+        ta_fixed_times[ta["id"]] = fixed
+
+    # (ta_id, lab_id) pairs blocked by a fixed conflict. Depends only on the
+    # input, so it is built once rather than re-derived on every eligibility test.
+    static_conflicts = frozenset(
+        (ta["id"], lab["id"])
+        for ta in tas
+        for lab in labs
+        if any(ld == fd and times_overlap(ls, le, fs, fe)
+               for ld, ls, le in lab_meetings[lab["id"]]
+               for fd, fs, fe in ta_fixed_times[ta["id"]])
+    )
 
     # ── build work list (same every iteration) ─────────────────────────────
 
@@ -456,85 +478,86 @@ def solve(data):
         # Nothing to assign — return locked assignments as-is
         return {"status": "feasible", "assignments": locked_assignments, "diagnostics": {}}
 
-    # ── single greedy pass ─────────────────────────────────────────────────
+    # ── mutable per-pass state ─────────────────────────────────────────────
 
-    def _greedy_pass():
-        ta_used_se     = {}
-        ta_booked_labs = {}
-        ta_courses     = {}
-        ta_per_slot    = {}
-
+    def initial_state():
+        """Fresh solver state seeded from the locked assignments."""
+        st = {"used_se": {}, "booked_labs": {}, "courses": {}, "per_slot": {}}
         for ta in tas:
-            outside_se = sum(d.get("se_value", 0) for d in ta.get("outside_duties", []))
-            ta_used_se[ta["id"]]     = outside_se
-            ta_booked_labs[ta["id"]] = set()
-            ta_courses[ta["id"]]     = set()
-
+            tid = ta["id"]
+            st["used_se"][tid]     = sum(d.get("se_value", 0)
+                                         for d in ta.get("outside_duties", []))
+            st["booked_labs"][tid] = set()
+            st["courses"][tid]     = set()
         for a in locked_assignments:
             tid, lid, rid = a["ta_id"], a["lab_id"], a["role_id"]
             lab  = labs_by_id.get(lid)
             role = roles_map.get(rid, {})
-            if lab and tid in ta_used_se:
-                ta_used_se[tid]     += role.get("se_value", 1.0)
-                ta_booked_labs[tid].add(lid)
-                ta_courses[tid].add(lab.get("name", ""))
-            key = (lid, rid)
-            ta_per_slot.setdefault(key, set()).add(tid)
+            if lab and tid in st["used_se"]:
+                st["used_se"][tid] += role.get("se_value", 1.0)
+                st["booked_labs"][tid].add(lid)
+                st["courses"][tid].add(lab.get("name", ""))
+            st["per_slot"].setdefault((lid, rid), set()).add(tid)
+        return st
 
-        def double_booked(ta_id, lab):
-            lab_mtgs = _get_meetings(lab)
-            for booked_id in ta_booked_labs[ta_id]:
-                booked = labs_by_id.get(booked_id)
-                if not booked:
-                    continue
-                for bd, bs, be in _get_meetings(booked):
-                    for ld, ls, le in lab_mtgs:
-                        if ld == bd and times_overlap(ls, le, bs, be):
-                            return True
-            return False
+    def double_booked(st, ta_id, lab_mtgs):
+        for booked_id in st["booked_labs"][ta_id]:
+            for bd, bs, be in lab_meetings.get(booked_id, ()):
+                for ld, ls, le in lab_mtgs:
+                    if ld == bd and times_overlap(ls, le, bs, be):
+                        return True
+        return False
 
-        def eligible_tas(lab, rr):
-            role    = roles_map.get(rr["role_id"], {})
-            se_val  = role.get("se_value", 1.0)
-            already = ta_per_slot.get((lab["id"], rr["role_id"]), set())
-            result  = []
-            for ta in tas:
-                tid = ta["id"]
-                if tid in already:
-                    continue
-                if static_conflict(ta, lab):
-                    continue
-                if ta_used_se[tid] + se_val > ta.get("max_se", 2.0) + 0.001:
-                    continue
-                if double_booked(tid, lab):
-                    continue
-                result.append(ta)
-            return result
+    def eligible_tas(st, lab, rr):
+        role     = roles_map.get(rr["role_id"], {})
+        se_val   = role.get("se_value", 1.0)
+        lab_id   = lab["id"]
+        lab_mtgs = lab_meetings[lab_id]
+        already  = st["per_slot"].get((lab_id, rr["role_id"]), set())
+        result   = []
+        for ta in tas:
+            tid = ta["id"]
+            if tid in already:
+                continue
+            if (tid, lab_id) in static_conflicts:
+                continue
+            if st["used_se"][tid] + se_val > ta.get("max_se", 2.0) + 0.001:
+                continue
+            if double_booked(st, tid, lab_mtgs):
+                continue
+            result.append(ta)
+        return result
 
-        def score(ta, lab, rr):
-            s = 1000
-            if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
-                s += 200
-            courses = ta_courses[ta["id"]]
-            cn = lab.get("name", "")
-            if courses and cn not in courses:
-                s -= 200
-            s -= ta_used_se[ta["id"]] * 500
-            s += random.random()
-            return s
+    def score(st, ta, lab, rr):
+        s = 1000
+        if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
+            s += 200
+        courses = st["courses"][ta["id"]]
+        cn = lab.get("name", "")
+        if courses and cn not in courses:
+            s -= 200
+        s -= st["used_se"][ta["id"]] * 500
+        s += random.random()
+        return s
 
-        # Sort slots by eligibility count (fail-first), recomputed each iteration
-        sorted_slots = sorted(slots,
-            key=lambda s: (len(eligible_tas(s[0], s[1])),
-                           -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0)))
+    # Slot order is derived from locked-only state, so it is identical on every
+    # iteration — compute it once.
+    init_st = initial_state()
+    sorted_slots = sorted(slots,
+        key=lambda s: (len(eligible_tas(init_st, s[0], s[1])),
+                       -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0)))
 
+    # ── single greedy pass ─────────────────────────────────────────────────
+
+    def _greedy_pass():
+        st = initial_state()
         result_assignments = list(locked_assignments)
 
         for lab, rr in sorted_slots:
-            candidates = eligible_tas(lab, rr)
+            candidates = eligible_tas(st, lab, rr)
             if not candidates:
                 continue
-            best = max(candidates, key=lambda ta: score(ta, lab, rr))
+            best = max(candidates, key=lambda ta: score(st, ta, lab, rr))
             role = roles_map.get(rr["role_id"], {})
 
             result_assignments.append({
@@ -544,10 +567,10 @@ def solve(data):
                 "locked":  False,
             })
 
-            ta_used_se[best["id"]]     += role.get("se_value", 1.0)
-            ta_booked_labs[best["id"]].add(lab["id"])
-            ta_courses[best["id"]].add(lab.get("name", ""))
-            ta_per_slot.setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
+            st["used_se"][best["id"]] += role.get("se_value", 1.0)
+            st["booked_labs"][best["id"]].add(lab["id"])
+            st["courses"][best["id"]].add(lab.get("name", ""))
+            st["per_slot"].setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
 
         return result_assignments
 
@@ -672,162 +695,156 @@ def solve_proctoring(data):
     if not slots:
         return {"status": "feasible", "proctor_assignments": locked, "diagnostics": {}}
 
-    def _greedy_pass():
-        ta_used_pe = {}
-        ta_assigned_exams = {}  # ta_id → set of exam_ids
-        ta_proctored_times = {}  # ta_id → [(date, start, end)]
-        ta_proctored_courses = {}  # ta_id → set of course_names
-        ta_proctored_sections = {}  # ta_id → set of (course_name, section)
+    # ── precomputed, input-only data (constant across all iterations) ──────
 
+    slot_exams = {ex["id"]: ex for ex in slots}
+    exam_wd = {eid: exam_weekday(ex) for eid, ex in slot_exams.items()}
+
+    def _fixed_conflict(ta, exam):
+        """True if a TA has an input-derived conflict with this exam: an assigned
+        lab, a grad course meeting or exam, a commitment, or a date conflict."""
+        wd = exam_wd.get(exam["id"])
+        es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
+        if wd is not None:
+            for ld, ls, le in ta_lab_times.get(ta["id"], []):
+                if ld == wd and times_overlap(es, ee, ls, le):
+                    return True
+            for gc_id in ta.get("grad_course_ids", []):
+                gc = gc_map.get(gc_id)
+                if not gc:
+                    continue
+                for gd, gs, ge in _get_meetings(gc):
+                    if gd == wd and times_overlap(es, ee, gs, ge):
+                        return True
+                exam_date = exam.get("date")
+                if exam_date:
+                    for gc_ex in gc.get("exams", []):
+                        if gc_ex.get("date") == exam_date and times_overlap(
+                                es, ee, gc_ex.get("start_min", 0), gc_ex.get("end_min", 0)):
+                            return True
+            for oc in ta.get("other_commitments", []):
+                if oc["day"] == wd and times_overlap(
+                        es, ee, oc["start_min"], oc["end_min"]):
+                    return True
+        dc_date = exam.get("date")
+        if dc_date:
+            for dc in ta.get("date_conflicts", []):
+                if dc.get("date") == dc_date and times_overlap(
+                        es, ee, dc.get("start_min", 0), dc.get("end_min", 0)):
+                    return True
+        return False
+
+    static_conflicts = frozenset(
+        (ta["id"], eid)
+        for ta in tas
+        for eid, exam in slot_exams.items()
+        if _fixed_conflict(ta, exam)
+    )
+
+    # ── mutable per-pass state ─────────────────────────────────────────────
+
+    def initial_state():
+        """Fresh solver state seeded from the locked proctor assignments."""
+        st = {"used_pe": {}, "assigned_exams": {}, "times": {},
+              "courses": {}, "sections": {}}
         for ta in tas:
-            outside_pe = sum(op.get("pe_value", 0) for op in ta.get("outside_proctoring", []))
-            ta_used_pe[ta["id"]] = outside_pe
-            ta_assigned_exams[ta["id"]] = set()
-            ta_proctored_times[ta["id"]] = []
-            ta_proctored_courses[ta["id"]] = set()
-            ta_proctored_sections[ta["id"]] = set()
-
+            tid = ta["id"]
+            st["used_pe"][tid]        = sum(op.get("pe_value", 0)
+                                            for op in ta.get("outside_proctoring", []))
+            st["assigned_exams"][tid] = set()
+            st["times"][tid]          = []
+            st["courses"][tid]        = set()
+            st["sections"][tid]       = set()
         for a in locked:
-            tid = a["ta_id"]
-            eid = a["exam_id"]
+            tid, eid = a["ta_id"], a["exam_id"]
             exam = exams_by_id.get(eid)
-            if not exam or tid not in ta_used_pe:
+            if not exam or tid not in st["used_pe"]:
                 continue
-            ta_used_pe[tid] += exam.get("pe_value", 1.0)
-            ta_assigned_exams[tid].add(eid)
-            ta_proctored_times[tid].append(
+            st["used_pe"][tid] += exam.get("pe_value", 1.0)
+            st["assigned_exams"][tid].add(eid)
+            st["times"][tid].append(
                 (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
             course_name = exam.get("course_name", "")
-            if course_name:
-                ta_proctored_courses[tid].add(course_name)
             sect = exam.get("section", "")
+            if course_name:
+                st["courses"][tid].add(course_name)
             if course_name and sect:
-                ta_proctored_sections[tid].add((course_name, sect))
+                st["sections"][tid].add((course_name, sect))
+        return st
 
-        def eligible_tas(exam):
-            pe_val = exam.get("pe_value", 1.0)
-            wd = exam_weekday(exam)
-            result = []
-            for ta in tas:
-                tid = ta["id"]
-                max_pe = ta.get("max_pe", 2.0)
-                if ta_used_pe[tid] + pe_val > max_pe + 0.001:
-                    continue
-                if exam["id"] in ta_assigned_exams[tid]:
-                    continue
-                # Check same-date time conflicts with other proctored exams
-                conflict = False
-                for pdate, ps, pe in ta_proctored_times[tid]:
-                    if pdate == exam.get("date") and times_overlap(
-                            exam.get("start_min", 0), exam.get("end_min", 0), ps, pe):
-                        conflict = True
-                        break
-                if conflict:
-                    continue
-                # Check conflicts with lab meetings (convert exam date to weekday)
-                if wd is not None:
-                    for ld, ls, le in ta_lab_times.get(tid, []):
-                        if ld == wd and times_overlap(
-                                exam.get("start_min", 0), exam.get("end_min", 0), ls, le):
-                            conflict = True
-                            break
-                    if conflict:
-                        continue
-                    # Check grad course conflicts
-                    for gc_id in ta.get("grad_course_ids", []):
-                        gc = gc_map.get(gc_id)
-                        if not gc:
-                            continue
-                        # Regular meeting conflicts
-                        for gd, gs, ge in _get_meetings(gc):
-                            if gd == wd and times_overlap(
-                                    exam.get("start_min", 0), exam.get("end_min", 0), gs, ge):
-                                conflict = True
-                                break
-                        if conflict:
-                            break
-                        # Grad course exam conflicts (date-specific)
-                        exam_date = exam.get("date")
-                        if exam_date:
-                            for gc_ex in gc.get("exams", []):
-                                if gc_ex.get("date") == exam_date and times_overlap(
-                                        exam.get("start_min", 0), exam.get("end_min", 0),
-                                        gc_ex.get("start_min", 0), gc_ex.get("end_min", 0)):
-                                    conflict = True
-                                    break
-                        if conflict:
-                            break
-                    if conflict:
-                        continue
-                    # Check other commitments
-                    for oc in ta.get("other_commitments", []):
-                        if oc["day"] == wd and times_overlap(
-                                exam.get("start_min", 0), exam.get("end_min", 0),
-                                oc["start_min"], oc["end_min"]):
-                            conflict = True
-                            break
-                    if conflict:
-                        continue
-                # Check date-specific TA conflicts
-                dc_date = exam.get("date")
-                if dc_date:
-                    for dc in ta.get("date_conflicts", []):
-                        if dc.get("date") == dc_date and times_overlap(
-                                exam.get("start_min", 0), exam.get("end_min", 0),
-                                dc.get("start_min", 0), dc.get("end_min", 0)):
-                            conflict = True
-                            break
-                if conflict:
-                    continue
-                result.append(ta)
-            return result
+    def eligible_tas(st, exam):
+        pe_val = exam.get("pe_value", 1.0)
+        eid    = exam["id"]
+        edate  = exam.get("date")
+        es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
+        result = []
+        for ta in tas:
+            tid = ta["id"]
+            if st["used_pe"][tid] + pe_val > ta.get("max_pe", 2.0) + 0.001:
+                continue
+            if eid in st["assigned_exams"][tid]:
+                continue
+            # Same-date time conflicts with exams already being proctored
+            if any(pdate == edate and times_overlap(es, ee, ps, pe)
+                   for pdate, ps, pe in st["times"][tid]):
+                continue
+            if (tid, eid) in static_conflicts:
+                continue
+            result.append(ta)
+        return result
 
-        def score(ta, exam):
-            s = 1000
-            course_name = exam.get("course_name", "")
-            section = exam.get("section", "")
-            key = (course_name, section)
-            # Lab familiarity bonus (same course)
-            if course_name and course_name in ta_lab_courses.get(ta["id"], set()):
-                s += 300
-            # Lab section bonus (same course + section)
-            if course_name and section and key in ta_lab_sections.get(ta["id"], set()):
-                s += 150
-            # Same-course proctoring bonus
-            if course_name and course_name in ta_proctored_courses.get(ta["id"], set()):
-                s += 200
-            # Same-section proctoring bonus
-            if course_name and section and key in ta_proctored_sections.get(ta["id"], set()):
-                s += 100
-            # Load balancing
-            s -= ta_used_pe[ta["id"]] * 500
-            s += random.random()
-            return s
+    def score(st, ta, exam):
+        s = 1000
+        tid = ta["id"]
+        course_name = exam.get("course_name", "")
+        section = exam.get("section", "")
+        key = (course_name, section)
+        # Lab familiarity bonus (same course)
+        if course_name and course_name in ta_lab_courses.get(tid, set()):
+            s += 300
+        # Lab section bonus (same course + section)
+        if course_name and section and key in ta_lab_sections.get(tid, set()):
+            s += 150
+        # Same-course proctoring bonus
+        if course_name and course_name in st["courses"][tid]:
+            s += 200
+        # Same-section proctoring bonus
+        if course_name and section and key in st["sections"][tid]:
+            s += 100
+        # Load balancing
+        s -= st["used_pe"][tid] * 500
+        s += random.random()
+        return s
 
-        # Sort slots by eligibility count (fail-first)
-        sorted_slots = sorted(slots, key=lambda ex: len(eligible_tas(ex)))
+    # Slot order is derived from locked-only state, so it is identical on every
+    # iteration — compute it once.
+    init_st = initial_state()
+    sorted_slots = sorted(slots, key=lambda ex: len(eligible_tas(init_st, ex)))
 
+    def _greedy_pass():
+        st = initial_state()
         result = list(locked)
         for exam in sorted_slots:
-            candidates = eligible_tas(exam)
+            candidates = eligible_tas(st, exam)
             if not candidates:
                 continue
-            best = max(candidates, key=lambda ta: score(ta, exam))
+            best = max(candidates, key=lambda ta: score(st, ta, exam))
+            tid = best["id"]
             result.append({
                 "exam_id": exam["id"],
-                "ta_id": best["id"],
+                "ta_id": tid,
                 "locked": False,
             })
-            ta_used_pe[best["id"]] += exam.get("pe_value", 1.0)
-            ta_assigned_exams[best["id"]].add(exam["id"])
-            ta_proctored_times[best["id"]].append(
+            st["used_pe"][tid] += exam.get("pe_value", 1.0)
+            st["assigned_exams"][tid].add(exam["id"])
+            st["times"][tid].append(
                 (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
             cname = exam.get("course_name", "")
             sect = exam.get("section", "")
             if cname:
-                ta_proctored_courses[best["id"]].add(cname)
+                st["courses"][tid].add(cname)
             if cname and sect:
-                ta_proctored_sections[best["id"]].add((cname, sect))
+                st["sections"][tid].add((cname, sect))
 
         return result
 
@@ -849,6 +866,8 @@ def solve_proctoring(data):
     # Diagnostics
     unfilled = []
     for exam in exams:
+        if exam.get("tbd"):
+            continue  # Never scheduled, so never "unfilled"
         count = exam.get("proctor_count", 1)
         assigned = [a for a in result if a["exam_id"] == exam["id"]]
         if len(assigned) < count:
@@ -880,8 +899,6 @@ def generate_docx(data):
     assignments = data.get("assignments", [])
     exams_map = {e["id"]: e for e in data.get("exams", [])}
     proctor_assignments = data.get("proctor_assignments", [])
-    day_long = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    day_short = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
     def lab_disp(lab):
         s = lab.get("section", "")
@@ -891,10 +908,7 @@ def generate_docx(data):
     doc.add_heading("Lab Assignments", 1)
     for lab in sorted(data.get("labs", []), key=lambda l: (l.get("name", ""), l.get("section", ""))):
         doc.add_heading(lab_disp(lab), 2)
-        day = lab.get("day", 0)
-        doc.add_paragraph(
-            f"{day_long[day]}, {fmt_time(lab.get('start_min', 480))} – {fmt_time(lab.get('end_min', 540))}"
-        )
+        doc.add_paragraph(fmt_meetings(lab, DAY_LONG))
         lab_asgn = [a for a in assignments if a["lab_id"] == lab["id"]]
         if lab_asgn:
             tbl = doc.add_table(rows=1, cols=3)
@@ -973,10 +987,7 @@ def generate_docx(data):
                 row[0].text = lab_disp(lab)
                 row[1].text = role.get("label", "")
                 if lab:
-                    d = lab.get("day", 0)
-                    row[2].text = (
-                        f"{day_short[d]} {fmt_time(lab['start_min'])}–{fmt_time(lab['end_min'])}"
-                    )
+                    row[2].text = fmt_meetings(lab)
                 row[3].text = f"{se:.1f}"
             for od in outside:
                 se = od.get("se_value", 0)
