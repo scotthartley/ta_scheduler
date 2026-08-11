@@ -21,11 +21,14 @@ ta_scheduler/          ← repo root (flat, no subdirectories)
 ├── ta_scheduler.py             ← Flask backend + greedy solver + python-docx export + CSV import
 ├── static/
 │   └── index.html     ← entire frontend (vanilla JS, no build tools, no dependencies)
-├── requirements.txt
+├── pyproject.toml     ← dependency declarations (managed with uv)
+├── uv.lock             ← locked dependency versions
 └── CourseExport.csv   ← sample department course export used for CSV import
 ```
 
 ## Dependencies
+
+Declared in `pyproject.toml`:
 
 ```
 flask>=3.0.0
@@ -33,7 +36,7 @@ python-docx>=1.1.0
 pywebview>=5.0.0
 ```
 
-Install: `pip install -r requirements.txt`
+Install: `uv sync`
 
 ## Architecture
 

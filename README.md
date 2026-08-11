@@ -25,7 +25,7 @@ A single-user desktop web app for scheduling graduate teaching assistants (TAs) 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 Dependencies:
@@ -37,6 +37,12 @@ Dependencies:
 | pywebview | ≥ 5.0.0 |
 
 ## Running
+
+```bash
+uv run python ta_scheduler.py
+```
+
+Or, once `uv sync` has created `.venv`, activate it and run directly:
 
 ```bash
 python ta_scheduler.py
@@ -106,7 +112,8 @@ ta_scheduler/
 ├── ta_scheduler.py             # Flask backend, greedy solvers, DOCX export, CSV import
 ├── static/
 │   └── index.html     # Entire frontend (vanilla JS/CSS/HTML, no build tools)
-├── requirements.txt
+├── pyproject.toml     # Dependency declarations (managed with uv)
+├── uv.lock             # Locked dependency versions
 └── CourseExport.csv   # Sample department course export for CSV import testing
 ```
 
