@@ -852,6 +852,19 @@ function createNewItem() {
   selectItem(item.id);
 }
 
+function duplicateLab(src) {
+  const copy = Object.assign({}, src, {
+    id: uid(),
+    section: (src.section||'') + ' (copy)',
+    roles: (src.roles||[]).map(r => Object.assign({}, r)),
+  });
+  if (src.meetings) copy.meetings = src.meetings.map(m => Object.assign({}, m));
+  S.data.labs.push(copy);
+  markDirty();
+  renderLeftPanel();
+  selectItem(copy.id);
+}
+
 function getSelectedItem() {
   return getItems().find(i => i.id === S.selId) || null;
 }
@@ -1295,7 +1308,14 @@ function renderLabForm(item, form) {
     });
   }
   form.appendChild(rolesDiv);
-  form.appendChild(formActions(deleteCurrentItem));
+  const actions = el('div','form-actions');
+  const dupBtn = el('button','btn-sm','Duplicate');
+  dupBtn.onclick = () => { duplicateLab(item); };
+  actions.appendChild(dupBtn);
+  const delBtn = el('button','btn-sm btn-danger','Delete');
+  delBtn.onclick = deleteCurrentItem;
+  actions.appendChild(delBtn);
+  form.appendChild(actions);
 }
 
 // ════════════════════════════════════════════════════════════════
