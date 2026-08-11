@@ -127,6 +127,8 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .form-row .form-group { flex: 1; }
 .form-actions { display: flex; gap: 6px; margin-top: 10px; }
 .help-text { font-size: var(--fs-base); color: var(--text2); margin-bottom: 5px; }
+.help-text-empty { text-align: center; padding: 32px 16px; }
+.meeting-empty { padding: 9px 15px; }
 .sublist { margin-top: 4px; }
 .sublist-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
                  font-size: var(--fs-base); padding: 4px 5px; background: var(--panel);
@@ -1830,7 +1832,7 @@ function renderLabView(container) {
   const tasMap   = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
 
   if (!S.data.labs.length) {
-    container.appendChild(el('p','help-text','No labs defined'));
+    container.appendChild(el('p','help-text help-text-empty','No labs defined'));
     return;
   }
 
@@ -2443,7 +2445,7 @@ function renderMeetingFinder() {
       filterDiv.appendChild(lbl);
     });
   } else {
-    filterDiv.appendChild(el('p','help-text','No lab sections with assignments yet'));
+    filterDiv.appendChild(el('p','help-text meeting-empty','No lab sections with assignments yet'));
   }
 
   // ── Determine filtered TA set ────────────────────────────────
@@ -3272,7 +3274,7 @@ function sortedExamsForProctoring() {
 function renderProctorExamView(container) {
   const tasMap = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
   const exams = sortedExamsForProctoring();
-  if (!exams.length) { container.appendChild(el('p','help-text','No exams defined')); return; }
+  if (!exams.length) { container.appendChild(el('p','help-text help-text-empty','No exams defined')); return; }
 
   const table = el('table','data-table');
   const thead = el('thead'); const thr = el('tr');
