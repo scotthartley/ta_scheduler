@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-PYTHON=/Users/hartlecs/venv/py_basic/bin/python3.12
-PYINSTALLER=/Users/hartlecs/venv/py_basic/bin/pyinstaller
-
 cd "$(dirname "$0")"
+
+echo "==> Syncing dependencies..."
+uv sync
 
 echo "==> Cleaning previous build..."
 for d in build dist; do
@@ -12,7 +12,7 @@ for d in build dist; do
 done
 
 echo "==> Building app bundle..."
-$PYINSTALLER ta_scheduler.spec
+uv run pyinstaller ta_scheduler.spec
 
 echo "==> Creating DMG..."
 create-dmg \
