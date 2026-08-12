@@ -422,6 +422,9 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .summary-h1:first-child { margin-top: 0; }
 .summary-h2 { font-size: var(--fs-lg); font-weight: 600; margin: 16px 0 4px; }
 .summary-h2.with-action { display: flex; align-items: center; gap: 10px; }
+.summary-course-h { font-size: var(--fs-lg); font-weight: 700; margin: 20px 0 4px; }
+.summary-course-h.with-action { display: flex; align-items: center; gap: 10px; }
+.summary-course-sections { margin-left: 16px; }
 .summary-sub { color: var(--text2); font-size: var(--fs-sm); margin: 0 0 8px; }
 .summary-none { color: var(--text2); font-style: italic; font-size: var(--fs-sm); }
 .summary-proctor-label { font-weight: 600; font-size: var(--fs-sm); margin: 12px 0 4px; }
@@ -469,6 +472,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
   .data-table th, .data-table td { padding: 3px 6px; }
   .summary-h1 { font-size: 14px; }
   .summary-h2 { font-size: 12px; }
+  .summary-course-h { font-size: 13px; }
 }
 </style>
 </head>
@@ -2432,33 +2436,62 @@ function renderSummary() {
 
   // ── Section 1: Lab Assignments ───────────────────────────────────────
   const h1 = el('h1','summary-h1'); h1.textContent = 'Lab Assignments'; c.append(h1);
-  const sortedLabs = [...d.labs].sort((a,b) =>
-    (a.name+' '+(a.section||'')).localeCompare(b.name+' '+(b.section||'')));
 
-  for (const lab of sortedLabs) {
-    const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
-    const h2 = el('h2','summary-h2 with-action');
-    const h2txt = el('span'); h2txt.textContent = displayName(lab); h2.append(h2txt);
-    const labTas = labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean);
-    const btn = gmailCopyBtn(labTas);
-    if (btn) { btn.style.marginTop = '0'; h2.append(btn); }
-    const mailBtn = mailtoBtn(labTas, 'Mail TAs');
-    if (mailBtn) { mailBtn.style.marginTop = '0'; h2.append(mailBtn); }
-    c.append(h2);
-    const sub = el('p','summary-sub');
-    const labTimes = fmtMeetings(lab, DAY_LONG);
-    sub.textContent = labTimes === '—' ? '(time TBD)' : labTimes;
-    c.append(sub);
+  const labsByName = new Map();
+  for (const lab of d.labs) {
+    if (!labsByName.has(lab.name)) labsByName.set(lab.name, []);
+    labsByName.get(lab.name).push(lab);
+  }
+  const courseNames = [...labsByName.keys()].sort((a,b) => a.localeCompare(b));
 
-    if (labAsgn.length) {
-      c.append(buildTable(['Role','TA','Status'], labAsgn.map(a => [
-        rolesMap[a.role_id]?.label ?? a.role_id,
-        tasMap[a.ta_id]?.name    ?? a.ta_id,
-        a.locked ? 'Locked' : 'Assigned',
-      ])));
-    } else {
-      c.append(el('p','summary-none','No assignments'));
+  for (const courseName of courseNames) {
+    const courseLabs = [...labsByName.get(courseName)].sort((a,b) =>
+      (a.section||'').localeCompare(b.section||''));
+
+    const courseTaMap = new Map();
+    for (const lab of courseLabs) {
+      for (const a of d.assignments.filter(a => a.lab_id === lab.id)) {
+        const ta = tasMap[a.ta_id];
+        if (ta) courseTaMap.set(ta.id, ta);
+      }
     }
+    const courseTas = [...courseTaMap.values()];
+
+    const ch = el('h2','summary-course-h with-action');
+    const chtxt = el('span'); chtxt.textContent = courseName || '(unnamed course)'; ch.append(chtxt);
+    const cbtn = gmailCopyBtn(courseTas);
+    if (cbtn) { cbtn.style.marginTop = '0'; ch.append(cbtn); }
+    const cmail = mailtoBtn(courseTas, 'Mail TAs');
+    if (cmail) { cmail.style.marginTop = '0'; ch.append(cmail); }
+    c.append(ch);
+
+    const sectionWrap = el('div','summary-course-sections');
+    for (const lab of courseLabs) {
+      const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
+      const h2 = el('h2','summary-h2 with-action');
+      const h2txt = el('span'); h2txt.textContent = displayName(lab); h2.append(h2txt);
+      const labTas = labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean);
+      const btn = gmailCopyBtn(labTas);
+      if (btn) { btn.style.marginTop = '0'; h2.append(btn); }
+      const mailBtn = mailtoBtn(labTas, 'Mail TAs');
+      if (mailBtn) { mailBtn.style.marginTop = '0'; h2.append(mailBtn); }
+      sectionWrap.append(h2);
+      const sub = el('p','summary-sub');
+      const labTimes = fmtMeetings(lab, DAY_LONG);
+      sub.textContent = labTimes === '—' ? '(time TBD)' : labTimes;
+      sectionWrap.append(sub);
+
+      if (labAsgn.length) {
+        sectionWrap.append(buildTable(['Role','TA','Status'], labAsgn.map(a => [
+          rolesMap[a.role_id]?.label ?? a.role_id,
+          tasMap[a.ta_id]?.name    ?? a.ta_id,
+          a.locked ? 'Locked' : 'Assigned',
+        ])));
+      } else {
+        sectionWrap.append(el('p','summary-none','No assignments'));
+      }
+    }
+    c.append(sectionWrap);
   }
 
   // ── Section 2: Exam Proctoring ───────────────────────────────────────
