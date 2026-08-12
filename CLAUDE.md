@@ -7,7 +7,7 @@ A single-user desktop web app (macOS) for scheduling graduate teaching assistant
 ## Running the app
 
 ```bash
-cd /Users/hartlecs/git_repos/ta_scheduler
+cd /Users/hartlecs/Coding/productivity/ta_scheduler
 python ta_scheduler.py
 # Opens as a native pywebview window; falls back to browser at http://localhost:5050
 ```
@@ -202,6 +202,7 @@ Data accessors:
 
 Rendering primitives:
 - `buildTable(headers, rows, totalRows)` — the one table builder; emits `.data-table` inside a `.data-table-wrap`. A cell may be a string, a DOM node, or an array of nodes, so tables with live inputs and chips go through it too. The last `totalRows` rows get `.summary-total`.
+- `inlineList(items, {empty, footer})` — the one row-list builder; emits an `.ilist` grouped inset list. `items` is `[{cells, onRemove, removeTitle}]`, where a cell is a string (wrapped in `.il-label`) or a DOM node, so lists with live inputs go through it too. `footer` is a node or array of nodes rendered as the group's last row — every add-action lives there rather than in a card of its own. Used by Meeting Times, course exams, Other Commitments, Date-Specific Conflicts, Role Requirements and both Roles-panel groups.
 - `renderAssignGrid(container, cfg)` — the TA × slot matrix behind both Grid views. `cfg` supplies `columns`, `conflictFn`, `findAssignment`, `onAdd`, `onRemove`, `onToggleLock`.
 - `renderTASummaryTable(container, headers, rowFn)` — the "TA Summary" table under both schedule tabs.
 - `renderLoadSection(which)` / `openAddLoadModal(which)` — Outside Duties (SE) and Outside Proctoring (PE), driven by the `LOAD_SECTIONS` config.
@@ -220,7 +221,12 @@ Conflict detection (single source of truth, used by both the grids and the modal
 
 - All type goes through five tokens in `:root`: `--fs-xs` 11, `--fs-sm` 13, `--fs-base` 15, `--fs-lg` 17, `--fs-xl` 19. No literal `font-size` outside the print block.
 - Colors go through the `:root` palette (`--blue-lt`/`--blue-dk`, `--green-lt`/`--green-dk`, `--amber-lt`/`--amber-dk`, `--purple-lt`/`--purple-dk`) and the warning set (`--warn-bg`, `--warn-border`, `--warn-text`, `--warn-text2`).
-- One table system: `.data-table` inside `.data-table-wrap`, with `.lab-header` / `.ta-header` / `.summary-total` as row modifiers. The wrap uses `overflow-x: auto; overflow-y: hidden` — do not collapse those into the `overflow` shorthand, which resets the x-axis and kills horizontal scrolling.
+- All corners go through four radius tokens: `--r-sm` 4 (chips, small inline controls), `--r-md` 6 (the default — controls, buttons, cards, panels), `--r-lg` 12 (modals), `--r-pill` 999. No literal `border-radius` outside the print block, apart from `0` resets and `50%` circles.
+- **One control base**: a single `:where(input:not([type=checkbox]):not([type=radio]), select, textarea)` rule right after `body` styles every text/number/date/time control in the app. It is wrapped in `:where()` on purpose — zero specificity, so `.data-table input`, `.ilist-row`'s quiet controls and `.form-group`'s `width: 100%` all override it without `!important`. The matching `:focus` rule is deliberately *not* wrapped, so the focus ring outranks them. Never add a second control base; extend this one.
+- **One button base**: `.btn-sm, header button, .sched-controls button` share one rule, with `.sched-controls button` as the large-size modifier and `.btn-sm.btn-primary` / `.btn-sm.btn-danger` / `.btn-sm.btn-disabled` as variants. `.add-ta-btn` stays separate on purpose — it is a dashed ghost affordance inside grid cells, where a white shadowed button would be wrong. `.view-toggle button` must keep its `box-shadow: none`, or inactive segments inherit the drop shadow.
+- **One row-list system**: `.ilist` (grouped inset list — one bordered container per group, hairline dividers, `.ilist-footer` for the add-action, `.ilist-empty` for the empty state) with `.il-label` / `.il-meta` / `.il-unit` / `.chip` as cell modifiers. It replaced the old `.sublist-item` and `.role-check-row` per-row cards. Controls inside `.ilist-row` are borderless at rest and reveal their border (and number spinners) on hover/focus, so the group frame is the only box. Build these through `inlineList()`, never by hand.
+- One table system: `.data-table` inside `.data-table-wrap`, with `.lab-header` / `.ta-header` / `.summary-total` as row modifiers. The wrap uses `overflow-x: auto; overflow-y: hidden` — do not collapse those into the `overflow` shorthand, which resets the x-axis and kills horizontal scrolling. The static `.data-table-wrap`s around `#sched-table` / `#proctor-table` are the border for the hand-built tables in `renderLabView` / `renderProctorExamView` (which do *not* use `buildTable`), and `setViewMode()` toggles `.grid-mode` on them to drop that border in Grid view — don't remove them.
+- One bordered surface: `.grid-outer, .meeting-grid-wrap, .cal-grid, .assign-grid-wrap, .data-table-wrap, .picker-list` share a single border+radius rule; each keeps only its own `overflow`. `.picker-list` is the one scrolling picker surface (import checklists and the assign-TA list).
 - Workspace tabs are shown/hidden purely with the `.active` class (see `TAB_WORKSPACE`), never inline `style.display`.
 - The Meeting Finder legend and heatmap are both driven by `HEAT_STOPS` / `heatColor()` so they cannot drift apart.
 

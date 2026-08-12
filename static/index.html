@@ -22,7 +22,6 @@
   --purple-lt:  #F3E8FF;
   --purple-dk:  #5E1A8A;
   --red:        #FF3B30;
-  --gray:       #8E8E93;
   --gray-lt:    #F2F2F7;
   --border:     rgba(60,60,67,0.18);
   --text:       #1C1C1E;
@@ -41,32 +40,46 @@
   --fs-base: 15px;
   --fs-lg:   17px;
   --fs-xl:   19px;
+  /* ── radii ── */
+  --r-sm:   4px;    /* chips, table inputs, small inline controls */
+  --r-md:   6px;    /* default: controls, buttons, cards, panels */
+  --r-lg:   12px;   /* modals */
+  --r-pill: 999px;
 }
 body { font-family: system-ui, -apple-system, sans-serif; font-size: var(--fs-base);
        color: var(--text); background: var(--gray-lt); height: 100vh;
        display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── one control base ────────────────────────────────────────────
+   Wrapped in :where() so it carries zero specificity: every rule below that
+   restyles a control (.data-table input, .ilist-row inputs, .form-group's
+   width) wins without needing !important. The :focus rule is deliberately
+   left unwrapped so the focus ring outranks those same rules. */
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  font: inherit; font-size: var(--fs-base); color: inherit;
+  padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: var(--r-md); background: var(--panel); }
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,122,255,0.2); }
 
 /* ── header ─────────────────────────────────────────────────── */
 header { display: flex; align-items: center; gap: 15px; padding: 10px 20px;
          background: var(--toolbar-bg); color: var(--text); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 header h1 { font-size: var(--fs-base); font-weight: 600; letter-spacing: .5px; }
 header .spacer { flex: 1; }
-header button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
-                border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: var(--fs-sm);
-                box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-header button:hover { background: #E0E0E0; }
 #save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #fff; }
 
 /* ── tabs ───────────────────────────────────────────────────── */
 nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
            background: var(--toolbar-bg); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.tab-group { display: flex; gap: 0; border-radius: 7px;
+.tab-group { display: flex; gap: 0; border-radius: var(--r-md);
              box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 .tab-btn { background: transparent; color: var(--text2);
            border: 1px solid var(--border); border-right: none; border-radius: 0; padding: 5px 16px;
            cursor: pointer; font-size: var(--fs-sm); font-weight: 600; transition: .15s; }
-.tab-group .tab-btn:first-child { border-radius: 7px 0 0 7px; }
-.tab-group .tab-btn:last-child  { border-right: 1px solid var(--border); border-radius: 0 7px 7px 0; }
+.tab-group .tab-btn:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
+.tab-group .tab-btn:last-child  { border-right: 1px solid var(--border);
+                                   border-radius: 0 var(--r-md) var(--r-md) 0; }
 .tab-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
 .tab-btn.active { background: #fff; color: var(--text); }
 
@@ -83,27 +96,30 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .panel-section { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .panel-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .panel-section-header span { font-weight: 600; font-size: var(--fs-base); flex: 1; }
-.btn-sm { font-size: var(--fs-sm); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
-           background: var(--panel); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.07);
-           display: inline-block; text-decoration: none; color: inherit; }
-.btn-sm:hover { background: var(--gray-lt); }
+/* ── one button base ── ( .sched-controls button is the large size modifier ) */
+.btn-sm, header button, .sched-controls button {
+  font: inherit; font-size: var(--fs-sm); padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); color: inherit; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.07);
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.btn-sm:hover, header button:hover, .sched-controls button:hover { background: var(--gray-lt); }
 .btn-sm.btn-disabled { opacity: 0.4; pointer-events: none; cursor: default; }
-.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue);
-               box-shadow: 0 1px 3px rgba(0,122,255,0.3); }
-.btn-primary:hover { background: #0066DD; border-color: #0066DD; }
-.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
-.btn-danger:hover { background: #E0352B; }
+.btn-sm.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue);
+                      box-shadow: 0 1px 3px rgba(0,122,255,0.3); }
+.btn-sm.btn-primary:hover { background: #0066DD; border-color: #0066DD; }
+.btn-sm.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-sm.btn-danger:hover { background: #E0352B; }
 
 /* ── roles panel (Lab Sections tab only) ────────────────────── */
 .roles-panel { display: none; width: 400px; flex-shrink: 0; border-left: 1px solid var(--border);
                background: var(--sidebar-bg); flex-direction: column; overflow: hidden; }
 .roles-panel.active { display: flex; }
 .roles-list-scroll { overflow-y: auto; flex: 1; padding: 12px; }
-.roles-panel .help-text { font-size: var(--fs-sm); }
 
-/* one delete affordance, used by sublists, grid blocks, grid cells and chips */
+/* one delete affordance, used by inline lists, grid blocks, grid cells and chips */
 .btn-x { display: inline-flex; align-items: center; justify-content: center;
-         border: none; background: none; border-radius: 4px; padding: 1px 5px;
+         border: none; background: none; border-radius: var(--r-sm); padding: 1px 5px;
          color: var(--red); font-size: var(--fs-base); line-height: 1;
          cursor: pointer; opacity: .65; transition: opacity .1s, background .1s; }
 .btn-x:hover { opacity: 1; background: rgba(255,59,48,.12); }
@@ -124,44 +140,69 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .form-group { margin-bottom: 10px; }
 .form-group label { display: block; font-size: var(--fs-sm); color: var(--text2);
                      margin-bottom: 2px; font-weight: 500; }
-.form-group input, .form-group select, .form-group textarea {
-  width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: var(--fs-base); background: var(--panel); }
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-  outline: none; border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(0,122,255,0.2); }
-.form-label-strong { display: block; font-weight: 600; font-size: var(--fs-sm); color: var(--text2); }
-.form-label-strong.spaced { margin-top: 10px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; }
+.form-group input[type="checkbox"], .form-group input[type="radio"] { width: auto; }
 .form-row { display: flex; gap: 6px; }
 .form-row .form-group { flex: 1; }
 .form-actions { display: flex; gap: 6px; margin-top: 10px; }
 .help-text { font-size: var(--fs-base); color: var(--text2); margin-bottom: 5px; }
 .help-text-empty { text-align: center; padding: 32px 16px; }
 .meeting-empty { padding: 9px 15px; }
-.sublist { margin-top: 4px; }
-.sublist-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
-                 font-size: var(--fs-base); padding: 4px 5px; background: var(--panel);
-                 border: 1px solid var(--border); border-radius: 4px; }
-.sublist-item .sl-label { flex: 1; }
-.sublist-item .sl-meta { font-size: var(--fs-xs); color: var(--text2); }
-.sublist-item input { font-size: var(--fs-sm); }
-.sublist-item input[type="text"] { min-width: 0; }
-.role-check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-                   padding: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
-.role-check-row label { font-size: var(--fs-base); flex: 1; }
 .role-se-note { color: var(--text2); font-size: var(--fs-xs); margin-left: 4px; }
-.sublist-item .role-se-note { flex-shrink: 0; white-space: nowrap; }
-.count-input { width: 50px !important; }
 .checkbox-group { display: flex; flex-direction: column; gap: 5px; }
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); }
+/* Section heading above an .ilist — a panel heading, not a form component. */
+.list-heading { font-weight: 600; font-size: var(--fs-sm); color: var(--text2);
+                margin: 14px 0 5px; }
+.list-heading:first-child { margin-top: 0; }
+.inline-form { background: var(--gray-lt); padding: 8px;
+               border-radius: var(--r-md); margin-top: 6px; }
+
+/* ── grouped inset list ─────────────────────────────────────────
+   One bordered container per group with hairline dividers — never a card per
+   row. Controls inside a row are borderless at rest so the group's own frame
+   is the only box on screen. */
+.ilist { border: 1px solid var(--border); border-radius: var(--r-md);
+         background: var(--panel); overflow: hidden; margin-top: 4px; }
+.ilist-row { display: flex; align-items: center; gap: 8px;
+             padding: 4px 8px; min-height: 34px; font-size: var(--fs-base); }
+.ilist-row + .ilist-row,
+.ilist-empty + .ilist-row { border-top: 1px solid var(--border); }
+.ilist-footer { background: var(--sidebar-bg); }
+.ilist-footer > *:last-child { margin-left: auto; }
+.ilist-empty { padding: 8px; color: var(--text2); font-size: var(--fs-sm); }
+
+.il-label { flex: 1; min-width: 0; }
+.il-meta  { font-size: var(--fs-xs); color: var(--text2); flex-shrink: 0; white-space: nowrap; }
+.il-unit  { font-size: var(--fs-sm); color: var(--text2); flex-shrink: 0; }
+.chip     { font-size: var(--fs-xs); padding: 2px 7px; border-radius: var(--r-pill);
+            background: var(--gray-lt); color: var(--text2); flex-shrink: 0; white-space: nowrap; }
+
+/* quiet controls: the row frame is the only box until you touch one */
+.ilist-row :is(input, select) { border-color: transparent; background: transparent;
+                                box-shadow: none; padding: 3px 6px; }
+.ilist-row :is(input, select):hover { border-color: var(--border); background: var(--panel); }
+.ilist-row :is(input, select):focus { border-color: var(--blue); background: var(--panel);
+                                      box-shadow: 0 0 0 3px rgba(0,122,255,0.2); }
+.ilist-row input[type=number] { appearance: textfield; -webkit-appearance: textfield; }
+.ilist-row input[type=number]:hover, .ilist-row input[type=number]:focus {
+  appearance: auto; -webkit-appearance: auto; }
+
+/* control widths — element-qualified so they outrank .form-group's width:100% */
+input.num-input, .num-input { width: 64px; flex-shrink: 0; }
+input.w-full, select.w-full, .w-full { width: 100%; }
 
 /* ── right panel / grid ─────────────────────────────────────── */
 .right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
 .grid-placeholder { flex: 1; display: flex; align-items: center; justify-content: center;
                      color: var(--text2); font-size: var(--fs-base); }
 
+/* one bordered surface for every scrolling/framed container in the app */
+.grid-outer, .meeting-grid-wrap, .cal-grid, .assign-grid-wrap,
+.data-table-wrap, .picker-list {
+  border: 1px solid var(--border); border-radius: var(--r-md); }
+
 .grid-outer { flex: 1; display: flex; flex-direction: column; overflow: hidden;
-              border: 1px solid var(--border); border-radius: 6px;
               margin: 10px; }
 .day-header-spacer { width: 76px; flex-shrink: 0; }
 .day-header { flex: 1; text-align: center; font-size: var(--fs-base); font-weight: 600;
@@ -170,7 +211,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .grid-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
 .day-headers-sticky { display: flex; position: sticky; top: 0; z-index: 5;
                        background: var(--gray-lt); border-bottom: 1px solid var(--border);
-                       border-radius: 5px 5px 0 0; }
+                       border-radius: var(--r-md) var(--r-md) 0 0; }
 .grid-body { display: flex; position: relative; padding-top: 8px; }
 .time-labels { width: 76px; flex-shrink: 0; position: relative; }
 .time-label { position: absolute; right: 6px; font-size: var(--fs-sm); color: var(--text2);
@@ -184,7 +225,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
                   pointer-events: none; }
 
 /* ── blocks ─────────────────────────────────────────────────── */
-.block { position: absolute; left: 2px; right: 2px; border-radius: 4px;
+.block { position: absolute; left: 2px; right: 2px; border-radius: var(--r-sm);
           font-size: var(--fs-sm); padding: 3px 5px; pointer-events: none; }
 .block-editable { pointer-events: all; cursor: grab; user-select: none; }
 .block-editable:active { cursor: grabbing; }
@@ -197,10 +238,10 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .block-label { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .block-time  { opacity: .75; font-size: var(--fs-xs); }
 .block-resize-handle-top { position: absolute; top: 0; left: 0; right: 0; height: 6px;
-                             cursor: ns-resize; border-radius: 3px 3px 0 0;
+                             cursor: ns-resize; border-radius: var(--r-sm) var(--r-sm) 0 0;
                              background: rgba(0,0,0,.12); }
 .block-resize-handle     { position: absolute; bottom: 0; left: 0; right: 0; height: 6px;
-                             cursor: ns-resize; border-radius: 0 0 3px 3px;
+                             cursor: ns-resize; border-radius: 0 0 var(--r-sm) var(--r-sm);
                              background: rgba(0,0,0,.12); }
 .block-delete { position: absolute; top: 0; right: 1px; opacity: 0; }
 .block-editable:hover .block-delete       { opacity: .65; }
@@ -224,26 +265,24 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 
 .sched-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .od-section-hdr { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.od-section-hdr h4 { margin: 0; font-size: var(--fs-lg); }
+.od-section-hdr .section-h4 { margin-bottom: 0; }
 .section-h4 { margin-bottom: 8px; font-size: var(--fs-lg); }
-.sched-controls button { padding: 8px 17px; border-radius: 5px; border: 1px solid var(--border);
-                           background: var(--panel); cursor: pointer; font-size: var(--fs-base); }
-.sched-controls button:hover { background: var(--gray-lt); }
-.view-toggle { display: flex; background: var(--gray-lt); border-radius: 7px; padding: 2px; gap: 2px;
+.sched-controls button { padding: 8px 17px; font-size: var(--fs-base); }
+.view-toggle { display: flex; background: var(--gray-lt); border-radius: var(--r-md); padding: 2px; gap: 2px;
                border: 1px solid var(--border); }
-.view-toggle button { border: none; border-radius: 5px; font-size: var(--fs-sm); background: transparent; }
+.view-toggle button { border: none; border-radius: var(--r-sm); font-size: var(--fs-sm);
+                      background: transparent; box-shadow: none; }
 .view-toggle button.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.12); color: var(--text); }
 
 /* ── warning surface (solver diagnostics, TBD exams, conflict rows) ── */
 .warn-box { background: var(--warn-bg); border: 1px solid var(--warn-border);
-            border-radius: 6px; padding: 12px; }
+            border-radius: var(--r-md); padding: 12px; }
 .warn-box h4 { color: var(--warn-text); margin-bottom: 8px; }
 .warn-box ul { padding-left: 20px; font-size: var(--fs-base); margin: 4px 0 0; }
 .warn-box li { margin-bottom: 4px; }
 
 /* ── one table system ──────────────────────────────────────── */
-.data-table-wrap { overflow-x: auto; overflow-y: hidden; flex-shrink: 0;
-                   border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px; }
+.data-table-wrap { overflow-x: auto; overflow-y: hidden; flex-shrink: 0; margin-bottom: 16px; }
 .data-table-wrap.grid-mode { border: none; border-radius: 0; overflow: visible;
                              display: flex; justify-content: center; }
 .data-table { border-collapse: separate; border-spacing: 0; min-width: 600px; width: 100%;
@@ -257,22 +296,22 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .data-table .ta-header td       { background: var(--green-lt); font-weight: 700; }
 .data-table .summary-total td   { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
 .data-table input { font-size: var(--fs-sm); padding: 2px 4px;
-                    border: 1px solid var(--border); border-radius: 4px; }
+                    border: 1px solid var(--border); border-radius: var(--r-sm); }
 .data-table input[type=number] { width: 60px; }
 
 .role-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .ta-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--blue-lt);
-            color: var(--blue-dk); border: 1px solid rgba(0,122,255,0.3); border-radius: 5px;
+            color: var(--blue-dk); border: 1px solid rgba(0,122,255,0.3); border-radius: var(--r-sm);
             padding: 3px 8px; font-size: var(--fs-xs); }
 .ta-chip.locked { background: var(--green-lt); color: var(--green-dk); border-color: rgba(52,199,89,0.35); }
 .lock-badge { font-size: var(--fs-sm); line-height: 1; opacity: .6; cursor: default; }
 .lock-badge.interactive { cursor: pointer; }
 .lock-badge.interactive:hover { opacity: 1; }
-.add-ta-btn { background: none; border: 1px dashed rgba(0,122,255,0.45); border-radius: 3px;
+.add-ta-btn { background: none; border: 1px dashed rgba(0,122,255,0.45); border-radius: var(--r-sm);
                padding: 3px 8px; font-size: var(--fs-sm); cursor: pointer; color: var(--blue); }
 .add-ta-btn:hover { background: var(--blue-lt); }
 .ta-row-lab { display: inline-flex; align-items: center; gap: 5px; background: var(--gray-lt);
-               border: 1px solid var(--border); border-radius: 3px; padding: 3px 8px;
+               border: 1px solid var(--border); border-radius: var(--r-sm); padding: 3px 8px;
                font-size: var(--fs-sm); color: var(--text2); margin: 2px; }
 
 /* ── drag-and-drop chip reassignment ── */
@@ -280,18 +319,18 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .ta-chip.dragging           { opacity: 0.45; }
 .role-chips-area.drag-over  { outline: 2px dashed var(--blue);
                                background: var(--blue-lt);
-                               border-radius: 4px; }
+                               border-radius: var(--r-sm); }
 
 /* meeting finder */
 .meeting-outer { display: flex; flex-direction: column; gap: 8px; }
 .meeting-legend { display: flex; gap: 20px; font-size: var(--fs-base); align-items: center; }
-.legend-swatch { width: 18px; height: 18px; border-radius: 3px; display: inline-block;
+.legend-swatch { width: 18px; height: 18px; border-radius: var(--r-sm); display: inline-block;
                  border: 1px solid var(--border); }
 .meeting-ta-ul { font-size: var(--fs-sm); margin:4px 0; padding-left:18px; }
 .ta-conflict-ul { margin:2px 0 10px; padding-left:18px; line-height:1.6; }
 #ta-conflict-list:not(:empty) { padding: 12px 20px; border-top: 1px solid var(--border);
                                  font-size: var(--fs-sm); }
-.meeting-grid-wrap { flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 6px;
+.meeting-grid-wrap { flex: 1; min-height: 0;
                      overflow: hidden; display: flex; flex-direction: column; }
 .meeting-grid-scroll { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .meeting-body { display: flex; }
@@ -302,25 +341,25 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 100;
                    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
                    display: flex; align-items: center; justify-content: center; }
-.modal-box { background: var(--panel); border-radius: 12px; padding: 24px; min-width: 420px;
+.modal-box { background: var(--panel); border-radius: var(--r-lg); padding: 24px; min-width: 420px;
               max-width: 90vw; max-height: 80vh; overflow-y: auto;
               box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10); }
 .modal-box h2 { font-size: var(--fs-xl); font-weight: 700; margin-bottom: 15px; }
 .modal-box h3 { font-size: var(--fs-base); font-weight: 600; margin-bottom: 10px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.modal-list { max-height: 180px; overflow-y: auto; font-size: var(--fs-sm); margin-bottom: 4px; }
-.modal-list-row { padding: 4px 0; border-bottom: 1px solid var(--border); }
+/* one scrolling picker surface — import checklists and the assign-TA list */
+.picker-list { max-height: 280px; overflow-y: auto; font-size: var(--fs-sm); margin-bottom: 10px; }
+.modal-list-row { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.modal-list-row:last-child { border-bottom: none; }
 .modal-list-row label { cursor: pointer; display: flex; align-items: baseline; gap: 5px; }
 .modal-note { font-size: var(--fs-sm); color: var(--text2); margin: 0 0 6px; }
-.assign-ta-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border);
-                   border-radius: 5px; margin-bottom: 10px; }
 .assign-ta-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
                   border-bottom: 1px solid var(--border); cursor: pointer; font-size: var(--fs-base); }
 .assign-ta-row:last-child { border-bottom: none; }
 .assign-ta-row:hover { background: var(--gray-lt); }
 .assign-ta-row.is-assigned   { background: var(--blue-lt); }
 .assign-ta-row.has-conflict  { background: var(--warn-bg); flex-wrap: wrap; }
-.assign-ta-row .exp-badge { font-size: var(--fs-xs); padding: 2px 6px; border-radius: 10px;
+.assign-ta-row .exp-badge { font-size: var(--fs-xs); padding: 2px 6px; border-radius: var(--r-pill);
                               background: var(--green-lt); color: var(--green-dk); }
 .assign-ta-row .exp-badge.inexp { background: var(--amber-lt); color: var(--warn-text); }
 .assign-ta-row .se-info { font-size: var(--fs-sm); color: var(--text2); margin-left: auto; }
@@ -342,8 +381,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 /* ── exam calendar ──────────────────────────────────────────── */
 .cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .cal-nav span { font-weight: 600; font-size: var(--fs-base); min-width: 140px; text-align: center; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
-            border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; overflow: hidden; }
 .cal-hdr { background: var(--gray-lt); text-align: center; font-size: var(--fs-sm); font-weight: 600;
            padding: 6px 0; color: var(--text2); }
 .cal-day { background: var(--panel); min-height: 70px; padding: 4px; font-size: var(--fs-sm);
@@ -391,7 +429,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 #sched-ta-summary, #proctor-ta-summary { margin-top: 20px; }
 
 /* ── assignment grid view ────────────────────────────────────── */
-.assign-grid-wrap { display: inline-block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.assign-grid-wrap { display: inline-block; overflow: hidden; }
 .assign-grid { border-collapse: collapse; font-size: var(--fs-sm); width: auto; }
 .assign-grid th.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; min-width: 120px;
                                font-weight: 600; border-right: 1px solid var(--border);
@@ -541,7 +579,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
     <div class="left-panel">
       <div class="panel-section">
         <div class="panel-section-header">
-          <span style="font-weight:600;">Lab Sections</span>
+          <span>Lab Sections</span>
         </div>
         <div style="display:flex;gap:6px;padding:0 15px 8px;">
           <button class="btn-sm" onclick="meetingSelectAll()">Select All</button>
@@ -745,6 +783,28 @@ function xBtn(onClick, title = 'Remove', extraCls = '') {
   b.title = title;
   b.onclick = e => { e.stopPropagation(); onClick(e); };
   return b;
+}
+
+// One grouped inset list — the only row-list builder. items:
+// [{cells, onRemove, removeTitle}], where a cell is either a string (wrapped in
+// an .il-label) or a DOM node. opts: {empty, footer}. `footer` is a node or an
+// array of nodes rendered as the group's last row (add-actions live there).
+function inlineList(items, {empty, footer} = {}) {
+  const wrap = el('div','ilist');
+  items.forEach(it => {
+    const row = el('div','ilist-row');
+    (it.cells || []).forEach(c =>
+      row.append(typeof c === 'string' ? el('span','il-label', escHtml(c)) : c));
+    if (it.onRemove) row.append(xBtn(it.onRemove, it.removeTitle));
+    wrap.append(row);
+  });
+  if (!items.length && empty) wrap.append(el('div','ilist-empty', escHtml(empty)));
+  if (footer) {
+    const f = el('div','ilist-row ilist-footer');
+    f.append(...(Array.isArray(footer) ? footer : [footer]));
+    wrap.append(f);
+  }
+  return wrap;
 }
 
 function minToY(m)  { return (m - GRID_START) * PX_PER_MIN; }
@@ -1141,13 +1201,11 @@ function formActions(onDel) {
   d.appendChild(db);
   return d;
 }
-// Bold section heading inside a form (e.g. "Meeting Times", "Exams").
-function formHeading(text, spaced = true) {
-  const g = el('div','form-group');
-  const l = el('label','form-label-strong' + (spaced ? ' spaced' : ''));
-  l.textContent = text;
-  g.appendChild(l);
-  return g;
+// Section heading above a list or field group ("Meeting Times", "Course Roles").
+function formHeading(text) {
+  const h = el('div','list-heading');
+  h.textContent = text;
+  return h;
 }
 // Name (flexible) + Section (fixed width) — identical in the course and lab forms.
 function nameSectionRow(item, isLab) {
@@ -1163,27 +1221,21 @@ function nameSectionRow(item, isLab) {
   const sL = el('label'); sL.textContent='Section';
   const sInp = textInput(item.section||'', v => { item.section=v; markDirty(); renderLeftPanel(); });
   sInp.title = 'Section identifier (e.g. A, B, 001)';
-  sInp.style.width='100%';
   sL.appendChild(sInp); sG.appendChild(sL); row.appendChild(sG);
   return row;
 }
 // Editable list of an item's meeting times — identical in the course and lab forms.
 function meetingsSublist(item) {
-  const div = el('div','sublist');
-  const meetings = getMeetings(item);
-  meetings.forEach((m, i) => {
-    const r = el('div','sublist-item');
-    const info = el('span','sl-label', `${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
-    r.append(info, xBtn(() => {
+  return inlineList(getMeetings(item).map((m, i) => ({
+    cells: [`${DAYS[m.day]} ${fmtRange(m.start_min, m.end_min)}`],
+    removeTitle: 'Remove meeting',
+    onRemove: () => {
       normalizeMeetings(item);
       item.meetings.splice(i, 1);
       syncTopLevel(item);
       markDirty(); renderGrid(); renderItemForm();
-    }, 'Remove meeting'));
-    div.appendChild(r);
-  });
-  if (!meetings.length) div.appendChild(el('span','help-text','No times set'));
-  return div;
+    },
+  })), {empty: 'No times set'});
 }
 
 // ── Course form ──
@@ -1192,22 +1244,22 @@ function renderCourseForm(item, form) {
   form.appendChild(el('h3',null,'Edit Course'));
   form.appendChild(nameSectionRow(item));
 
-  form.appendChild(formHeading('Meeting Times', false));
+  form.appendChild(formHeading('Meeting Times'));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
   form.appendChild(meetingsSublist(item));
 
   // Date range for regular meetings
   form.appendChild(formHeading('Meeting Date Range'));
   const drRow = el('div','form-row');
-  const dsG = el('div','form-group'); dsG.style.flex='1';
+  const dsG = el('div','form-group');
   const dsL = el('label'); dsL.textContent='Start';
-  const dsInp = document.createElement('input'); dsInp.type='date'; dsInp.style.width='100%';
+  const dsInp = document.createElement('input'); dsInp.type='date';
   dsInp.value = item.date_start||'';
   dsInp.oninput = () => { item.date_start = dsInp.value||null; markDirty(); };
   dsL.appendChild(dsInp); dsG.appendChild(dsL); drRow.appendChild(dsG);
-  const deG = el('div','form-group'); deG.style.flex='1';
+  const deG = el('div','form-group');
   const deL = el('label'); deL.textContent='End';
-  const deInp = document.createElement('input'); deInp.type='date'; deInp.style.width='100%';
+  const deInp = document.createElement('input'); deInp.type='date';
   deInp.value = item.date_end||'';
   deInp.oninput = () => { item.date_end = deInp.value||null; markDirty(); };
   deL.appendChild(deInp); deG.appendChild(deL); drRow.appendChild(deG);
@@ -1215,18 +1267,12 @@ function renderCourseForm(item, form) {
 
   // Exam list
   form.appendChild(formHeading('Exams'));
-  const exDiv = el('div','sublist');
   const exams = item.exams||[];
-  exams.forEach((ex, i) => {
-    const r = el('div','sublist-item');
-    const dateStr = ex.date || ex.date_raw || '(TBD)';
-    const info = el('span','sl-label', `${dateStr}  ${fmtRange(ex.start_min, ex.end_min)}`);
-    r.append(info, xBtn(() => { item.exams.splice(i, 1); markDirty(); renderItemForm(); },
-                        'Remove exam'));
-    exDiv.appendChild(r);
-  });
-  if (!exams.length) exDiv.appendChild(el('span','help-text','No exams'));
-  form.appendChild(exDiv);
+  form.appendChild(inlineList(exams.map((ex, i) => ({
+    cells: [`${ex.date || ex.date_raw || '(TBD)'}  ${fmtRange(ex.start_min, ex.end_min)}`],
+    removeTitle: 'Remove exam',
+    onRemove: () => { item.exams.splice(i, 1); markDirty(); renderItemForm(); },
+  })), {empty: 'No exams'}));
 
   form.appendChild(formActions(deleteCurrentItem));
 }
@@ -1300,48 +1346,46 @@ function renderTAForm(item, form) {
   // Other commitments note
   form.appendChild(formHeading('Other Commitments'));
   form.appendChild(el('p','help-text','Draw on grid to add time blocks; click to remove'));
-  const ocDiv = el('div','sublist');
-  (item.other_commitments||[]).forEach((oc,i) => {
-    const r = el('div','sublist-item');
+  form.appendChild(inlineList((item.other_commitments||[]).map((oc,i) => {
     const lbl = document.createElement('input'); lbl.type='text';
-    lbl.value=oc.label||''; lbl.style.flex='1';
+    lbl.value=oc.label||''; lbl.className='il-label';
     lbl.placeholder='Label';
     lbl.oninput = () => { oc.label=lbl.value; markDirty(); renderGrid(); };
-    const info = el('span','sl-meta', ` ${DAYS[oc.day]} ${fmtRange(oc.start_min,oc.end_min)}`);
-    r.append(lbl, info, xBtn(() => {
-      item.other_commitments.splice(i,1); markDirty(); renderGrid(); renderItemForm();
-    }, 'Remove commitment'));
-    ocDiv.appendChild(r);
-  });
-  form.appendChild(ocDiv);
+    return {
+      cells: [lbl, el('span','il-meta', `${DAYS[oc.day]} ${fmtRange(oc.start_min,oc.end_min)}`)],
+      removeTitle: 'Remove commitment',
+      onRemove: () => {
+        item.other_commitments.splice(i,1); markDirty(); renderGrid(); renderItemForm();
+      },
+    };
+  }), {empty: 'No commitments'}));
 
-  // Date-Specific Conflicts
+  // Date-Specific Conflicts — the add-action is this group's footer row.
   form.appendChild(formHeading('Date-Specific Conflicts'));
-  const dcDiv = el('div','sublist');
-  (item.date_conflicts||[]).forEach((dc, i) => {
-    const r = el('div','sublist-item');
-    const lbl = document.createElement('input');
-    lbl.type='text'; lbl.value=dc.label||''; lbl.style.flex='1';
-    lbl.oninput = () => { dc.label=lbl.value; markDirty(); };
-    const info = el('span','sl-meta');
-    info.textContent = ` ${dc.date||'?'}  ${fmtRange(dc.start_min, dc.end_min)}`;
-    r.append(lbl, info, xBtn(() => {
-      item.date_conflicts.splice(i,1); markDirty(); renderItemForm();
-    }, 'Remove conflict'));
-    dcDiv.appendChild(r);
-  });
-  form.appendChild(dcDiv);
-
   const addDcBtn = el('button','btn-sm','+ Add Date Conflict');
-  addDcBtn.style.marginTop = '6px';
+  const dcList = inlineList((item.date_conflicts||[]).map((dc, i) => {
+    const lbl = document.createElement('input');
+    lbl.type='text'; lbl.value=dc.label||''; lbl.className='il-label';
+    lbl.placeholder='Label';
+    lbl.oninput = () => { dc.label=lbl.value; markDirty(); };
+    const info = el('span','il-meta');
+    info.textContent = `${dc.date||'?'}  ${fmtRange(dc.start_min, dc.end_min)}`;
+    return {
+      cells: [lbl, info],
+      removeTitle: 'Remove conflict',
+      onRemove: () => { item.date_conflicts.splice(i,1); markDirty(); renderItemForm(); },
+    };
+  }), {empty: 'No conflicts', footer: addDcBtn});
+  form.appendChild(dcList);
+
   addDcBtn.onclick = () => {
     if ($id('dc-inline-form')) { $id('dc-inline-form').remove(); return; }
-    const f = el('div','sublist'); f.id='dc-inline-form';
-    f.style.cssText = 'background:var(--gray-lt);padding:8px;border-radius:6px;margin-top:6px;';
+    const f = el('div','inline-form'); f.id='dc-inline-form';
     const lblInp = document.createElement('input');
-    lblInp.type='text'; lblInp.placeholder='Label'; lblInp.style.width='100%'; lblInp.style.marginBottom='4px';
+    lblInp.type='text'; lblInp.placeholder='Label';
+    lblInp.className='w-full'; lblInp.style.marginBottom='4px';
     const dateInp = document.createElement('input');
-    dateInp.type='date'; dateInp.style.marginRight='4px';
+    dateInp.type='date'; dateInp.className='w-full'; dateInp.style.marginBottom='4px';
     let startMin = 480, endMin = 600;
     const startSel = timeSelect(startMin, v => startMin = v);
     const endSel   = timeSelect(endMin, v => endMin = v);
@@ -1354,12 +1398,12 @@ function renderTAForm(item, form) {
         start_min:startMin, end_min:endMin});
       markDirty(); renderItemForm();
     };
-    const row = el('div','form-row'); row.style.gap='4px';
-    row.append(dateInp, startSel, el('span',null,'–'), endSel);
-    f.append(lblInp, row, saveBtn);
-    addDcBtn.insertAdjacentElement('afterend', f);
+    const row = el('div','form-row'); row.style.alignItems='center'; row.style.gap='4px';
+    startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
+    row.append(startSel, el('span',null,'–'), endSel);
+    f.append(lblInp, dateInp, row, saveBtn);
+    dcList.insertAdjacentElement('afterend', f);
   };
-  form.appendChild(addDcBtn);
 
   form.appendChild(formActions(deleteCurrentItem));
   renderTAConflictList(item);
@@ -1407,54 +1451,43 @@ function renderLabForm(item, form) {
   form.appendChild(el('h3',null,'Edit Lab'));
   form.appendChild(nameSectionRow(item, true));
 
-  form.appendChild(formHeading('Meeting Times', false));
+  form.appendChild(formHeading('Meeting Times'));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
   form.appendChild(meetingsSublist(item));
 
   // Roles
-  const rolesHdr = el('div','form-group');
-  const rolesLbl = el('label','form-label-strong');
-  rolesLbl.textContent = 'Role Requirements';
-  rolesHdr.appendChild(rolesLbl);
-  form.appendChild(rolesHdr);
+  form.appendChild(formHeading('Role Requirements'));
   form.appendChild(el('p','help-text','Count = TAs needed. Exp pref = how many should be experienced (soft preference).'));
 
-  const rolesDiv = el('div');
   item.roles = item.roles||[];
 
   // Course roles only apply to their own course; shared roles apply everywhere.
   const visibleRoles = S.data.roles.filter(role => !role.course_name || role.course_name === item.name);
 
-  if (!visibleRoles.length) {
-    rolesDiv.appendChild(el('p','help-text','No role types defined yet — add one in the Roles panel on the right.'));
-  } else {
-    visibleRoles.forEach(role => {
-      let rr = item.roles.find(r => r.role_id === role.id);
-      if (!rr) { rr={role_id:role.id,count:0,preferred_experienced:0}; item.roles.push(rr); }
-      const r = el('div','role-check-row');
+  form.appendChild(inlineList(visibleRoles.map(role => {
+    let rr = item.roles.find(r => r.role_id === role.id);
+    if (!rr) { rr={role_id:role.id,count:0,preferred_experienced:0}; item.roles.push(rr); }
 
-      const lbl = document.createElement('label');
-      lbl.style.flex = '1';
-      lbl.innerHTML = escHtml(role.label) +
-        `<span class="role-se-note">(${role.se_value} SE)</span>`;
+    const lbl = el('span','il-label');
+    lbl.innerHTML = escHtml(role.label) +
+      `<span class="role-se-note">(${role.se_value} SE)</span>`;
 
-      const cntInp = document.createElement('input');
-      cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
-      cntInp.value=rr.count; cntInp.className='count-input';
-      cntInp.title='Number of TAs needed';
+    const cntInp = document.createElement('input');
+    cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
+    cntInp.value=rr.count; cntInp.className='num-input';
+    cntInp.title='Number of TAs needed';
 
-      const expInp = document.createElement('input'); expInp.type='number';
-      expInp.min='0'; expInp.max=rr.count||10;
-      expInp.value=rr.preferred_experienced||0; expInp.className='count-input';
-      expInp.title='Preferred number of experienced TAs (soft)';
-      expInp.oninput = () => { rr.preferred_experienced=parseInt(expInp.value)||0; markDirty(); };
-      cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; expInp.max=rr.count; markDirty(); };
+    const expInp = document.createElement('input'); expInp.type='number';
+    expInp.min='0'; expInp.max=rr.count||10;
+    expInp.value=rr.preferred_experienced||0; expInp.className='num-input';
+    expInp.title='Preferred number of experienced TAs (soft)';
+    expInp.oninput = () => { rr.preferred_experienced=parseInt(expInp.value)||0; markDirty(); };
+    cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; expInp.max=rr.count; markDirty(); };
 
-      r.append(lbl, el('span',null,'×'), cntInp, el('span','help-text','exp pref:'), expInp);
-      rolesDiv.appendChild(r);
-    });
-  }
-  form.appendChild(rolesDiv);
+    return {cells: [lbl, el('span','il-unit','×'), cntInp,
+                    el('span','il-unit','exp pref'), expInp]};
+  }), {empty: 'No role types defined yet — add one in the Roles panel on the right.'}));
+
   const actions = el('div','form-actions');
   const dupBtn = el('button','btn-sm','Duplicate');
   dupBtn.onclick = () => { duplicateLab(item); };
@@ -2105,7 +2138,7 @@ function renderLoadSection(which) {
   sec.innerHTML = '';
 
   const hdr = el('div','od-section-hdr');
-  hdr.appendChild(el('h4',null,cfg.title));
+  hdr.appendChild(el('h4','section-h4',cfg.title));
   const addBtn = el('button','btn-sm',cfg.addLabel);
   addBtn.title = cfg.addTitle;
   addBtn.onclick = () => openAddLoadModal(which);
@@ -2119,7 +2152,7 @@ function renderLoadSection(which) {
 
   sec.appendChild(buildTable(['TA','Duty',cfg.unit,''], rows.map(({ta, entry, i}) => {
     const nameInp = document.createElement('input');
-    nameInp.type = 'text'; nameInp.value = entry.label||''; nameInp.style.width = '100%';
+    nameInp.type = 'text'; nameInp.value = entry.label||''; nameInp.className = 'w-full';
     nameInp.oninput = () => { entry.label = nameInp.value; markDirty(); };
 
     const valInp = document.createElement('input');
@@ -2149,9 +2182,9 @@ function openAddLoadModal(which) {
   showModal(`
     <div class="modal-box">
       <h2>${escHtml(cfg.modalTitle)}</h2>
-      <div class="form-group"><label>TA<br><select id="load-ta-sel" style="width:100%;margin-top:4px;"></select></label></div>
-      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="load-label" type="text" placeholder="${escHtml(cfg.placeholder)}" style="width:100%;margin-top:4px;"></label></div>
-      <div class="form-group" style="margin-top:10px;"><label>${cfg.unit} value<br><input id="load-value" type="number" step="0.5" min="0" value="${cfg.defaultValue}" style="width:80px;margin-top:4px;"></label></div>
+      <div class="form-group"><label>TA<br><select id="load-ta-sel" style="margin-top:4px;"></select></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>Duty label<br><input id="load-label" type="text" placeholder="${escHtml(cfg.placeholder)}" style="margin-top:4px;"></label></div>
+      <div class="form-group" style="margin-top:10px;"><label>${cfg.unit} value<br><input id="load-value" class="num-input" type="number" step="0.5" min="0" value="${cfg.defaultValue}" style="margin-top:4px;"></label></div>
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Cancel</button>
         <button class="btn-sm btn-primary" onclick="confirmAddLoad('${which}')">Add</button>
@@ -2195,7 +2228,7 @@ function openAssignPicker(cfg) {
     <div class="modal-box">
       <h2>${cfg.titleHtml}</h2>
       ${cfg.subtitleHtml ? `<h3>${cfg.subtitleHtml}</h3>` : ''}
-      <div class="assign-ta-list" id="assign-ta-list"></div>
+      <div class="picker-list" id="assign-ta-list"></div>
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Close</button>
       </div>
@@ -2221,7 +2254,7 @@ function openAssignPicker(cfg) {
   assigned.forEach(ta => listDiv.appendChild(makeRow(ta, true, null)));
 
   if (!eligible.length && !conflicted.length) {
-    listDiv.appendChild(el('div','help-text','No TAs available'));
+    listDiv.appendChild(el('div','ilist-empty','No TAs available'));
     return;
   }
 
@@ -2654,53 +2687,53 @@ function renderMeetingFinder() {
 // ════════════════════════════════════════════════════════════════
 // ROLES PANEL
 // ════════════════════════════════════════════════════════════════
+// One row of a roles .ilist — returns the item descriptor, not a node.
 function roleListRow(role) {
-  const r = el('div','sublist-item');
-
   const lblInp = document.createElement('input'); lblInp.type='text';
-  lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.style.flex='1';
+  lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.className='il-label';
   lblInp.oninput = () => { role.label=lblInp.value; markDirty(); syncItemForm(); };
 
   const seInp = document.createElement('input'); seInp.type='number';
-  seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value;
-  seInp.style.width='52px'; seInp.style.flexShrink='0';
+  seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value; seInp.className='num-input';
   seInp.oninput = () => { role.se_value=parseFloat(seInp.value)||0; markDirty(); syncItemForm(); };
 
-  const parts = [lblInp];
-  if (role.course_name) parts.push(el('span','role-se-note', role.course_name));
-  parts.push(el('span',null,'SE:'), seInp,
-             xBtn(() => { S.data.roles = S.data.roles.filter(x => x !== role); markDirty(); syncRolesPanel(); }, 'Remove role'));
-  r.append(...parts);
-  return r;
+  const cells = [lblInp];
+  if (role.course_name) cells.push(el('span','chip', escHtml(role.course_name)));
+  cells.push(el('span','il-unit','SE'), seInp);
+
+  return {
+    cells,
+    removeTitle: 'Remove role',
+    onRemove: () => {
+      S.data.roles = S.data.roles.filter(x => x !== role);
+      markDirty(); syncRolesPanel();
+    },
+  };
 }
 
-// "+ Add Course Role" row: a course picker (from distinct lab names) + button.
-function addCourseRoleControl() {
+// Footer row of the Course Roles group: a course picker (from distinct lab
+// names) + button. With no lab sections yet the footer renders disabled rather
+// than replacing the whole control.
+function addCourseRoleFooter() {
   const courseNames = [...new Set(S.data.labs.map(l => l.name).filter(Boolean))].sort();
-  if (!courseNames.length) {
-    return el('p','help-text','Add a lab section first to create course-specific roles.');
-  }
-  const r = el('div','sublist-item');
   const select = document.createElement('select');
-  select.style.flex = '1';
-  courseNames.forEach(name => {
-    const o = document.createElement('option'); o.value = name; o.textContent = name;
-    select.appendChild(o);
-  });
+  select.className = 'il-label';
   const addBtn = el('button','btn-sm','+ Add Course Role');
-  addBtn.onclick = () => addCourseRole(select.value);
-  r.append(select, addBtn);
-  return r;
-}
 
-// "+ Add Role" row for Shared Roles — mirrors addCourseRoleControl's appearance.
-function addSharedRoleControl() {
-  const r = el('div','sublist-item');
-  const addBtn = el('button','btn-sm','+ Add Role');
-  addBtn.style.marginLeft = 'auto';
-  addBtn.onclick = addRole;
-  r.appendChild(addBtn);
-  return r;
+  if (!courseNames.length) {
+    const o = document.createElement('option');
+    o.textContent = 'No lab sections yet'; select.appendChild(o);
+    select.disabled = true;
+    addBtn.classList.add('btn-disabled');
+    addBtn.title = 'Add a lab section first to create course-specific roles.';
+  } else {
+    courseNames.forEach(name => {
+      const o = document.createElement('option'); o.value = name; o.textContent = name;
+      select.appendChild(o);
+    });
+    addBtn.onclick = () => addCourseRole(select.value);
+  }
+  return [select, addBtn];
 }
 
 function renderRolesList() {
@@ -2710,15 +2743,19 @@ function renderRolesList() {
   const courseRoles = S.data.roles.filter(r => r.course_name);
   const sharedRoles = S.data.roles.filter(r => !r.course_name);
 
-  div.appendChild(formHeading('Course Roles', false));
-  if (!courseRoles.length) div.appendChild(el('p','help-text','None yet — created automatically per course.'));
-  courseRoles.forEach(role => div.appendChild(roleListRow(role)));
-  div.appendChild(addCourseRoleControl());
+  div.appendChild(formHeading('Course Roles'));
+  div.appendChild(inlineList(courseRoles.map(roleListRow), {
+    empty: 'None yet — created automatically per course.',
+    footer: addCourseRoleFooter(),
+  }));
 
-  div.appendChild(formHeading('Shared Roles', true));
-  if (!sharedRoles.length) div.appendChild(el('p','help-text','None yet.'));
-  sharedRoles.forEach(role => div.appendChild(roleListRow(role)));
-  div.appendChild(addSharedRoleControl());
+  const addSharedBtn = el('button','btn-sm','+ Add Role');
+  addSharedBtn.onclick = addRole;
+  div.appendChild(formHeading('Shared Roles'));
+  div.appendChild(inlineList(sharedRoles.map(roleListRow), {
+    empty: 'None yet.',
+    footer: addSharedBtn,
+  }));
 }
 
 // Refresh the open lab's form after a role edit that doesn't rebuild #roles-list itself.
@@ -2818,7 +2855,7 @@ async function importClassList() {
           <button class="btn-sm" onclick="importSelectAllGrad(true)">Select All</button>
           <button class="btn-sm" onclick="importSelectAllGrad(false)">Deselect All</button>
         </div>
-        <div id="import-grad-list" class="modal-list"></div>
+        <div id="import-grad-list" class="picker-list"></div>
       ` : ''}
       ${undergrad.length ? `
         <h3>Lab Sections</h3>
@@ -2827,7 +2864,7 @@ async function importClassList() {
           <button class="btn-sm" onclick="importLabSelectAll(true)">Select All</button>
           <button class="btn-sm" onclick="importLabSelectAll(false)">Deselect All</button>
         </div>
-        <div id="import-lab-list" class="modal-list"></div>
+        <div id="import-lab-list" class="picker-list"></div>
       ` : ''}
       ${examCourses.length ? `
         <h3>Courses with Exams (${examCourses.length})</h3>
@@ -2836,7 +2873,7 @@ async function importClassList() {
           <button class="btn-sm" onclick="importExamSelectAll(true)">Select All</button>
           <button class="btn-sm" onclick="importExamSelectAll(false)">Deselect All</button>
         </div>
-        <div id="import-exam-list" class="modal-list"></div>
+        <div id="import-exam-list" class="picker-list"></div>
       ` : ''}
       <div class="modal-footer">
         <button class="btn-sm" onclick="closeModal()">Cancel</button>
@@ -3027,7 +3064,7 @@ function showConflictDialog(conflicts) {
   showModal(`<div class="modal-box">
     <h2>Import Conflicts (${conflicts.length} item${conflicts.length > 1 ? 's' : ''} already exist)</h2>
     <p class="modal-note">Checked items will be overwritten. Uncheck to keep existing data.</p>
-    <div class="modal-list" style="max-height:260px;">${rows}</div>
+    <div class="picker-list">${rows}</div>
     <div class="modal-footer">
       <button class="btn-sm" onclick="closeModal()">Cancel</button>
       <button class="btn-sm" onclick="performImport(new Set())">Skip All</button>
@@ -3130,7 +3167,6 @@ function renderExamForm(exam) {
   const csL = el('label'); csL.textContent='Section';
   const csInp = textInput(exam.section||'', v => { exam.section=v; markDirty(); renderExamList(); });
   csInp.title = 'Section identifier (e.g. A, B, 001)';
-  csInp.style.width='100%';
   csL.appendChild(csInp); csG.appendChild(csL); cnRow.appendChild(csG);
 
   form.appendChild(cnRow);
@@ -3150,7 +3186,7 @@ function renderExamForm(exam) {
   dateRowInner.appendChild(dateInp);
   const tbdCb = document.createElement('input');
   tbdCb.type = 'checkbox'; tbdCb.checked = !!exam.tbd;
-  tbdCb.style.cssText = 'margin:0;width:auto;flex-shrink:0;';
+  tbdCb.style.cssText = 'margin:0;flex-shrink:0;';
   dateRowInner.appendChild(tbdCb);
   dateRowInner.appendChild(document.createTextNode('TBD'));
 
@@ -3161,7 +3197,7 @@ function renderExamForm(exam) {
   timeTbdWrap.style.display = exam.tbd ? 'none' : 'flex';
   const timeTbdCb = document.createElement('input');
   timeTbdCb.type = 'checkbox'; timeTbdCb.checked = !!exam.time_tbd;
-  timeTbdCb.style.cssText = 'margin:0;width:auto;flex-shrink:0;';
+  timeTbdCb.style.cssText = 'margin:0;flex-shrink:0;';
   timeTbdWrap.appendChild(timeTbdCb);
   timeTbdWrap.appendChild(document.createTextNode('Time TBD'));
   dateRowInner.appendChild(timeTbdWrap);
