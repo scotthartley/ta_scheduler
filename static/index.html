@@ -132,6 +132,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .item-row .item-name { flex: 1; font-size: var(--fs-base); min-width: 0;
                         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-row .item-badge { font-size: var(--fs-sm); color: var(--text2); }
+.item-row .item-name.needs-schedule { color: var(--warn-text2); font-weight: 600; }
 
 /* ── item form (left-panel editor, shared by items and exams) ── */
 .side-form { overflow-y: auto; padding: 12px; border-top: 1px solid var(--border);
@@ -748,6 +749,15 @@ function fmtMeetings(item, dayNames = DAYS) {
   return parts.length ? parts.join(', ') : '—';
 }
 
+// True when a TA has no availability info logged (courses/commitments/conflicts)
+// and hasn't been manually marked as reviewed.
+function taNeedsScheduleReview(ta) {
+  const empty = !(ta.grad_course_ids||[]).length
+             && !(ta.other_commitments||[]).length
+             && !(ta.date_conflicts||[]).length;
+  return empty && !ta.schedule_complete;
+}
+
 // Course/section label for an exam — same rule as displayName() for items.
 function examLabel(exam, fallback = '—') {
   if (!exam?.course_name) return fallback;
@@ -1050,6 +1060,10 @@ function renderLeftPanel() {
       const badge = item.meetings?.length > 1 ? item.meetings.map(m=>'MTWRF'[m.day]).join('') : DAYS[item.day];
       row.appendChild(el('span','item-badge', badge));
     } else if (S.tab === 'tas') {
+      if (taNeedsScheduleReview(item)) {
+        name.classList.add('needs-schedule');
+        row.title = 'No scheduling info logged';
+      }
       row.appendChild(el('span','item-badge', item.experience==='experienced'?'exp':'inexp'));
     } else if (S.tab === 'labs' && item.day !== undefined && item.day !== null) {
       const badge = item.meetings?.length > 1 ? item.meetings.map(m=>'MTWRF'[m.day]).join('') : DAYS[item.day];
@@ -1090,7 +1104,7 @@ function createNewItem() {
   } else if (S.tab === 'tas') {
     item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0, max_pe:2.0,
             grad_course_ids:[], outside_duties:[], outside_proctoring:[], other_commitments:[],
-            email:'', date_conflicts:[]};
+            email:'', date_conflicts:[], schedule_complete:false};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
     item = {id:uid(), name:'New Lab', section:'', day:0, start_min:540, end_min:660,
@@ -1280,6 +1294,7 @@ function renderCourseForm(item, form) {
 
 // ── TA form ──
 function renderTAForm(item, form) {
+  renderLeftPanel();
   form.innerHTML = '';
   const h = el('h3',null,'Edit TA'); form.appendChild(h);
 
@@ -1334,7 +1349,7 @@ function renderTAForm(item, form) {
       item.grad_course_ids = item.grad_course_ids||[];
       if (cb.checked) item.grad_course_ids.push(gc.id);
       else item.grad_course_ids = item.grad_course_ids.filter(id=>id!==gc.id);
-      markDirty(); renderGrid();
+      markDirty(); renderGrid(); renderLeftPanel();
     };
     row.appendChild(cb);
     const days = getMeetings(gc).map(m => DAYS[m.day]).join('');
@@ -1405,6 +1420,19 @@ function renderTAForm(item, form) {
     f.append(lblInp, dateInp, row, saveBtn);
     dcList.insertAdjacentElement('afterend', f);
   };
+
+  const completeRow = el('div','checkbox-row');
+  completeRow.style.marginTop = '14px';
+  const completeCb = document.createElement('input'); completeCb.type='checkbox';
+  completeCb.checked = !!item.schedule_complete;
+  completeCb.onchange = () => {
+    item.schedule_complete = completeCb.checked;
+    markDirty(); renderLeftPanel();
+  };
+  completeRow.appendChild(completeCb);
+  completeRow.appendChild(el('span',null,'No scheduling info to add for this TA'));
+  completeRow.title = 'Suppresses the "needs review" highlight in the TA list even though no courses/commitments/conflicts are logged';
+  form.appendChild(completeRow);
 
   form.appendChild(formActions(deleteCurrentItem));
   renderTAConflictList(item);

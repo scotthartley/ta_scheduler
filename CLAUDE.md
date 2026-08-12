@@ -62,7 +62,7 @@ grad_courses:       [{id, name, section, day, start_min, end_min, meetings?, exa
 labs:               [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?, roles[]}]
                     roles[]: [{role_id, count, preferred_experienced}]
 tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
-                      outside_proctoring[], other_commitments[], date_conflicts[]}]
+                      outside_proctoring[], other_commitments[], date_conflicts[], schedule_complete?}]
 assignments:        [{lab_id, role_id, ta_id, locked}]
 exams:              [{id, name, course_name, section, date, start_min, end_min, tbd, time_tbd, proctor_count, pe_value}]
 proctor_assignments: [{exam_id, ta_id, locked}]
