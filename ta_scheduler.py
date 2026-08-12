@@ -23,7 +23,7 @@ _data_file = None
 _window = None
 
 EMPTY_DATA = {
-    "roles": [{"id": "role-primary-ta", "label": "Primary TA", "se_value": 1.0}],
+    "roles": [],
     "grad_courses": [], "labs": [], "tas": [], "assignments": [],
     "exams": [], "proctor_assignments": [],
 }
@@ -482,13 +482,13 @@ def solve(data):
 
     def initial_state():
         """Fresh solver state seeded from the locked assignments."""
-        st = {"used_se": {}, "booked_labs": {}, "courses": {}, "per_slot": {}}
+        st = {"used_se": {}, "booked_labs": {}, "roles": {}, "per_slot": {}}
         for ta in tas:
             tid = ta["id"]
             st["used_se"][tid]     = sum(d.get("se_value", 0)
                                          for d in ta.get("outside_duties", []))
             st["booked_labs"][tid] = set()
-            st["courses"][tid]     = set()
+            st["roles"][tid]       = set()
         for a in locked_assignments:
             tid, lid, rid = a["ta_id"], a["lab_id"], a["role_id"]
             lab  = labs_by_id.get(lid)
@@ -496,7 +496,7 @@ def solve(data):
             if lab and tid in st["used_se"]:
                 st["used_se"][tid] += role.get("se_value", 1.0)
                 st["booked_labs"][tid].add(lid)
-                st["courses"][tid].add(lab.get("name", ""))
+                st["roles"][tid].add(rid)
             st["per_slot"].setdefault((lid, rid), set()).add(tid)
         return st
 
@@ -532,9 +532,8 @@ def solve(data):
         s = 1000
         if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
             s += 200
-        courses = st["courses"][ta["id"]]
-        cn = lab.get("name", "")
-        if courses and cn not in courses:
+        roles_held = st["roles"][ta["id"]]
+        if roles_held and rr["role_id"] not in roles_held:
             s -= 200
         s -= st["used_se"][ta["id"]] * 500
         s += random.random()
@@ -569,7 +568,7 @@ def solve(data):
 
             st["used_se"][best["id"]] += role.get("se_value", 1.0)
             st["booked_labs"][best["id"]].add(lab["id"])
-            st["courses"][best["id"]].add(lab.get("name", ""))
+            st["roles"][best["id"]].add(rr["role_id"])
             st["per_slot"].setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
 
         return result_assignments

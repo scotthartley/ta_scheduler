@@ -159,12 +159,33 @@ The "Import Class Info" button (visible on Lab Sections and Exams tabs) opens a 
 
 ## Default data
 
-New/empty schedules start with one default role: `{id: "role-primary-ta", label: "Primary TA", se_value: 1.0}`.
+New/empty schedules start with no roles (`roles: []`) — per-course roles are
+auto-created the first time a lab's name is set (see "Roles" below).
 
 `EMPTY_DATA` also initializes `exams: []` and `proctor_assignments: []`.
 `load_data()` returns a `copy.deepcopy` of it, so callers can never mutate the module-level default.
 
 Manual TA assignments default to `locked: true`.
+
+## Roles
+
+Role objects optionally carry a `course_name` field:
+
+- **Present** — an auto-managed default role for that course (exact match on
+  `lab.name`). Created/attached via `ensureCourseRole()` / `attachCourseRole()`
+  when a lab's name field loses focus, on CSV import, and by the one-time
+  `migrateCourseRoles()` migration that runs on file load for files created
+  before this system existed. A lab's Role Requirements picker only shows a
+  course role when it matches that lab's `name` exactly.
+- **Absent** — a free-form "shared" role (e.g. "Instrumentation TA"), created
+  via "+ Add Role" in the Roles modal, attachable to labs across multiple
+  courses, and always shown in every lab's Role Requirements picker.
+
+The lab solver's split penalty (`score()` in `solve()`) operates on `role_id`,
+not course name: a TA is penalized for picking up a *different* role than one
+they already hold, not for spanning multiple courses in the *same* role. This
+is why every course needs its own default role — without one, a "shared"
+Primary TA role reused everywhere would make the penalty a no-op.
 
 ## Frontend utilities
 
