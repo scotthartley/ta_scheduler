@@ -3155,7 +3155,8 @@ function renderExamCalendar() {
     const d = el('div','cal-day'+(examsOnDay.length?' has-exam':''));
     let html = `<div class="day-num">${day}</div>`;
     examsOnDay.forEach(ex => {
-      const calLabel = ex.course_name ? `${ex.course_name}: ${ex.name}` : ex.name;
+      const courseLabel = examLabel(ex, '');
+      const calLabel = courseLabel ? `${courseLabel}: ${ex.name}` : ex.name;
       html += `<span class="cal-exam-label" onclick="S.examSelId='${ex.id}';renderExamsTab();" title="${escHtml(calLabel)}">${escHtml(calLabel)}</span>`;
     });
     d.innerHTML = html;
@@ -3181,7 +3182,8 @@ function renderExamCalendar() {
     const ul = el('ul','tbd-list');
     tbdExams.forEach(ex => {
       const li = document.createElement('li');
-      li.textContent = ex.name + (ex.course_name ? ` (${ex.course_name})` : '');
+      const courseLabel = examLabel(ex, '');
+      li.textContent = ex.name + (courseLabel ? ` (${courseLabel})` : '');
       li.onclick = () => { S.examSelId = ex.id; renderExamsTab(); };
       ul.appendChild(li);
     });
