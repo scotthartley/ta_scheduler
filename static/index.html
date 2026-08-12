@@ -78,7 +78,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 #grid-workspace.active { display: flex; }
 
 /* ── left panel ─────────────────────────────────────────────── */
-.left-panel { width: 470px; flex-shrink: 0; border-right: 1px solid var(--border);
+.left-panel { width: 400px; flex-shrink: 0; border-right: 1px solid var(--border);
               background: var(--sidebar-bg); display: flex; flex-direction: column; overflow: hidden; }
 .panel-section { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .panel-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -93,6 +93,13 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .btn-primary:hover { background: #0066DD; border-color: #0066DD; }
 .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
 .btn-danger:hover { background: #E0352B; }
+
+/* ── roles panel (Lab Sections tab only) ────────────────────── */
+.roles-panel { display: none; width: 400px; flex-shrink: 0; border-left: 1px solid var(--border);
+               background: var(--sidebar-bg); flex-direction: column; overflow: hidden; }
+.roles-panel.active { display: flex; }
+.roles-list-scroll { overflow-y: auto; flex: 1; padding: 12px; }
+.roles-panel .help-text { font-size: var(--fs-sm); }
 
 /* one delete affordance, used by sublists, grid blocks, grid cells and chips */
 .btn-x { display: inline-flex; align-items: center; justify-content: center;
@@ -138,10 +145,12 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .sublist-item .sl-label { flex: 1; }
 .sublist-item .sl-meta { font-size: var(--fs-xs); color: var(--text2); }
 .sublist-item input { font-size: var(--fs-sm); }
+.sublist-item input[type="text"] { min-width: 0; }
 .role-check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
                    padding: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
 .role-check-row label { font-size: var(--fs-base); flex: 1; }
 .role-se-note { color: var(--text2); font-size: var(--fs-xs); margin-left: 4px; }
+.sublist-item .role-se-note { flex-shrink: 0; white-space: nowrap; }
 .count-input { width: 50px !important; }
 .checkbox-group { display: flex; flex-direction: column; gap: 5px; }
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); }
@@ -497,6 +506,15 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
         </div>
         <div id="ta-conflict-list"></div>
       </div>
+    </div>
+    <!-- Roles panel (Lab Sections tab only) -->
+    <div class="roles-panel active" id="roles-panel">
+      <div class="panel-section">
+        <div class="panel-section-header">
+          <span>Roles</span>
+        </div>
+      </div>
+      <div id="roles-list" class="roles-list-scroll"></div>
     </div>
   </div>
 
@@ -932,11 +950,13 @@ function switchTab(tab) {
   new Set(Object.values(TAB_WORKSPACE)).forEach(id =>
     $id(id).classList.toggle('active', id === active));
 
-  if (GRID_TABS.includes(tab)) { renderLeftPanel(); showGridPlaceholder(); }
+  $id('roles-panel').classList.toggle('active', tab === 'labs');
+  if (GRID_TABS.includes(tab)) { renderLeftPanel(); showGridPlaceholder(); renderRolesList(); }
   else TAB_RENDER[tab]?.();
 }
 
 function renderAll() {
+  renderRolesList();
   if (GRID_TABS.includes(S.tab)) {
     renderLeftPanel();
     if (S.selId) { renderGrid(); renderItemForm(); } else showGridPlaceholder();
@@ -1136,7 +1156,7 @@ function nameSectionRow(item, isLab) {
   const nL = el('label'); nL.textContent='Name';
   const nInp = textInput(item.name, v => { item.name=v; markDirty(); renderLeftPanel(); });
   nInp.title = 'Course or lab section name';
-  if (isLab) nInp.onblur = () => { attachCourseRole(item); markDirty(); renderItemForm(); };
+  if (isLab) nInp.onblur = () => { attachCourseRole(item); markDirty(); renderItemForm(); renderRolesList(); };
   nL.appendChild(nInp); nG.appendChild(nL); row.appendChild(nG);
 
   const sG = el('div','form-group'); sG.style.width='72px';
@@ -1395,10 +1415,6 @@ function renderLabForm(item, form) {
   const rolesHdr = el('div','form-group');
   const rolesLbl = el('label','form-label-strong');
   rolesLbl.textContent = 'Role Requirements';
-  const manageBtn = el('button','btn-sm', '⚙ Manage Roles');
-  manageBtn.style.marginLeft = '8px';
-  manageBtn.onclick = openRolesModal;
-  rolesLbl.appendChild(manageBtn);
   rolesHdr.appendChild(rolesLbl);
   form.appendChild(rolesHdr);
   form.appendChild(el('p','help-text','Count = TAs needed. Exp pref = how many should be experienced (soft preference).'));
@@ -1410,11 +1426,7 @@ function renderLabForm(item, form) {
   const visibleRoles = S.data.roles.filter(role => !role.course_name || role.course_name === item.name);
 
   if (!visibleRoles.length) {
-    const msg = el('p','help-text','No role types defined yet. ');
-    const addBtn = el('button','btn-sm','⚙ Add Roles');
-    addBtn.onclick = openRolesModal;
-    msg.appendChild(addBtn);
-    rolesDiv.appendChild(msg);
+    rolesDiv.appendChild(el('p','help-text','No role types defined yet — add one in the Roles panel on the right.'));
   } else {
     visibleRoles.forEach(role => {
       let rr = item.roles.find(r => r.role_id === role.id);
@@ -2640,36 +2652,24 @@ function renderMeetingFinder() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// ROLES MODAL
+// ROLES PANEL
 // ════════════════════════════════════════════════════════════════
-function openRolesModal() {
-  showModal(buildRolesModalHTML());
-}
-
-function buildRolesModalHTML() {
-  return '<div class="modal-box" id="roles-modal-box"><h2>Role Types</h2>' +
-    '<div id="roles-list"></div>' +
-    '<div class="modal-footer">' +
-    '<button class="btn-sm btn-primary" onclick="addRole()">+ Add Role</button>' +
-    '<button class="btn-sm" onclick="closeModal()">Done</button>' +
-    '</div></div>';
-}
-
 function roleListRow(role) {
   const r = el('div','sublist-item');
 
   const lblInp = document.createElement('input'); lblInp.type='text';
   lblInp.value=role.label; lblInp.placeholder='Label'; lblInp.style.flex='1';
-  lblInp.oninput = () => { role.label=lblInp.value; markDirty(); };
+  lblInp.oninput = () => { role.label=lblInp.value; markDirty(); syncItemForm(); };
 
   const seInp = document.createElement('input'); seInp.type='number';
-  seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value; seInp.style.width='52px';
-  seInp.oninput = () => { role.se_value=parseFloat(seInp.value)||0; markDirty(); };
+  seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value;
+  seInp.style.width='52px'; seInp.style.flexShrink='0';
+  seInp.oninput = () => { role.se_value=parseFloat(seInp.value)||0; markDirty(); syncItemForm(); };
 
   const parts = [lblInp];
   if (role.course_name) parts.push(el('span','role-se-note', role.course_name));
   parts.push(el('span',null,'SE:'), seInp,
-             xBtn(() => { S.data.roles = S.data.roles.filter(x => x !== role); markDirty(); renderRolesList(); }, 'Remove role'));
+             xBtn(() => { S.data.roles = S.data.roles.filter(x => x !== role); markDirty(); syncRolesPanel(); }, 'Remove role'));
   r.append(...parts);
   return r;
 }
@@ -2693,6 +2693,16 @@ function addCourseRoleControl() {
   return r;
 }
 
+// "+ Add Role" row for Shared Roles — mirrors addCourseRoleControl's appearance.
+function addSharedRoleControl() {
+  const r = el('div','sublist-item');
+  const addBtn = el('button','btn-sm','+ Add Role');
+  addBtn.style.marginLeft = 'auto';
+  addBtn.onclick = addRole;
+  r.appendChild(addBtn);
+  return r;
+}
+
 function renderRolesList() {
   const div = $id('roles-list');
   if (!div) return;
@@ -2708,18 +2718,27 @@ function renderRolesList() {
   div.appendChild(formHeading('Shared Roles', true));
   if (!sharedRoles.length) div.appendChild(el('p','help-text','None yet.'));
   sharedRoles.forEach(role => div.appendChild(roleListRow(role)));
+  div.appendChild(addSharedRoleControl());
 }
+
+// Refresh the open lab's form after a role edit that doesn't rebuild #roles-list itself.
+function syncItemForm() {
+  if (S.tab === 'labs' && S.selId) renderItemForm();
+}
+
+// Roles list was fully rebuilt (add/remove) — also refresh the open lab's form.
+function syncRolesPanel() { renderRolesList(); syncItemForm(); }
 
 function addRole() {
   S.data.roles.push({id:uid(), label:'New Role', se_value:1.0});
-  markDirty(); renderRolesList();
+  markDirty(); syncRolesPanel();
 }
 
 // Manually add an additional (non-default) role scoped to a specific course.
 function addCourseRole(courseName) {
   if (!courseName) return;
   S.data.roles.push({id: uid(), label: courseName + ' Role', se_value: 1.0, course_name: courseName});
-  markDirty(); renderRolesList();
+  markDirty(); syncRolesPanel();
 }
 
 // Find-or-create the auto-managed default role for a course name.
@@ -2751,8 +2770,6 @@ function showModal(html) {
   backdrop.innerHTML = html;
   backdrop.onclick = e => { if (e.target===backdrop) closeModal(); };
   $id('modal-container').appendChild(backdrop);
-  // If roles modal, render list
-  if ($id('roles-list')) renderRolesList();
   if ($id('import-grad-list')) renderImportGradList();
   if ($id('import-lab-list')) renderImportLabList();
   if ($id('import-exam-list')) renderImportExamList();
@@ -2994,7 +3011,7 @@ function performImport(overwriteSet) {
   delete S._importCourses; delete S._importChecked;
   delete S._importExamCourses; delete S._importExamChecked;
   delete S._importConflicts; delete S._conflictOverwrite;
-  markDirty(); closeModal(); renderLeftPanel();
+  markDirty(); closeModal(); renderLeftPanel(); renderRolesList();
 }
 
 function showConflictDialog(conflicts) {
