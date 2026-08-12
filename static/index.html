@@ -1034,15 +1034,16 @@ function daySelect(val, onChange) {
   return s;
 }
 function timeSelect(val, onChange) {
-  const s = document.createElement('select');
-  for (let m = GRID_START; m <= GRID_END; m += 15) {
-    const o = document.createElement('option');
-    o.value = m; o.textContent = fmtTime(m);
-    if (m === val) o.selected = true;
-    s.appendChild(o);
-  }
-  s.onchange = () => onChange(parseInt(s.value));
-  return s;
+  const inp = document.createElement('input');
+  inp.type = 'time';
+  inp.step = '300';
+  const h = Math.floor(val / 60), m = val % 60;
+  inp.value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  inp.oninput = () => {
+    const [hh, mm] = inp.value.split(':').map(Number);
+    if (!isNaN(hh) && !isNaN(mm)) onChange(hh * 60 + mm);
+  };
+  return inp;
 }
 function textInput(val, onChange, placeholder) {
   const inp = document.createElement('input');
@@ -1266,15 +1267,16 @@ function renderTAForm(item, form) {
     lblInp.type='text'; lblInp.placeholder='Label'; lblInp.style.width='100%'; lblInp.style.marginBottom='4px';
     const dateInp = document.createElement('input');
     dateInp.type='date'; dateInp.style.marginRight='4px';
-    const startSel = timeSelect(480, ()=>{});
-    const endSel   = timeSelect(600, ()=>{});
+    let startMin = 480, endMin = 600;
+    const startSel = timeSelect(startMin, v => startMin = v);
+    const endSel   = timeSelect(endMin, v => endMin = v);
     const saveBtn = el('button','btn-sm btn-primary','Add');
     saveBtn.style.marginTop='6px';
     saveBtn.onclick = () => {
       if (!dateInp.value) { alert('Please select a date.'); return; }
       item.date_conflicts = item.date_conflicts||[];
       item.date_conflicts.push({label:lblInp.value||'Conflict', date:dateInp.value,
-        start_min:parseInt(startSel.value), end_min:parseInt(endSel.value)});
+        start_min:startMin, end_min:endMin});
       markDirty(); renderItemForm();
     };
     const row = el('div','form-row'); row.style.gap='4px';
