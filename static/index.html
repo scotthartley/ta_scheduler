@@ -655,6 +655,11 @@ const S = {
   proctorViewMode: 'table',  // 'table' | 'grid'
 };
 
+// `const` at script top level creates a global *lexical* binding, not a property
+// on window — so the native close handler's evaluate_js('window.S && window.S.dirty')
+// would see undefined and quit without prompting. Expose it explicitly.
+window.S = S;
+
 let _dragAssignment = null; // {assignment, sourceLabId?, sourceRoleId?, sourceTaId?}
 let _dragProctorAssignment = null; // {assignment, sourceExamId}
 
@@ -3787,6 +3792,13 @@ function showHelpModal() {
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); saveData(); }
   if (e.key==='Escape') closeModal();
+});
+
+window.addEventListener('beforeunload', e => {
+  if (S.dirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });
 
 // ════════════════════════════════════════════════════════════════

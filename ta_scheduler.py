@@ -1089,4 +1089,31 @@ if __name__ == "__main__":
             min_size=(900, 600),
             text_select=True,
         )
+
+        _closing_confirmed = False
+
+        def _confirm_close():
+            global _closing_confirmed
+            try:
+                dirty = bool(_window.evaluate_js('window.S && window.S.dirty'))
+            except Exception:
+                dirty = False
+
+            if dirty and not _window.create_confirmation_dialog(
+                "Unsaved Changes",
+                "You have unsaved changes that have not been saved. Quit anyway?",
+            ):
+                return  # user chose Cancel — leave the window open
+
+            _closing_confirmed = True
+            _window.destroy()
+
+        def _on_closing():
+            if _closing_confirmed:
+                return  # already confirmed (or nothing to confirm) — let this close proceed
+            threading.Thread(target=_confirm_close, daemon=True).start()
+            return False  # cancel *this* close attempt; _confirm_close decides the real outcome
+
+        _window.events.closing += _on_closing
+
         webview.start()
