@@ -64,7 +64,7 @@ labs:               [{id, name, section, day, start_min, end_min, meetings?, exa
 tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
                       outside_proctoring[], other_commitments[], date_conflicts[]}]
 assignments:        [{lab_id, role_id, ta_id, locked}]
-exams:              [{id, name, course_name, section, date, start_min, end_min, tbd, proctor_count, pe_value}]
+exams:              [{id, name, course_name, section, date, start_min, end_min, tbd, time_tbd, proctor_count, pe_value}]
 proctor_assignments: [{exam_id, ta_id, locked}]
 ```
 
@@ -79,6 +79,7 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - `other_commitments[]`: `[{label, day, start_min, end_min}]` — recurring weekly blocks
 - `date_conflicts[]`: `[{label, date, start_min, end_min}]` — one-off blocks on a specific date; read by the proctoring solver
 - `tbd`: if true, the exam has no date/time yet. It is skipped by the proctoring solver *and* by its diagnostics, so a TBD exam never reports the schedule as partial.
+- `time_tbd`: if true, the exam has a confirmed `date` but no fixed `start_min`/`end_min` yet. Unlike `tbd`, a `time_tbd` exam is still scheduled by the proctoring solver — only the PE cap applies to it; it's exempt from double-booking and every weekday/date conflict check, in both directions (it is never blocked by another assignment, and its own assignment never blocks anything else).
 
 ## Grid
 
@@ -127,6 +128,8 @@ Hard constraints:
 6. No conflict with the TA's `date_conflicts[]` (date-specific)
 7. TBD exams (no date/time) are skipped
 
+`time_tbd` exams (date known, time flexible) are exempt from constraints 2–6 entirely — the PE cap (1) still applies. They are not skipped like `tbd` exams: they're still built into slots and still solved for.
+
 Scoring (higher is better): base 1000, then
 
 - +300 lab familiarity — TA is assigned a lab for the same course
@@ -174,6 +177,7 @@ Data accessors:
 - `displayName(item)` — `"CHM 111 001"` from `{name, section}`.
 - `examLabel(exam, fallback='—')` — `displayName` for exams (course + section).
 - `examFullLabel(exam)` — `"CHM 111 001 — Midterm 1"`, degrading to whichever half exists.
+- `examDateTimeLabel(exam)` — `"2026-03-05 9:00 AM–10:15 AM"`, `"2026-03-05 — Time TBD"` for `time_tbd`, or `"TBD"`.
 
 Rendering primitives:
 - `buildTable(headers, rows, totalRows)` — the one table builder; emits `.data-table` inside a `.data-table-wrap`. A cell may be a string, a DOM node, or an array of nodes, so tables with live inputs and chips go through it too. The last `totalRows` rows get `.summary-total`.

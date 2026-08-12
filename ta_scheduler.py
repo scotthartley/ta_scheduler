@@ -703,6 +703,8 @@ def solve_proctoring(data):
     def _fixed_conflict(ta, exam):
         """True if a TA has an input-derived conflict with this exam: an assigned
         lab, a grad course meeting or exam, a commitment, or a date conflict."""
+        if exam.get("time_tbd"):
+            return False
         wd = exam_wd.get(exam["id"])
         es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
         if wd is not None:
@@ -762,8 +764,9 @@ def solve_proctoring(data):
                 continue
             st["used_pe"][tid] += exam.get("pe_value", 1.0)
             st["assigned_exams"][tid].add(eid)
-            st["times"][tid].append(
-                (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+            if not exam.get("time_tbd"):
+                st["times"][tid].append(
+                    (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
             course_name = exam.get("course_name", "")
             sect = exam.get("section", "")
             if course_name:
@@ -785,8 +788,9 @@ def solve_proctoring(data):
             if eid in st["assigned_exams"][tid]:
                 continue
             # Same-date time conflicts with exams already being proctored
-            if any(pdate == edate and times_overlap(es, ee, ps, pe)
-                   for pdate, ps, pe in st["times"][tid]):
+            if not exam.get("time_tbd") and any(
+                    pdate == edate and times_overlap(es, ee, ps, pe)
+                    for pdate, ps, pe in st["times"][tid]):
                 continue
             if (tid, eid) in static_conflicts:
                 continue
@@ -837,8 +841,9 @@ def solve_proctoring(data):
             })
             st["used_pe"][tid] += exam.get("pe_value", 1.0)
             st["assigned_exams"][tid].add(exam["id"])
-            st["times"][tid].append(
-                (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+            if not exam.get("time_tbd"):
+                st["times"][tid].append(
+                    (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
             cname = exam.get("course_name", "")
             sect = exam.get("section", "")
             if cname:
@@ -938,10 +943,14 @@ def generate_docx(data):
             label = f"{cname} {sect}".strip() if cname else exam.get("name", "Exam")
             sub = exam.get("name", "")
             doc.add_heading(f"{label} — {sub}" if sub and label != sub else label or sub, 2)
-            doc.add_paragraph(
-                f"{exam.get('date', '—')}, {fmt_time(exam.get('start_min', 0))} – "
-                f"{fmt_time(exam.get('end_min', 0))}"
-            )
+            if exam.get("time_tbd"):
+                time_str = "Time TBD"
+            else:
+                time_str = (
+                    f"{fmt_time(exam.get('start_min', 0))} – "
+                    f"{fmt_time(exam.get('end_min', 0))}"
+                )
+            doc.add_paragraph(f"{exam.get('date', '—')}, {time_str}")
             for a in exam_asgn:
                 ta = tas_map.get(a["ta_id"])
                 status = "Locked" if a.get("locked") else "Assigned"

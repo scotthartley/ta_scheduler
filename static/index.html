@@ -705,6 +705,13 @@ function examFullLabel(exam) {
   return label || name || 'Exam';
 }
 
+// "2026-03-05 9:00 AM–10:15 AM", "2026-03-05 — Time TBD", or "TBD".
+function examDateTimeLabel(exam) {
+  if (exam?.tbd || !exam?.date) return 'TBD';
+  if (exam.time_tbd) return `${exam.date} — Time TBD`;
+  return `${exam.date} ${fmtRange(exam.start_min || 0, exam.end_min || 0)}`;
+}
+
 // One lock indicator everywhere. Pass onToggle to make it clickable; omit it
 // where an enclosing element already handles the click.
 function lockBadge(locked, onToggle) {
@@ -2362,9 +2369,7 @@ function renderSummary() {
       if (examMailBtn) { examMailBtn.style.marginTop = '0'; h2e.append(examMailBtn); }
       c.append(h2e);
       const subp = el('p','summary-sub');
-      subp.textContent = exam.date
-        ? `${exam.date}, ${fmtRange(exam.start_min, exam.end_min)}`
-        : '(date TBD)';
+      subp.textContent = examDateTimeLabel(exam);
       c.append(subp);
 
       const ul = el('ul','summary-proctor-list');
@@ -2966,7 +2971,7 @@ function renderExamList() {
       ? `${courseLabel}: ${exam.name||'(unnamed)'}`
       : (exam.name||'(unnamed)');
     row.appendChild(el('span','item-name', escHtml(label)));
-    const badge = el('span','item-badge', exam.tbd ? 'TBD' : (exam.date||''));
+    const badge = el('span','item-badge', examDateTimeLabel(exam));
     row.appendChild(badge);
     list.appendChild(row);
   });
@@ -3010,7 +3015,7 @@ function renderExamForm(exam) {
 
   form.appendChild(cnRow);
 
-  // Date row with TBD checkbox inline
+  // Date row with TBD and Time TBD checkboxes inline
   const dateRow = el('div','form-group');
   const dateRowLabel = el('label'); dateRowLabel.textContent = 'Date';
   dateRow.appendChild(dateRowLabel);
@@ -3020,37 +3025,67 @@ function renderExamForm(exam) {
   dateInp.type = 'date'; dateInp.value = exam.date||'';
   dateInp.style.cssText = 'width:150px;flex-shrink:0;';
   dateInp.oninput = () => { exam.date=dateInp.value; markDirty(); renderExamCalendar(); };
-  if (exam.tbd) dateInp.style.display = 'none';
+  dateInp.disabled = !!exam.tbd;
+  dateInp.style.opacity = exam.tbd ? '0.4' : '';
   dateRowInner.appendChild(dateInp);
   const tbdCb = document.createElement('input');
   tbdCb.type = 'checkbox'; tbdCb.checked = !!exam.tbd;
   tbdCb.style.cssText = 'margin:0;width:auto;flex-shrink:0;';
   dateRowInner.appendChild(tbdCb);
-  const tbdSpan = document.createTextNode('TBD');
-  dateRowInner.appendChild(tbdSpan);
+  dateRowInner.appendChild(document.createTextNode('TBD'));
+
+  // Time TBD — date known, time flexible. Hidden once the whole exam is
+  // TBD (no date to pin a time against anyway).
+  const timeTbdWrap = el('span');
+  timeTbdWrap.style.cssText = 'display:flex;align-items:center;gap:6px;margin-left:12px;';
+  timeTbdWrap.style.display = exam.tbd ? 'none' : 'flex';
+  const timeTbdCb = document.createElement('input');
+  timeTbdCb.type = 'checkbox'; timeTbdCb.checked = !!exam.time_tbd;
+  timeTbdCb.style.cssText = 'margin:0;width:auto;flex-shrink:0;';
+  timeTbdWrap.appendChild(timeTbdCb);
+  timeTbdWrap.appendChild(document.createTextNode('Time TBD'));
+  dateRowInner.appendChild(timeTbdWrap);
+
   dateRow.appendChild(dateRowInner);
   form.appendChild(dateRow);
 
-  // Start/End Time (hidden when TBD)
+  // Start/End Time — greyed out (not hidden) when TBD or time_tbd, so the
+  // last-entered values stay visible.
   const dtWrap = el('div');
-  dtWrap.style.display = exam.tbd ? 'none' : '';
   const timeRow = el('div','form-row');
   const stG = el('div','form-group');
   const stL = el('label'); stL.textContent = 'Start';
-  stL.appendChild(timeSelect(exam.start_min||540, v => { exam.start_min=v; markDirty(); }));
+  const stInp = timeSelect(exam.start_min||540, v => { exam.start_min=v; markDirty(); });
+  stL.appendChild(stInp);
   stG.appendChild(stL); timeRow.appendChild(stG);
   const etG = el('div','form-group');
   const etL = el('label'); etL.textContent = 'End';
-  etL.appendChild(timeSelect(exam.end_min||660, v => { exam.end_min=v; markDirty(); }));
+  const etInp = timeSelect(exam.end_min||660, v => { exam.end_min=v; markDirty(); });
+  etL.appendChild(etInp);
   etG.appendChild(etL); timeRow.appendChild(etG);
   dtWrap.appendChild(timeRow);
   form.appendChild(dtWrap);
 
+  const updateTimeInputsState = () => {
+    const grey = exam.tbd || exam.time_tbd;
+    stInp.disabled = grey; etInp.disabled = grey;
+    dtWrap.style.opacity = grey ? '0.4' : '';
+  };
+  updateTimeInputsState();
+
   tbdCb.onchange = () => {
     exam.tbd = tbdCb.checked;
-    dateInp.style.display = exam.tbd ? 'none' : '';
-    dtWrap.style.display = exam.tbd ? 'none' : '';
+    dateInp.disabled = exam.tbd;
+    dateInp.style.opacity = exam.tbd ? '0.4' : '';
+    timeTbdWrap.style.display = exam.tbd ? 'none' : 'flex';
+    updateTimeInputsState();
     markDirty(); renderExamList(); renderExamCalendar();
+  };
+
+  timeTbdCb.onchange = () => {
+    exam.time_tbd = timeTbdCb.checked;
+    updateTimeInputsState();
+    markDirty(); renderExamList();
   };
 
   // PE Value and Proctor Count
@@ -3091,7 +3126,7 @@ function duplicateExam(src) {
 
 function createNewExam() {
   S.data.exams = S.data.exams||[];
-  const exam = {id:uid(), name:'New Exam', course_name:'', section:'', date:'', start_min:540, end_min:660, pe_value:1.0, proctor_count:1, tbd:false};
+  const exam = {id:uid(), name:'New Exam', course_name:'', section:'', date:'', start_min:540, end_min:660, pe_value:1.0, proctor_count:1, tbd:false, time_tbd:false};
   S.data.exams.push(exam);
   S.examSelId = exam.id;
   markDirty();
@@ -3326,7 +3361,7 @@ function renderProctorExamView(container) {
     const tr = el('tr');
     tr.appendChild(el('td',null,escHtml(examLabel(exam))));
     tr.appendChild(el('td',null,escHtml(exam.name)));
-    tr.appendChild(el('td',null, exam.tbd ? 'TBD' : `${exam.date||'—'} ${fmtRange(exam.start_min||0, exam.end_min||0)}`));
+    tr.appendChild(el('td',null, examDateTimeLabel(exam)));
 
     const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id);
     tr.appendChild(el('td',null,`${assigns.length}/${exam.proctor_count||1}`));
@@ -3428,7 +3463,7 @@ function openProctorAssignModal(exam) {
     if (a.ta_id in usedPE) usedPE[a.ta_id] += examsMap[a.exam_id]?.pe_value || 0;
   });
 
-  const hasDates = !exam.tbd && exam.date;
+  const hasDates = !exam.tbd && !exam.time_tbd && exam.date;
 
   openAssignPicker({
     titleHtml: `Assign Proctor — ${escHtml(exam.name)}`,
@@ -3444,7 +3479,7 @@ function openProctorAssignModal(exam) {
       if (hasDates) {
         (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id).forEach(a => {
           const other = examsMap[a.exam_id];
-          if (other && other.date===exam.date &&
+          if (other && !other.time_tbd && other.date===exam.date &&
               overlap(exam.start_min, exam.end_min, other.start_min, other.end_min)) {
             reasons.push(`conflicts with ${other.name}`);
           }
@@ -3527,7 +3562,7 @@ function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
 
 function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
   const reasons = [];
-  const hasDates = !exam.tbd && exam.date;
+  const hasDates = !exam.tbd && !exam.time_tbd && exam.date;
   let examWd = null;
   if (hasDates) {
     // JS getDay() is 0=Sun; our model is 0=Mon.
@@ -3683,7 +3718,9 @@ function renderProctorGrid(container) {
   const columns = sortedExamsForProctoring().map(exam => {
     const course = examLabel(exam);
     const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
-    const timeLabel = (!exam.tbd && exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';
+    const timeLabel = exam.tbd ? ''
+      : exam.time_tbd ? 'Time TBD'
+      : (exam.start_min != null) ? fmtRange(exam.start_min, exam.end_min) : '';
     return {
       exam,
       label: `${course}: ${exam.name}`,
