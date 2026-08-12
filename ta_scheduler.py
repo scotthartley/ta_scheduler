@@ -417,6 +417,11 @@ def export_docx():
 
 _SOLVER_ITERATIONS = 50
 
+_BASE_SCORE          = 1000
+_EXPERIENCE_BONUS    = 200
+_NEW_ROLE_PENALTY    = 800   # cost of opening a new (TA, role) pairing
+_LOAD_BALANCE_WEIGHT = 500
+
 
 def solve(data):
     roles_map = {r["id"]: r for r in data.get("roles", [])}
@@ -529,13 +534,17 @@ def solve(data):
         return result
 
     def score(st, ta, lab, rr):
-        s = 1000
+        s = _BASE_SCORE
         if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
-            s += 200
+            s += _EXPERIENCE_BONUS
         roles_held = st["roles"][ta["id"]]
-        if roles_held and rr["role_id"] not in roles_held:
-            s -= 200
-        s -= st["used_se"][ta["id"]] * 500
+        if rr["role_id"] not in roles_held:
+            # Opening a new (TA, role) pairing is the thing being minimised, so it is
+            # charged even for a TA's first role — that is what lets a TA already in
+            # this role outrank an idle one. Scaling by roles already held sends
+            # unavoidable new pairings to the least-fragmented TA.
+            s -= _NEW_ROLE_PENALTY * (1 + len(roles_held))
+        s -= st["used_se"][ta["id"]] * _LOAD_BALANCE_WEIGHT
         s += random.random()
         return s
 

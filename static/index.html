@@ -295,6 +295,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .data-table .lab-header td      { background: var(--blue-lt);  font-weight: 700; }
 .data-table .ta-header td       { background: var(--green-lt); font-weight: 700; }
 .data-table .summary-total td   { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
+.data-table .role-split         { color: var(--warn-text); font-weight: 600; }
 .data-table input { font-size: var(--fs-sm); padding: 2px 4px;
                     border: 1px solid var(--border); border-radius: var(--r-sm); }
 .data-table input[type=number] { width: 60px; }
@@ -2088,16 +2089,18 @@ function renderTASummary(container) {
   const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
 
   renderTASummaryTable(container,
-    ['TA','Experience','Max SE','Used SE','Assigned Labs'],
+    ['TA','Experience','Max SE','Used SE','Roles','Assigned Labs'],
     ta => {
       const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
       const usedSE = taAssigns.reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0)
         + (ta.outside_duties||[]).reduce((s,d)=>s+(d.se_value||0),0);
+      const roleCount = new Set(taAssigns.map(a => a.role_id)).size;
       return [
         strongCell(ta.name),
         ta.experience==='experienced'?'Experienced':'Inexperienced',
         numCell(ta.max_se ?? 2.0, v => { ta.max_se = v; markDirty(); }),
         usedSE.toFixed(1),
+        el('span', roleCount > 1 ? 'role-split' : null, String(roleCount)),
         taAssigns.map(a => assignChip(
           (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id),
           {locked: a.locked, onToggle: () => { a.locked = !a.locked; markDirty(); renderSchedule(); }})),

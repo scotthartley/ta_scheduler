@@ -101,7 +101,30 @@ Hard constraints (eligibility filters):
 3. No double-booking: a TA cannot be assigned to two labs whose meetings overlap on the same day (checks all meetings in `meetings[]`)
 4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments
 
-Scoring (higher is better): base 1000 + experience preference (+200 if preferred_experienced and TA is experienced) − split penalty for assigning to a different course name (−200) − load-balancing penalty (current SE × 500) + random tiebreak.
+Scoring (higher is better), with all magnitudes as named constants beside
+`_SOLVER_ITERATIONS`:
+
+- `_BASE_SCORE` 1000
+- `+ _EXPERIENCE_BONUS` 200 — role has `preferred_experienced` and the TA is experienced
+- `− _NEW_ROLE_PENALTY × (1 + roles already held)` — 800 per new (TA, role) pairing.
+  Charged whenever the role is not already in `st["roles"][ta_id]`, **including a
+  TA's first role**: that is what lets a TA already in a role outrank an idle one.
+  Scaling by roles already held makes the objective "minimize the total number of
+  distinct (TA, role) pairings" rather than a binary one-vs-many flag.
+- `− _LOAD_BALANCE_WEIGHT × current SE` — 500
+- `+ random tiebreak`
+
+800 is deliberately above one load unit (500) so continuing a role beats an idle
+rival, and below two so a TA near their cap still yields. Concentration therefore
+outranks load balancing: loads come out lumpier (slack pools in one or two TAs)
+in exchange for near-zero split TAs. `_NEW_ROLE_PENALTY = 400` is the moderate
+setting if that ever feels too aggressive.
+
+The break-even between the two is `_NEW_ROLE_PENALTY / _LOAD_BALANCE_WEIGHT` =
+**1.6 SE**: past that load, an idle TA outscores a TA who already holds the role,
+so a role's last seats can land on a fresh person even when an existing holder is
+still under their cap. That is the intended "near-cap TAs yield" behavior, but it
+is also the first thing to check when a role looks more scattered than expected.
 
 Slots are processed in ascending order of eligible TA count (fail-first). The highest-scoring eligible TA is assigned to each slot.
 
@@ -182,10 +205,18 @@ Role objects optionally carry a `course_name` field:
   courses, and always shown in every lab's Role Requirements picker.
 
 The lab solver's split penalty (`score()` in `solve()`) operates on `role_id`,
-not course name: a TA is penalized for picking up a *different* role than one
-they already hold, not for spanning multiple courses in the *same* role. This
-is why every course needs its own default role — without one, a "shared"
-Primary TA role reused everywhere would make the penalty a no-op.
+not course name: a TA is penalized for picking up a role they do not already
+hold, not for spanning multiple courses in the *same* role. The charge applies
+to a TA's **first** role as well, which is what makes concentration possible —
+otherwise an idle TA is free to pull into a role, and every role fans out across
+as many people as capacity allows. This is why every course needs its own default
+role — without one, a "shared" Primary TA role reused everywhere would make the
+penalty a no-op.
+
+A shared role spanning multiple courses costs a TA nothing extra: `score()` reads
+only `role_id`, never the lab's course name. When a shared role still comes out
+split across course lines, the cause is a hard constraint (overlapping lab times
+between the courses, or the SE cap), not the scoring.
 
 ## Frontend utilities
 
