@@ -185,6 +185,7 @@ Rendering primitives:
 - `xBtn(onClick, title, extraCls?)` — the only delete affordance (`.btn-x`).
 - `showWarnBox(div, html)` — shows/hides a `.warn-box` diagnostics panel.
 - `gmailCopyBtn(tas)` — "Copy e-mail addresses" button (or `null` if no TA has an email) that copies `Name <email>, ...`; used in Summary headings and Meeting Finder.
+- `mailtoBtn(tas, label, {alwaysShow})` — `mailto:` link that Bccs every TA with an email. Returns `null` when none do, unless `alwaysShow`, which instead renders it `.btn-disabled`. Must set `target="_blank"`: pywebview's WKWebView silently drops same-window `mailto:` navigation, and only new-window link activations reach the OS mail handler (`webview/platforms/cocoa.py`). Used on the TAs tab header and in Summary headings.
 - `escHtml(s)` — required for anything user-named that reaches `innerHTML`.
 
 Conflict detection (single source of truth, used by both the grids and the modals):

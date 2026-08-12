@@ -84,8 +84,10 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .panel-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .panel-section-header span { font-weight: 600; font-size: var(--fs-base); flex: 1; }
 .btn-sm { font-size: var(--fs-sm); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
-           background: var(--panel); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.07); }
+           background: var(--panel); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.07);
+           display: inline-block; text-decoration: none; color: inherit; }
 .btn-sm:hover { background: var(--gray-lt); }
+.btn-sm.btn-disabled { opacity: 0.4; pointer-events: none; cursor: default; }
 .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue);
                box-shadow: 0 1px 3px rgba(0,122,255,0.3); }
 .btn-primary:hover { background: #0066DD; border-color: #0066DD; }
@@ -460,6 +462,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
       <div class="panel-section">
         <div class="panel-section-header">
           <span id="panel-title">Graduate Courses</span>
+          <div id="panel-header-extra"></div>
           <button class="btn-sm" onclick="createNewItem()">+ New</button>
         </div>
       </div>
@@ -927,6 +930,11 @@ function renderLeftPanel() {
     }
     list.appendChild(row);
   });
+  const headerExtra = $id('panel-header-extra');
+  headerExtra.innerHTML = '';
+  if (S.tab === 'tas') {
+    headerExtra.appendChild(mailtoBtn(S.data.tas, 'Mail all TAs', { alwaysShow: true }));
+  }
 }
 
 function selectItem(id) {
@@ -2242,6 +2250,23 @@ function gmailCopyBtn(tas) {
   return btn;
 }
 
+function mailtoBtn(tas, label, { alwaysShow = false } = {}) {
+  const withEmail = tas.filter(ta => ta && ta.email);
+  if (!withEmail.length && !alwaysShow) return null;
+  const a = el('a', 'btn-sm');
+  a.textContent = label;
+  if (withEmail.length) {
+    a.href = 'mailto:?bcc=' + encodeURIComponent(withEmail.map(ta => ta.email).join(','));
+    // pywebview's WKWebView silently drops same-window mailto: navigation; only
+    // new-window link activations get handed to the OS mail handler.
+    a.target = '_blank';
+  } else {
+    a.classList.add('btn-disabled');
+    a.setAttribute('aria-disabled', 'true');
+  }
+  return a;
+}
+
 // The one table builder. A cell may be a string, a DOM node, or an array of
 // nodes, so schedule tables with live inputs and chips go through it too.
 function buildTable(headers, rows, totalRows = 0) {
@@ -2288,8 +2313,11 @@ function renderSummary() {
     const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
     const h2 = el('h2','summary-h2 with-action');
     const h2txt = el('span'); h2txt.textContent = displayName(lab); h2.append(h2txt);
-    const btn = gmailCopyBtn(labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean));
+    const labTas = labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean);
+    const btn = gmailCopyBtn(labTas);
     if (btn) { btn.style.marginTop = '0'; h2.append(btn); }
+    const mailBtn = mailtoBtn(labTas, 'Mail TAs');
+    if (mailBtn) { mailBtn.style.marginTop = '0'; h2.append(mailBtn); }
     c.append(h2);
     const sub = el('p','summary-sub');
     const labTimes = fmtMeetings(lab, DAY_LONG);
@@ -2322,8 +2350,11 @@ function renderSummary() {
       const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id);
       const h2e = el('h2','summary-h2 with-action');
       const h2etxt = el('span'); h2etxt.textContent = sub2; h2e.append(h2etxt);
-      const examBtn = gmailCopyBtn(eAsgn.map(a => tasMap[a.ta_id]).filter(Boolean));
+      const examTas = eAsgn.map(a => tasMap[a.ta_id]).filter(Boolean);
+      const examBtn = gmailCopyBtn(examTas);
       if (examBtn) { examBtn.style.marginTop = '0'; h2e.append(examBtn); }
+      const examMailBtn = mailtoBtn(examTas, 'Mail TAs');
+      if (examMailBtn) { examMailBtn.style.marginTop = '0'; h2e.append(examMailBtn); }
       c.append(h2e);
       const subp = el('p','summary-sub');
       subp.textContent = exam.date
