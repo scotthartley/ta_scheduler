@@ -1011,17 +1011,28 @@ def solve_proctoring(data):
         return s
 
     # Per-exam eligible count is derived from locked-only state, so it is
-    # identical on every iteration — compute it once. The tie-break order among
-    # slots sharing a count is randomized per iteration (see _greedy_pass), so
-    # tbd/time_tbd exams — which tend to tie for the highest eligible count and
-    # would otherwise always sort last, since new exams are appended to the end
-    # of data["exams"] — aren't deterministically starved on every pass.
+    # identical on every iteration — compute it once. It feeds the fail-first
+    # slot ordering in _greedy_pass, which charges it for the exam's seat count
+    # (see the comment there).
     init_st = initial_state()
     eligible_count = {ex["id"]: len(eligible_tas(init_st, ex)) for ex in slot_exams.values()}
 
     def _greedy_pass():
         st = initial_state()
-        order = sorted(slots, key=lambda ex: (eligible_count[ex["id"]], random.random()))
+        # Fail-first, by *slack* rather than raw pool size: an exam needing
+        # proctor_count distinct TAs consumes that many of its candidates, so
+        # eligible_count - proctor_count is what is left over once it is fully
+        # staffed. This is what keeps a tbd/time_tbd exam from being starved —
+        # its conflict exemptions give it the largest pool (often every TA), so
+        # a raw eligible_count sort puts it strictly last, past the point where
+        # load balancing has fragmented everyone's remaining PE into crumbs.
+        # -pe_value places the expensive seats while headroom is still
+        # unfragmented; random.random() breaks the remaining ties differently
+        # per iteration.
+        order = sorted(slots, key=lambda ex: (
+            eligible_count[ex["id"]] - ex.get("proctor_count", 1),
+            -ex.get("pe_value", 1.0),
+            random.random()))
         result = list(locked)
         for exam in order:
             candidates = eligible_tas(st, exam)
@@ -1046,20 +1057,55 @@ def solve_proctoring(data):
             if cname and sect:
                 st["sections"][tid].add((cname, sect))
 
-        return result
+        return result, st
+
+    def _rejection_reason(st, exam):
+        """Why every TA was passed over for this exam, in the winning pass's
+        final state. Mirrors eligible_tas() predicate for predicate — including
+        their order, so a TA is counted under the first reason that applies —
+        so the explanation can't drift from the constraint that produced it."""
+        pe_val = exam.get("pe_value", 1.0)
+        eid    = exam["id"]
+        edate  = exam_date_obj.get(eid)
+        es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
+        at_cap = already = overlapping = fixed = 0
+        for ta in tas:
+            tid = ta["id"]
+            if st["used_pe"][tid] + pe_val > ta.get("max_pe", 2.0) + 0.001:
+                at_cap += 1
+            elif eid in st["assigned_exams"][tid]:
+                already += 1
+            elif not _no_fixed_time(exam) and any(
+                    pdate == edate and times_overlap(es, ee, ps, pe)
+                    for pdate, ps, pe in st["times"][tid]):
+                overlapping += 1
+            elif (tid, eid) in static_conflicts:
+                fixed += 1
+        parts = []
+        if at_cap:
+            parts.append(f"{at_cap} of {len(tas)} TAs at PE cap "
+                         f"(needs {pe_val:g} PE free)")
+        if already:
+            parts.append(f"{already} already proctoring it")
+        if overlapping:
+            parts.append(f"{overlapping} proctoring an overlapping exam")
+        if fixed:
+            parts.append(f"{fixed} with a lab, course or personal conflict")
+        return ", ".join(parts)
 
     best_result = None
+    best_state = None
     best_unfilled = float("inf")
 
     for _ in range(_SOLVER_ITERATIONS):
-        result = _greedy_pass()
+        result, st = _greedy_pass()
         unfilled_count = len(slots) - sum(1 for a in result if not a.get("locked"))
         if unfilled_count <= 0:
-            best_result = result
+            best_result, best_state = result, st
             break
         if unfilled_count < best_unfilled:
             best_unfilled = unfilled_count
-            best_result = result
+            best_result, best_state = result, st
 
     result = best_result
 
@@ -1071,8 +1117,12 @@ def solve_proctoring(data):
         if len(assigned) < count:
             unfilled.append({
                 "exam_name": exam.get("name", ""),
+                "course_name": exam.get("course_name", ""),
+                "section": exam.get("section", ""),
                 "assigned": len(assigned),
                 "required": count,
+                "reason": (_rejection_reason(best_state, exam)
+                           if best_state is not None else ""),
             })
 
     status = "partial" if unfilled else "feasible"

@@ -186,16 +186,34 @@ treatment to the lab solver: `exam_wd`, the `static_conflicts` frozenset of
 state) are all computed once. `exam_date_obj` (each exam's parsed
 `datetime.date`, or `None`) is hoisted the same way and covers every exam — not
 just slot exams — since locked assignments seed `st["times"]` from exams that
-may be fully locked and absent from the slot list. Unlike the lab solver, slot
-order is *not* fully hoisted: `tbd`/`time_tbd` exams tend to tie for the
-highest eligible count (they're exempt from most conflict checks), and since
-new exams are always appended to the end of `data["exams"]`, a fixed sort would
-deterministically place them last on every iteration — starving them whenever
-overall PE capacity is tight. Instead, `_greedy_pass()` re-sorts `slots` by
-`(eligible_count, random.random())` on each call, so the eligible-count
-ordering is stable but ties break differently per iteration, letting the
-existing best-of-50 selection surface iterations where a TBD exam got
-processed earlier and filled.
+may be fully locked and absent from the slot list. Slot *order* is deliberately
+not hoisted — `_greedy_pass()` re-sorts `slots` on each call by
+
+```
+(eligible_count - proctor_count, -pe_value, random.random())
+```
+
+Fail-first here is measured in **slack, not pool size**. An exam needing
+`proctor_count` *distinct* TAs (a TA can't take two seats at the same exam)
+consumes that many of its own candidates, so `eligible_count - proctor_count` is
+what's left over once it is fully staffed: a 13-candidate/8-seat exam (slack 5)
+is harder than an 11-candidate/3-seat one (slack 8) and must be placed first.
+This is what keeps `tbd`/`time_tbd` exams from starving — their conflict
+exemptions give them the *largest* candidate pool (often every TA), so a sort on
+raw `eligible_count` puts them strictly last, past the point where
+`proc_load_balance_weight` has spread PE evenly and fragmented everyone's
+remaining headroom into sub-`pe_value` crumbs. Note the per-iteration
+`random.random()` alone cannot fix that: it only shuffles *within* a tie group,
+and such an exam usually sits alone above the pack rather than in one.
+`-pe_value` places the expensive seats while headroom is still unfragmented.
+
+When the best of the 50 passes still leaves slots unfilled, each `unfilled`
+diagnostics entry carries a `reason` string ("9 of 13 TAs at PE cap (needs 1.5
+PE free), 1 proctoring an overlapping exam") tallied from the winning pass's
+final state, which `_greedy_pass()` returns alongside its result.
+`_rejection_reason()` re-uses `eligible_tas()`'s predicates in the same order —
+each TA is counted under the first one that applies — so the explanation cannot
+drift from the constraint that produced it.
 
 ## CSV import
 

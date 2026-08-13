@@ -3760,21 +3760,30 @@ function renderExamForm(exam) {
   const timeRow = el('div','form-row');
   const stG = el('div','form-group');
   const stL = el('label'); stL.textContent = 'Start';
-  const stInp = timeSelect(exam.start_min||540, v => { exam.start_min=v; markDirty(); });
+  const stInp = timeSelect(exam.start_min||540, v => { exam.start_min=v; updateTimeInputsState(); markDirty(); });
   stL.appendChild(stInp);
   stG.appendChild(stL); timeRow.appendChild(stG);
   const etG = el('div','form-group');
   const etL = el('label'); etL.textContent = 'End';
-  const etInp = timeSelect(exam.end_min||660, v => { exam.end_min=v; markDirty(); });
+  const etInp = timeSelect(exam.end_min||660, v => { exam.end_min=v; updateTimeInputsState(); markDirty(); });
   etL.appendChild(etInp);
   etG.appendChild(etL); timeRow.appendChild(etG);
   dtWrap.appendChild(timeRow);
+  // End-before-start warning. A backwards range makes times_overlap() return
+  // false against everything — including itself — so the exam silently bypasses
+  // every double-booking check in both solvers. Warn only; never auto-correct.
+  const timeWarn = el('div','warn-box');
+  timeWarn.style.cssText = 'margin-top:8px;font-size:var(--fs-sm);color:var(--warn-text);';
+  timeWarn.textContent = '⚠ End time is not after the start time — this exam will be skipped by every conflict check.';
+  dtWrap.appendChild(timeWarn);
   form.appendChild(dtWrap);
 
   const updateTimeInputsState = () => {
     const grey = exam.tbd || exam.time_tbd;
     stInp.disabled = grey; etInp.disabled = grey;
     dtWrap.style.opacity = grey ? '0.4' : '';
+    timeWarn.style.display =
+      (!grey && (exam.end_min ?? 660) <= (exam.start_min ?? 540)) ? '' : 'none';
   };
   updateTimeInputsState();
 
@@ -4039,7 +4048,12 @@ function renderProctoring(diag, status) {
   if (status === 'partial' && unfilled.length) {
     html = '<h4>⚠ Partial Proctoring Schedule</h4>' +
       '<p><strong>Slots not fully filled:</strong></p><ul>' +
-      unfilled.map(u => `<li><strong>${escHtml(u.exam_name)}</strong>: ${u.assigned}/${u.required} filled</li>`).join('') + '</ul>';
+      unfilled.map(u => {
+        const label = examFullLabel({name: u.exam_name, course_name: u.course_name, section: u.section});
+        const reason = u.reason
+          ? `<div class="assign-reason">${escHtml(u.reason)}</div>` : '';
+        return `<li><strong>${escHtml(label)}</strong>: ${u.assigned}/${u.required} filled${reason}</li>`;
+      }).join('') + '</ul>';
   }
   showWarnBox($id('proctor-diagnostics'), html);
 
