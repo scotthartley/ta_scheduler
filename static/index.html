@@ -338,8 +338,8 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .legend-swatch { width: 18px; height: 18px; border-radius: var(--r-sm); display: inline-block;
                  border: 1px solid var(--border); }
 .meeting-ta-ul { font-size: var(--fs-sm); margin:4px 0; padding-left:18px; }
-.ta-conflict-ul { margin:2px 0 10px; padding-left:18px; line-height:1.6; }
-#ta-conflict-list:not(:empty) { padding: 12px 20px; border-top: 1px solid var(--border);
+.grid-info-ul { margin:2px 0 10px; padding-left:18px; line-height:1.6; }
+#grid-info-list:not(:empty) { padding: 12px 20px; border-top: 1px solid var(--border);
                                  font-size: var(--fs-sm); }
 .meeting-grid-wrap { flex: 1; min-height: 0;
                      overflow: hidden; display: flex; flex-direction: column; }
@@ -565,7 +565,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
             </div>
           </div>
         </div>
-        <div id="ta-conflict-list"></div>
+        <div id="grid-info-list"></div>
       </div>
     </div>
     <!-- Roles panel (Lab Sections tab only) -->
@@ -1222,7 +1222,7 @@ function showGridPlaceholder() {
   $id('grid-placeholder').style.display = 'flex';
   $id('grid-outer').style.display = 'none';
   $id('item-form').style.display = 'none';
-  const lcd=$id('ta-conflict-list'); if(lcd) lcd.innerHTML='';
+  const lcd=$id('grid-info-list'); if(lcd) lcd.innerHTML='';
 }
 
 function createNewItem() {
@@ -1488,6 +1488,23 @@ function renderCourseForm(item, form) {
   };
 
   form.appendChild(formActions(deleteCurrentItem));
+  renderCourseExamList(item);
+}
+
+function renderCourseExamList(course) {
+  const div = $id('grid-info-list');
+  if (!div) return;
+  div.innerHTML = '';
+  if (!course) return;
+  const exams = (course.exams||[]).filter(ex=>ex.date).slice()
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  if (!exams.length) return;
+  const hdr = el('p'); hdr.innerHTML = '<strong>Exams</strong>'; div.appendChild(hdr);
+  const ul = el('ul','grid-info-ul');
+  exams.forEach(ex => {
+    ul.appendChild(el('li', null, `${ex.date} ${fmtRange(ex.start_min, ex.end_min)}`));
+  });
+  div.appendChild(ul);
 }
 
 // ── TA form ──
@@ -1668,7 +1685,7 @@ function renderTAForm(item, form) {
 }
 
 function renderTAConflictList(ta) {
-  const div = $id('ta-conflict-list');
+  const div = $id('grid-info-list');
   if (!div) return;
   div.innerHTML = '';
   if (!ta) return;
@@ -1691,13 +1708,13 @@ function renderTAConflictList(ta) {
   if (!courseExams.length && !dateCons.length) return;
   if (courseExams.length) {
     const hdr = el('p'); hdr.innerHTML = '<strong>Course Exams</strong>'; div.appendChild(hdr);
-    const ul = el('ul','ta-conflict-ul');
+    const ul = el('ul','grid-info-ul');
     courseExams.forEach(e => { const li=el('li'); li.innerHTML=e.text; ul.appendChild(li); });
     div.appendChild(ul);
   }
   if (dateCons.length) {
     const hdr = el('p'); hdr.innerHTML = '<strong>Date-Specific Conflicts</strong>'; div.appendChild(hdr);
-    const ul = el('ul','ta-conflict-ul');
+    const ul = el('ul','grid-info-ul');
     dateCons.forEach(e => { const li=el('li'); li.innerHTML=e.text; ul.appendChild(li); });
     div.appendChild(ul);
   }
