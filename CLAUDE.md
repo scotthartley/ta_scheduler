@@ -159,12 +159,19 @@ Scoring (higher is better): base 1000, then
 - +150 lab section — TA is assigned the lab for that same course *and* section
 - +200 same-course proctoring — TA already proctors another exam for that course
 - +100 same-section proctoring — …for that same course and section
+- − spread penalty — this TA already proctors another (non-`time_tbd`) exam within
+  `_SPREAD_WINDOW_DAYS` (7) days; scales linearly with closeness up to
+  `_SPREAD_WINDOW_DAYS × _SPREAD_PENALTY_PER_DAY` = 280 at same-day, capped below one
+  load-balance PE unit (500) so it nudges rather than overrides
 - − load-balancing penalty (current PE × 500)
 - + random tiebreak
 
 Also runs up to 50 iterations, keeping the best result. It gets the same
 hoisting treatment as the lab solver: `exam_wd`, the `static_conflicts` frozenset of
-`(ta_id, exam_id)` pairs, and `sorted_slots` are all computed once.
+`(ta_id, exam_id)` pairs, and `sorted_slots` are all computed once. `exam_date_obj`
+(each exam's parsed `datetime.date`, or `None`) is hoisted the same way and covers
+every exam — not just slot exams — since locked assignments seed `st["times"]` from
+exams that may be fully locked and absent from the slot list.
 
 ## CSV import
 

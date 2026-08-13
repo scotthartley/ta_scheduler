@@ -422,6 +422,11 @@ _EXPERIENCE_BONUS    = 200
 _NEW_ROLE_PENALTY    = 800   # cost of opening a new (TA, role) pairing
 _LOAD_BALANCE_WEIGHT = 500
 
+_SPREAD_WINDOW_DAYS     = 7    # exams within this many days of each other count as "clustered"
+_SPREAD_PENALTY_PER_DAY = 40   # max penalty 280 (same-day) — under one PE load-balance unit (500),
+                                # so this nudges ties rather than overriding load balance or
+                                # course/section familiarity
+
 
 def solve(data):
     roles_map = {r["id"]: r for r in data.get("roles", [])}
@@ -678,11 +683,9 @@ def solve_proctoring(data):
             if sect:
                 ta_lab_sections.setdefault(a["ta_id"], set()).add((lab.get("name", ""), sect))
 
-    def exam_weekday(exam):
-        """Get weekday (0=Mon) from exam date string."""
+    def _parse_exam_date(exam):
         try:
-            d = datetime.date.fromisoformat(exam["date"])
-            return d.weekday()  # 0=Mon
+            return datetime.date.fromisoformat(exam["date"])
         except (KeyError, ValueError):
             return None
 
@@ -706,7 +709,12 @@ def solve_proctoring(data):
     # ── precomputed, input-only data (constant across all iterations) ──────
 
     slot_exams = {ex["id"]: ex for ex in slots}
-    exam_wd = {eid: exam_weekday(ex) for eid, ex in slot_exams.items()}
+    # Covers every exam (not just slot_exams) since initial_state() seeds
+    # st["times"] from locked assignments, which may reference exams that are
+    # fully locked and therefore absent from slots/slot_exams.
+    exam_date_obj = {eid: _parse_exam_date(ex) for eid, ex in exams_by_id.items()}
+    exam_wd = {eid: (exam_date_obj[eid].weekday() if exam_date_obj[eid] else None)
+               for eid in slot_exams}
 
     def _fixed_conflict(ta, exam):
         """True if a TA has an input-derived conflict with this exam: an assigned
@@ -774,7 +782,7 @@ def solve_proctoring(data):
             st["assigned_exams"][tid].add(eid)
             if not exam.get("time_tbd"):
                 st["times"][tid].append(
-                    (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+                    (exam_date_obj.get(eid), exam.get("start_min", 0), exam.get("end_min", 0)))
             course_name = exam.get("course_name", "")
             sect = exam.get("section", "")
             if course_name:
@@ -786,7 +794,7 @@ def solve_proctoring(data):
     def eligible_tas(st, exam):
         pe_val = exam.get("pe_value", 1.0)
         eid    = exam["id"]
-        edate  = exam.get("date")
+        edate  = exam_date_obj.get(eid)
         es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
         result = []
         for ta in tas:
@@ -823,6 +831,15 @@ def solve_proctoring(data):
         # Same-section proctoring bonus
         if course_name and section and key in st["sections"][tid]:
             s += 100
+        # Spread bonus — discourage clustering this TA's exams close together in time
+        if not exam.get("time_tbd"):
+            exam_date = exam_date_obj.get(exam["id"])
+            if exam_date is not None:
+                prior_dates = [d for d, _, _ in st["times"][tid] if d is not None]
+                if prior_dates:
+                    min_gap = min(abs((exam_date - d).days) for d in prior_dates)
+                    if min_gap < _SPREAD_WINDOW_DAYS:
+                        s -= (_SPREAD_WINDOW_DAYS - min_gap) * _SPREAD_PENALTY_PER_DAY
         # Load balancing
         s -= st["used_pe"][tid] * 500
         s += random.random()
@@ -851,7 +868,7 @@ def solve_proctoring(data):
             st["assigned_exams"][tid].add(exam["id"])
             if not exam.get("time_tbd"):
                 st["times"][tid].append(
-                    (exam.get("date", ""), exam.get("start_min", 0), exam.get("end_min", 0)))
+                    (exam_date_obj.get(exam["id"]), exam.get("start_min", 0), exam.get("end_min", 0)))
             cname = exam.get("course_name", "")
             sect = exam.get("section", "")
             if cname:
