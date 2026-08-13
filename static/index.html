@@ -150,6 +150,9 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .help-text-empty { text-align: center; padding: 32px 16px; }
 .meeting-empty { padding: 9px 15px; }
 .role-se-note { color: var(--text2); font-size: var(--fs-xs); margin-left: 4px; }
+.role-req-block { width: 100%; }
+.role-req-name { margin-bottom: 4px; }
+.role-req-name .role-se-note { font-size: inherit; }
 .checkbox-group { display: flex; flex-direction: column; gap: 5px; }
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); }
 /* Section heading above an .ilist — a panel heading, not a form component. */
@@ -1715,7 +1718,7 @@ function renderLabForm(item, form) {
 
   // Roles
   form.appendChild(formHeading('Role Requirements'));
-  form.appendChild(el('p','help-text','Count = TAs needed. Exp pref = how many should be experienced (soft preference).'));
+  form.appendChild(el('p','help-text','Number = TAs needed. Num. Exp. = how many should be experienced (soft preference).'));
 
   item.roles = item.roles||[];
 
@@ -1726,24 +1729,37 @@ function renderLabForm(item, form) {
     let rr = item.roles.find(r => r.role_id === role.id);
     if (!rr) { rr={role_id:role.id,count:0,preferred_experienced:0}; item.roles.push(rr); }
 
-    const lbl = el('span','il-label');
-    lbl.innerHTML = escHtml(role.label) +
-      `<span class="role-se-note">(${role.se_value} SE)</span>`;
+    const block = el('div','role-req-block');
 
+    const nameDiv = el('div','role-req-name');
+    nameDiv.innerHTML = escHtml(role.label) +
+      `<span class="role-se-note">(${role.se_value} SE)</span>`;
+    block.appendChild(nameDiv);
+
+    const row = el('div','form-row');
+
+    const cntG = el('div','form-group');
+    const cntL = el('label'); cntL.textContent = 'Number';
     const cntInp = document.createElement('input');
     cntInp.type='number'; cntInp.min='0'; cntInp.max='10';
-    cntInp.value=rr.count; cntInp.className='num-input';
+    cntInp.value=rr.count;
     cntInp.title='Number of TAs needed';
+    cntL.appendChild(cntInp); cntG.appendChild(cntL); row.appendChild(cntG);
 
+    const expG = el('div','form-group');
+    const expL = el('label'); expL.textContent = 'Num. Exp.';
     const expInp = document.createElement('input'); expInp.type='number';
     expInp.min='0'; expInp.max=rr.count||10;
-    expInp.value=rr.preferred_experienced||0; expInp.className='num-input';
+    expInp.value=rr.preferred_experienced||0;
     expInp.title='Preferred number of experienced TAs (soft)';
+    expL.appendChild(expInp); expG.appendChild(expL); row.appendChild(expG);
+
     expInp.oninput = () => { rr.preferred_experienced=parseInt(expInp.value)||0; markDirty(); };
     cntInp.oninput = () => { rr.count=parseInt(cntInp.value)||0; expInp.max=rr.count; markDirty(); };
 
-    return {cells: [lbl, el('span','il-unit','×'), cntInp,
-                    el('span','il-unit','exp pref'), expInp]};
+    block.appendChild(row);
+
+    return {cells: [block]};
   }), {empty: 'No role types defined yet — add one in the Roles panel on the right.'}));
 
   const actions = el('div','form-actions');
