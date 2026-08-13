@@ -2375,11 +2375,12 @@ function renderTASummary(container) {
   const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
 
   renderTASummaryTable(container,
-    ['TA','Experience','Max SE','Used SE','Roles','Assigned Labs'],
+    ['TA','Experience','Max SE','Used SE','Roles','Assigned Labs','Other Duties'],
     ta => {
       const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
+      const otherDuties = ta.outside_duties||[];
       const usedSE = taAssigns.reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0)
-        + (ta.outside_duties||[]).reduce((s,d)=>s+(d.se_value||0),0);
+        + otherDuties.reduce((s,d)=>s+(d.se_value||0),0);
       const roleCount = new Set(taAssigns.map(a => a.role_id)).size;
       return [
         strongCell(ta.name),
@@ -2388,8 +2389,8 @@ function renderTASummary(container) {
         usedSE.toFixed(1),
         el('span', roleCount > 1 ? 'role-split' : null, String(roleCount)),
         taAssigns.map(a => assignChip(
-          (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id),
-          {locked: a.locked, onToggle: () => { a.locked = !a.locked; markDirty(); renderSchedule(); }})),
+          (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id))),
+        otherDuties.map(d => assignChip(`${d.label} (${Number(d.se_value||0).toFixed(1)} SE)`)),
       ];
     });
 }
