@@ -1378,6 +1378,26 @@ function nameSectionRow(item, isLab) {
   sL.appendChild(sInp); sG.appendChild(sL); row.appendChild(sG);
   return row;
 }
+// Meeting Date Range heading + start/end date inputs — identical in the course and lab forms.
+function dateRangeSection(item) {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(formHeading('Meeting Date Range'));
+  const drRow = el('div','form-row');
+  const dsG = el('div','form-group');
+  const dsL = el('label'); dsL.textContent='Start';
+  const dsInp = document.createElement('input'); dsInp.type='date';
+  dsInp.value = item.date_start||'';
+  dsInp.oninput = () => { item.date_start = dsInp.value||null; markDirty(); };
+  dsL.appendChild(dsInp); dsG.appendChild(dsL); drRow.appendChild(dsG);
+  const deG = el('div','form-group');
+  const deL = el('label'); deL.textContent='End';
+  const deInp = document.createElement('input'); deInp.type='date';
+  deInp.value = item.date_end||'';
+  deInp.oninput = () => { item.date_end = deInp.value||null; markDirty(); };
+  deL.appendChild(deInp); deG.appendChild(deL); drRow.appendChild(deG);
+  frag.appendChild(drRow);
+  return frag;
+}
 // Editable list of an item's meeting times — identical in the course and lab forms.
 function meetingsSublist(item) {
   return inlineList(getMeetings(item).map((m, i) => ({
@@ -1403,21 +1423,7 @@ function renderCourseForm(item, form) {
   form.appendChild(meetingsSublist(item));
 
   // Date range for regular meetings
-  form.appendChild(formHeading('Meeting Date Range'));
-  const drRow = el('div','form-row');
-  const dsG = el('div','form-group');
-  const dsL = el('label'); dsL.textContent='Start';
-  const dsInp = document.createElement('input'); dsInp.type='date';
-  dsInp.value = item.date_start||'';
-  dsInp.oninput = () => { item.date_start = dsInp.value||null; markDirty(); };
-  dsL.appendChild(dsInp); dsG.appendChild(dsL); drRow.appendChild(dsG);
-  const deG = el('div','form-group');
-  const deL = el('label'); deL.textContent='End';
-  const deInp = document.createElement('input'); deInp.type='date';
-  deInp.value = item.date_end||'';
-  deInp.oninput = () => { item.date_end = deInp.value||null; markDirty(); };
-  deL.appendChild(deInp); deG.appendChild(deL); drRow.appendChild(deG);
-  form.appendChild(drRow);
+  form.appendChild(dateRangeSection(item));
 
   // Exam list — the add-action is this group's footer row.
   form.appendChild(formHeading('Exams'));
@@ -1678,6 +1684,9 @@ function renderLabForm(item, form) {
   form.appendChild(formHeading('Meeting Times'));
   form.appendChild(el('p','help-text','Draw on grid to add times; click × to remove'));
   form.appendChild(meetingsSublist(item));
+
+  // Date range for regular meetings
+  form.appendChild(dateRangeSection(item));
 
   // Roles
   form.appendChild(formHeading('Role Requirements'));
