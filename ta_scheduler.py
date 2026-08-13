@@ -1,5 +1,6 @@
 import copy
 import csv
+import datetime
 import json
 import os
 import random
@@ -88,6 +89,89 @@ def _get_meetings(item):
     if day is not None:
         return [(day, item.get("start_min", 0), item.get("end_min", 0))]
     return []
+
+
+def _dc_dates(dc):
+    """(start_date, end_date) raw ISO strings for a date_conflicts[] entry,
+    falling back to the legacy singular `date` field."""
+    start_date = dc.get("start_date") or dc.get("date")
+    end_date = dc.get("end_date") or dc.get("date") or start_date
+    return start_date, end_date
+
+
+def _date_conflict_days(dc):
+    """Parsed (d0, d1) datetime.date pair with d0 <= d1, or None if unparseable."""
+    start_date, end_date = _dc_dates(dc)
+    if not start_date or not end_date:
+        return None
+    try:
+        d0 = datetime.date.fromisoformat(start_date)
+        d1 = datetime.date.fromisoformat(end_date)
+    except ValueError:
+        return None
+    if d1 < d0:
+        d0, d1 = d1, d0
+    return d0, d1
+
+
+def _date_conflict_window_for_day(dc, days, day):
+    """(start_min, end_min) covering `day` within the original (unclamped) span
+    `days`, or None if `day` falls outside it. The first day uses start_min,
+    the last day uses end_min, and days in between are treated as full days."""
+    d0, d1 = days
+    if day < d0 or day > d1:
+        return None
+    start_min = dc.get("start_min", 0) if day == d0 else 0
+    end_min = dc.get("end_min", 1440) if day == d1 else 1440
+    return start_min, end_min
+
+
+def _expand_date_conflict_weekdays(dc, clamp_start=None, clamp_end=None):
+    """Expand a date_conflicts[] entry into [(weekday, start_min, end_min), ...],
+    one tuple per calendar day the span touches. `clamp_start`/`clamp_end` (ISO
+    strings) narrow the iteration bounds to their intersection with the entry's
+    real span — they never change which day counts as first/last for partial-
+    time-window purposes, which is always based on the original span."""
+    days = _date_conflict_days(dc)
+    if days is None:
+        return []
+    d0, d1 = days
+    iter_start, iter_end = d0, d1
+    if clamp_start:
+        try:
+            cs = datetime.date.fromisoformat(clamp_start)
+            iter_start = max(iter_start, cs)
+        except ValueError:
+            pass
+    if clamp_end:
+        try:
+            ce = datetime.date.fromisoformat(clamp_end)
+            iter_end = min(iter_end, ce)
+        except ValueError:
+            pass
+    result = []
+    day = iter_start
+    while day <= iter_end:
+        window = _date_conflict_window_for_day(dc, days, day)
+        if window is not None:
+            result.append((day.weekday(), window[0], window[1]))
+        day += datetime.timedelta(days=1)
+    return result
+
+
+def _date_conflict_overlaps(dc, date_obj, start_min, end_min):
+    """True if a date_conflicts[] entry overlaps a specific literal date/time
+    window (used by the proctoring solver, where exams have exact dates)."""
+    days = _date_conflict_days(dc)
+    if days is None:
+        return False
+    d0, d1 = days
+    if date_obj < d0 or date_obj > d1:
+        return False
+    window = _date_conflict_window_for_day(dc, days, date_obj)
+    if window is None:
+        return False
+    return times_overlap(start_min, end_min, window[0], window[1])
 
 
 def fmt_time(minutes):
@@ -450,6 +534,20 @@ _DEFAULT_SETTINGS = {
 }
 
 
+def _ta_date_conflict_blocks_lab(ta, lab, meetings):
+    """True if any of the TA's date_conflicts[] (not marked ignore_for_labs)
+    overlaps this lab's meetings once clamped to the lab's own date_start/
+    date_end (or the conflict's own span, if the lab has no date range)."""
+    ds, de = lab.get("date_start"), lab.get("date_end")
+    for dc in ta.get("date_conflicts", []):
+        if dc.get("ignore_for_labs"):
+            continue
+        for wd, sm, em in _expand_date_conflict_weekdays(dc, ds, de):
+            if any(ld == wd and times_overlap(sm, em, ls, le) for ld, ls, le in meetings):
+                return True
+    return False
+
+
 def solve(data):
     roles_map = {r["id"]: r for r in data.get("roles", [])}
     labs      = data.get("labs", [])
@@ -493,6 +591,7 @@ def solve(data):
         if any(ld == fd and times_overlap(ls, le, fs, fe)
                for ld, ls, le in lab_meetings[lab["id"]]
                for fd, fs, fe in ta_fixed_times[ta["id"]])
+        or _ta_date_conflict_blocks_lab(ta, lab, lab_meetings[lab["id"]])
     )
 
     # ── build work list (same every iteration) ─────────────────────────────
@@ -674,8 +773,6 @@ def solve(data):
 # ── proctoring solver ────────────────────────────────────────────────────────
 
 def solve_proctoring(data):
-    import datetime
-
     exams = data.get("exams", [])
     tas = data.get("tas", [])
     proctor_in = data.get("proctor_assignments", [])
@@ -780,11 +877,10 @@ def solve_proctoring(data):
                 if oc["day"] == wd and times_overlap(
                         es, ee, oc["start_min"], oc["end_min"]):
                     return True
-        dc_date = exam.get("date")
-        if dc_date:
+        exam_dobj = exam_date_obj.get(exam["id"])
+        if exam_dobj is not None:
             for dc in ta.get("date_conflicts", []):
-                if dc.get("date") == dc_date and times_overlap(
-                        es, ee, dc.get("start_min", 0), dc.get("end_min", 0)):
+                if _date_conflict_overlaps(dc, exam_dobj, es, ee):
                     return True
         return False
 
@@ -1169,9 +1265,13 @@ def generate_docx(data):
                 f"{oc['label']} — {DAY_SHORT[oc['day']]} {fmt_time(oc['start_min'])}–{fmt_time(oc['end_min'])}"
             )
         for dc in ta.get("date_conflicts", []):
-            schedule_lines.append(
-                f"{dc['label']} — {dc['date']} {fmt_time(dc['start_min'])}–{fmt_time(dc['end_min'])}"
-            )
+            start_date, end_date = _dc_dates(dc)
+            start_min, end_min = dc.get("start_min", 0), dc.get("end_min", 0)
+            if start_date == end_date:
+                date_str = f"{start_date} {fmt_time(start_min)}–{fmt_time(end_min)}"
+            else:
+                date_str = f"{start_date} {fmt_time(start_min)} – {end_date} {fmt_time(end_min)}"
+            schedule_lines.append(f"{dc.get('label', '')} — {date_str}")
         if schedule_lines:
             doc.add_heading("Schedule", 3)
             for line in schedule_lines:

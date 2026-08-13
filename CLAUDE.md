@@ -77,7 +77,7 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - `max_pe`: maximum PE a TA can be assigned (default 2.0)
 - `outside_proctoring[]`: `[{label, pe_value}]` — external proctoring duties counted toward max_pe
 - `other_commitments[]`: `[{label, day, start_min, end_min}]` — recurring weekly blocks
-- `date_conflicts[]`: `[{label, date, start_min, end_min}]` — one-off blocks on a specific date; read by the proctoring solver
+- `date_conflicts[]`: `[{label, start_date, end_date, start_min, end_min, ignore_for_labs}]` — a block spanning `start_date`/`start_min` to `end_date`/`end_min` (equal dates for the common single-day case). Always a hard constraint for the proctoring solver; also a hard constraint for the lab solver unless `ignore_for_labs` is set on that entry (see "Solver (greedy — lab scheduling)"). Legacy entries may still use the old singular `date` field instead of `start_date`/`end_date` — there is no migration pass, so every reader falls back to `date` at point of use (`start_date = dc.get('start_date') or dc.get('date')`, etc.), matching the rest of this codebase's convention of defensive per-field reads rather than upfront normalization.
 - `tbd`: if true, the exam has no date/time yet. It is skipped by the proctoring solver *and* by its diagnostics, so a TBD exam never reports the schedule as partial.
 - `time_tbd`: if true, the exam has a confirmed `date` but no fixed `start_min`/`end_min` yet. Unlike `tbd`, a `time_tbd` exam is still scheduled by the proctoring solver — only the PE cap applies to it; it's exempt from double-booking and every weekday/date conflict check, in both directions (it is never blocked by another assignment, and its own assignment never blocks anything else).
 
@@ -100,6 +100,7 @@ Hard constraints (eligibility filters):
 2. SE cap: total SE assigned to a TA ≤ their max_se (including outside duties)
 3. No double-booking: a TA cannot be assigned to two labs whose meetings overlap on the same day (checks all meetings in `meetings[]`)
 4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments
+5. `date_conflicts[]`: evaluated per (TA, lab) pair, not folded into the flat, lab-agnostic fixed-times list — a conflict's effect on a given lab depends on that lab's own `date_start`/`date_end`. The conflict's date span is clamped to the lab's `date_start`/`date_end` (when present) before being expanded into weekday+time windows checked against that lab's meetings; if the lab has no date range set, the check falls back to the conflict's own unclamped span. Entries with `ignore_for_labs` are skipped entirely for this check. Because the app has no per-occurrence lab-assignment model, a lab that's actively meeting on the conflicting weekday within the (clamped) window is blocked entirely, not just for the specific date(s) within the conflict — the residual imprecision the `ignore_for_labs` toggle exists to work around.
 
 Scoring (higher is better), with all magnitudes as **user-configurable
 weights** — defaults live in `_DEFAULT_SETTINGS` in `ta_scheduler.py`, the
@@ -159,7 +160,7 @@ Hard constraints:
 3. No conflict with assigned lab meetings (exam weekday vs. lab weekday)
 4. No conflict with grad course regular meetings (weekday) or grad course exams (date-specific)
 5. No conflict with other_commitments (weekday)
-6. No conflict with the TA's `date_conflicts[]` (date-specific)
+6. No conflict with the TA's `date_conflicts[]` (date-specific) — an interval-overlap test against the exam's exact date: the conflict's first day contributes from `start_min`, its last day up to `end_min`, and any days between are treated as full days. Always enforced regardless of `ignore_for_labs` (that flag only ever narrows the lab-side check)
 7. TBD exams (no date/time) are skipped
 
 `time_tbd` exams (date known, time flexible) are exempt from constraints 2–6 entirely — the PE cap (1) still applies. They are not skipped like `tbd` exams: they're still built into slots and still solved for.
@@ -251,6 +252,7 @@ Data accessors:
 - `examLabel(exam, fallback='—')` — `displayName` for exams (course + section).
 - `examFullLabel(exam)` — `"CHM 111 001 — Midterm 1"`, degrading to whichever half exists.
 - `examDateTimeLabel(exam)` — `"2026-03-05 9:00 AM–10:15 AM"`, `"2026-03-05 — Time TBD"` for `time_tbd`, or `"TBD"`.
+- `dateConflictSpan(dc)` / `expandDateConflictWeekdays(dc, clampStart?, clampEnd?)` / `dateConflictOverlapsDate(dc, dateStr, startMin, endMin)` / `dateConflictLabel(dc)` — the frontend twins of the backend's `_date_conflict_days()` / `_expand_date_conflict_weekdays()` / `_date_conflict_overlaps()` helpers, operating on `date_conflicts[]` entries. `dateConflictLabel(dc)` renders `"2026-03-05 3:00 PM–5:00 PM"` (single day) or `"2026-03-05 3:00 PM – 2026-03-07 9:00 PM"` (multi-day).
 
 Rendering primitives:
 - `buildTable(headers, rows, totalRows)` — the one table builder; emits `.data-table` inside a `.data-table-wrap`. A cell may be a string, a DOM node, or an array of nodes, so tables with live inputs and chips go through it too. The last `totalRows` rows get `.summary-total`.
@@ -267,7 +269,7 @@ Rendering primitives:
 - `escHtml(s)` — required for anything user-named that reaches `innerHTML`.
 
 Conflict detection (single source of truth, used by both the grids and the modals):
-- `taLabConflictReasons(ta, lab, maps?)` and `taExamConflictReasons(ta, exam, maps?)` return human-readable reason strings. They deliberately **exclude** the SE/PE cap check, which the caller adds because only it knows the role. Pass `conflictMaps()` when calling in a loop.
+- `taLabConflictReasons(ta, lab, maps?)` and `taExamConflictReasons(ta, exam, maps?)` return human-readable reason strings. They deliberately **exclude** the SE/PE cap check, which the caller adds because only it knows the role. Pass `conflictMaps()` when calling in a loop. Both check `ta.date_conflicts[]` — the lab side skips entries with `ignore_for_labs` and clamps each conflict to the lab's own `date_start`/`date_end`; the exam side always enforces, no `ignore_for_labs` check.
 
 ## Styling
 

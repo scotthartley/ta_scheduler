@@ -766,6 +766,88 @@ function fmtMeetings(item, dayNames = DAYS) {
   return parts.length ? parts.join(', ') : '—';
 }
 
+// (start_date, end_date) raw ISO strings for a date_conflicts[] entry, falling
+// back to the legacy singular `date` field. Mirrors the backend's _dc_dates().
+function dcDates(dc) {
+  const startDate = dc.start_date || dc.date;
+  const endDate = dc.end_date || dc.date || startDate;
+  return [startDate, endDate];
+}
+
+// {d0, d1} as local-midnight Dates for a date_conflicts[] entry, or null if
+// unparseable. Mirrors the backend's _date_conflict_days().
+function dateConflictSpan(dc) {
+  const [startDate, endDate] = dcDates(dc);
+  if (!startDate || !endDate) return null;
+  const d0 = new Date(startDate + 'T00:00:00');
+  const d1 = new Date(endDate + 'T00:00:00');
+  if (isNaN(d0) || isNaN(d1)) return null;
+  return d0 <= d1 ? {d0, d1} : {d0: d1, d1: d0};
+}
+
+// (start_min, end_min) covering `day` within the original (unclamped) span
+// {d0, d1}, or null if `day` falls outside it. Mirrors the backend's
+// _date_conflict_window_for_day().
+function dateConflictWindowForDay(dc, span, day) {
+  if (day < span.d0 || day > span.d1) return null;
+  const startMin = day.getTime() === span.d0.getTime() ? (dc.start_min ?? 0) : 0;
+  const endMin = day.getTime() === span.d1.getTime() ? (dc.end_min ?? 1440) : 1440;
+  return [startMin, endMin];
+}
+
+// Expand a date_conflicts[] entry into [{weekday, start_min, end_min}, ...],
+// one per calendar day the span touches. clampStart/clampEnd (ISO strings)
+// narrow the iteration bounds to their intersection with the entry's real
+// span — they never change which day counts as first/last for partial-time-
+// window purposes. Mirrors the backend's _expand_date_conflict_weekdays().
+function expandDateConflictWeekdays(dc, clampStart, clampEnd) {
+  const span = dateConflictSpan(dc);
+  if (!span) return [];
+  let iterStart = span.d0, iterEnd = span.d1;
+  if (clampStart) {
+    const cs = new Date(clampStart + 'T00:00:00');
+    if (!isNaN(cs) && cs > iterStart) iterStart = cs;
+  }
+  if (clampEnd) {
+    const ce = new Date(clampEnd + 'T00:00:00');
+    if (!isNaN(ce) && ce < iterEnd) iterEnd = ce;
+  }
+  const result = [];
+  for (let day = new Date(iterStart); day <= iterEnd; day.setDate(day.getDate() + 1)) {
+    const window = dateConflictWindowForDay(dc, span, day);
+    if (window) {
+      // getDay(): 0=Sun..6=Sat. Convert to the app's 0=Mon..4=Fri convention.
+      const weekday = (day.getDay() + 6) % 7;
+      result.push({weekday, start_min: window[0], end_min: window[1]});
+    }
+  }
+  return result;
+}
+
+// True if a date_conflicts[] entry overlaps a specific literal date/time
+// window. Mirrors the backend's _date_conflict_overlaps().
+function dateConflictOverlapsDate(dc, dateStr, startMin, endMin) {
+  const span = dateConflictSpan(dc);
+  if (!span || !dateStr) return false;
+  const day = new Date(dateStr + 'T00:00:00');
+  if (isNaN(day)) return false;
+  const window = dateConflictWindowForDay(dc, span, day);
+  if (!window) return false;
+  return startMin < window[1] && endMin > window[0];
+}
+
+// "2026-03-05 3:00 PM–5:00 PM" (single day) or
+// "2026-03-05 3:00 PM – 2026-03-07 9:00 PM" (multi-day).
+function dateConflictLabel(dc) {
+  const [startDate, endDate] = dcDates(dc);
+  if (!startDate) return '?';
+  const startMin = dc.start_min ?? 0, endMin = dc.end_min ?? 0;
+  if (startDate === endDate) {
+    return `${startDate} ${fmtRange(startMin, endMin)}`;
+  }
+  return `${startDate} ${fmtTime(startMin)} – ${endDate} ${fmtTime(endMin)}`;
+}
+
 // True when a TA has no availability info logged (courses/commitments/conflicts)
 // and hasn't been manually marked as reviewed.
 function taNeedsScheduleReview(ta) {
@@ -1422,16 +1504,37 @@ function renderTAForm(item, form) {
 
   // Date-Specific Conflicts — the add-action is this group's footer row.
   form.appendChild(formHeading('Date-Specific Conflicts'));
+  form.appendChild(el('p','help-text',
+    'Blocks the matching weekday/time for the whole semester in lab scheduling, not just the specific date(s) — lab assignments are weekly-recurring.'));
   const addDcBtn = el('button','btn-sm','+ Add Date Conflict');
   const dcList = inlineList((item.date_conflicts||[]).map((dc, i) => {
     const lbl = document.createElement('input');
-    lbl.type='text'; lbl.value=dc.label||''; lbl.className='il-label';
-    lbl.placeholder='Label';
+    lbl.type='text'; lbl.value=dc.label||''; lbl.placeholder='Label';
+    lbl.style.cssText = 'flex:1;min-width:0;padding-left:0;';
     lbl.oninput = () => { dc.label=lbl.value; markDirty(); };
-    const info = el('span','il-meta');
-    info.textContent = `${dc.date||'?'}  ${fmtRange(dc.start_min, dc.end_min)}`;
+    const exemptWrap = el('span');
+    exemptWrap.style.cssText = 'display:flex;align-items:center;gap:4px;flex-shrink:0;';
+    const exemptCb = document.createElement('input');
+    exemptCb.type = 'checkbox';
+    exemptCb.checked = !!dc.ignore_for_labs;
+    exemptCb.title = 'Exempt from lab assignments (still blocks proctoring)';
+    exemptCb.onchange = () => {
+      dc.ignore_for_labs = exemptCb.checked; markDirty(); renderTAConflictList(item);
+    };
+    exemptWrap.append(exemptCb, el('span','il-meta','Labs exempt'));
+    // Top line: label + exempt toggle. Bottom line: the date range, given its
+    // own full-width row so it never needs to wrap or squeeze the label.
+    const topRow = el('div');
+    topRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    topRow.append(lbl, exemptWrap);
+    const info = el('div','il-meta');
+    info.textContent = dateConflictLabel(dc);
+    info.style.whiteSpace = 'normal';
+    const stack = el('div');
+    stack.style.cssText = 'display:flex;flex-direction:column;flex:1;min-width:0;gap:2px;';
+    stack.append(topRow, info);
     return {
-      cells: [lbl, info],
+      cells: [stack],
       removeTitle: 'Remove conflict',
       onRemove: () => { item.date_conflicts.splice(i,1); markDirty(); renderItemForm(); },
     };
@@ -1444,24 +1547,37 @@ function renderTAForm(item, form) {
     const lblInp = document.createElement('input');
     lblInp.type='text'; lblInp.placeholder='Label';
     lblInp.className='w-full'; lblInp.style.marginBottom='4px';
-    const dateInp = document.createElement('input');
-    dateInp.type='date'; dateInp.className='w-full'; dateInp.style.marginBottom='4px';
+    const dateRow = el('div','form-row'); dateRow.style.alignItems='center'; dateRow.style.gap='4px';
+    const startDateInp = document.createElement('input');
+    startDateInp.type='date'; startDateInp.style.flex='1'; startDateInp.style.minWidth='0';
+    const endDateInp = document.createElement('input');
+    endDateInp.type='date'; endDateInp.style.flex='1'; endDateInp.style.minWidth='0';
+    let endTouched = false;
+    startDateInp.oninput = () => { if (!endTouched) endDateInp.value = startDateInp.value; };
+    endDateInp.oninput = () => { endTouched = true; };
+    dateRow.append(startDateInp, el('span',null,'–'), endDateInp);
     let startMin = 480, endMin = 600;
     const startSel = timeSelect(startMin, v => startMin = v);
     const endSel   = timeSelect(endMin, v => endMin = v);
+    const timeRow = el('div','form-row'); timeRow.style.alignItems='center'; timeRow.style.gap='4px';
+    startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
+    timeRow.append(startSel, el('span',null,'–'), endSel);
+    const exemptRow = el('div','checkbox-row'); exemptRow.style.marginTop='4px';
+    const exemptCb = document.createElement('input'); exemptCb.type='checkbox';
+    exemptRow.append(exemptCb, el('span',null,'Exempt from lab assignments (still blocks proctoring)'));
     const saveBtn = el('button','btn-sm btn-primary','Add');
     saveBtn.style.marginTop='6px';
     saveBtn.onclick = () => {
-      if (!dateInp.value) { alert('Please select a date.'); return; }
+      if (!startDateInp.value) { alert('Please select a start date.'); return; }
+      const endDate = endDateInp.value || startDateInp.value;
+      if (endDate < startDateInp.value) { alert('End date cannot be before start date.'); return; }
       item.date_conflicts = item.date_conflicts||[];
-      item.date_conflicts.push({label:lblInp.value||'Conflict', date:dateInp.value,
-        start_min:startMin, end_min:endMin});
+      item.date_conflicts.push({label:lblInp.value||'Conflict',
+        start_date:startDateInp.value, end_date:endDate,
+        start_min:startMin, end_min:endMin, ignore_for_labs:exemptCb.checked});
       markDirty(); renderItemForm();
     };
-    const row = el('div','form-row'); row.style.alignItems='center'; row.style.gap='4px';
-    startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
-    row.append(startSel, el('span',null,'–'), endSel);
-    f.append(lblInp, dateInp, row, saveBtn);
+    f.append(lblInp, dateRow, timeRow, exemptRow, saveBtn);
     dcList.insertAdjacentElement('afterend', f);
   };
 
@@ -1499,9 +1615,9 @@ function renderTAConflictList(ta) {
     });
   });
   courseExams.sort((a,b)=>a.sort.localeCompare(b.sort));
-  const dateCons = (ta.date_conflicts||[]).filter(dc=>dc.date)
-    .map(dc=>({sort:dc.date,
-      text:`${escHtml(dc.label||'Conflict')}: ${dc.date}  ${fmtRange(dc.start_min, dc.end_min)}`}))
+  const dateCons = (ta.date_conflicts||[]).filter(dc=>dc.start_date||dc.date)
+    .map(dc=>({sort: dc.start_date||dc.date,
+      text:`${escHtml(dc.label||'Conflict')}: ${dateConflictLabel(dc)}${dc.ignore_for_labs ? ' (labs exempt)' : ''}`}))
     .sort((a,b)=>a.sort.localeCompare(b.sort));
   if (!courseExams.length && !dateCons.length) return;
   if (courseExams.length) {
@@ -3922,6 +4038,17 @@ function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
       }
     }
   }
+  // Date conflicts, clamped to this lab's own active date range
+  for (const dc of (ta.date_conflicts || [])) {
+    if (dc.ignore_for_labs) continue;
+    for (const w of expandDateConflictWeekdays(dc, lab.date_start, lab.date_end)) {
+      for (const lm of labMeetings) {
+        if (lm.day === w.weekday && overlap(lm.start_min, lm.end_min, w.start_min, w.end_min)) {
+          reasons.push(`conflicts with date conflict "${dc.label || 'Conflict'}"`);
+        }
+      }
+    }
+  }
   return reasons;
 }
 
@@ -3969,6 +4096,12 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
   for (const oc of (ta.other_commitments || [])) {
     if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
       reasons.push(`conflicts with commitment`);
+    }
+  }
+  // Date conflicts — always enforced, regardless of ignore_for_labs
+  for (const dc of (ta.date_conflicts || [])) {
+    if (dateConflictOverlapsDate(dc, exam.date, exam.start_min, exam.end_min)) {
+      reasons.push(`conflicts with date conflict "${dc.label || 'Conflict'}"`);
     }
   }
   return reasons;
