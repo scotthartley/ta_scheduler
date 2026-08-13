@@ -253,9 +253,18 @@ def _parse_regular_date_range(date_str, year):
 
 
 def _extract_year_from_term(term_str):
-    """Extract 4-digit year from term code like '202620'."""
-    m = re.match(r'(\d{4})', str(term_str).strip())
-    return int(m.group(1)) if m else None
+    """Extract the calendar year for a term's Meeting Dates from a Banner-style
+    term code like '202710' (YYYY + 2-digit term suffix). Fall terms (suffix
+    '10') are coded under the following calendar year's label — e.g. Fall 2026
+    is '202710' — so the year is decremented by one to get the true calendar
+    year those Meeting Dates fall in."""
+    m = re.match(r'(\d{4})(\d{2})?', str(term_str).strip())
+    if not m:
+        return None
+    year = int(m.group(1))
+    if m.group(2) == '10':
+        year -= 1
+    return year
 
 
 # ── routes ───────────────────────────────────────────────────────────────────
