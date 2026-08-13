@@ -900,10 +900,62 @@ def solve_proctoring(data):
 
 # ── DOCX export ──────────────────────────────────────────────────────────────
 
+def _style_docx(doc):
+    """Swap the default Cambria/Calibri theme for a cleaner, more modern pair
+    and give the heading levels enough size/weight/color contrast to read as
+    a hierarchy on their own, since the document is mostly headings and
+    tables with very little body text."""
+    from docx.shared import Pt, RGBColor
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    HEADING_FONT = "Trebuchet MS"
+    BODY_FONT = "Arial"
+    INK = RGBColor(0x1F, 0x29, 0x37)
+    ACCENT = RGBColor(0x2F, 0x54, 0x96)
+    MUTED = RGBColor(0x59, 0x59, 0x59)
+
+    normal = doc.styles["Normal"]
+    normal.font.name = BODY_FONT
+    normal.font.size = Pt(10.5)
+    normal.font.color.rgb = INK
+
+    specs = {
+        # style name: (size, bold, italic, color, all_caps, space_before, space_after)
+        "Title":     (26, True,  False, INK,    False, 0,  14),
+        "Heading 1": (15, True,  False, ACCENT, True,  20, 4),
+        "Heading 2": (14, True,  False, INK,    False, 10, 4),
+        "Heading 3": (11.5, True, False, MUTED, False, 8,  2),
+        "Heading 4": (10.5, False, True, MUTED, False, 6,  2),
+    }
+    for name, (size, bold, italic, color, all_caps, before, after) in specs.items():
+        style = doc.styles[name]
+        style.font.name = HEADING_FONT
+        style.font.size = Pt(size)
+        style.font.bold = bold
+        style.font.italic = italic
+        style.font.color.rgb = color
+        style.font.all_caps = all_caps
+        style.paragraph_format.space_before = Pt(before)
+        style.paragraph_format.space_after = Pt(after)
+
+    # A hairline rule under Heading 1 marks the document's three major parts.
+    pPr = doc.styles["Heading 1"].element.get_or_add_pPr()
+    pBdr = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), "6")
+    bottom.set(qn("w:space"), "4")
+    bottom.set(qn("w:color"), "2F5496")
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+
 def generate_docx(data):
     from docx import Document
 
     doc = Document()
+    _style_docx(doc)
     doc.add_heading("TA Schedule", 0)
 
     roles_map = {r["id"]: r for r in data.get("roles", [])}
@@ -918,62 +970,142 @@ def generate_docx(data):
         s = lab.get("section", "")
         return f"{lab['name']} {s}".strip() if s else lab["name"]
 
+    def full_exam_label(exam):
+        cname = exam.get("course_name", "")
+        sect = exam.get("section", "")
+        label = f"{cname} {sect}".strip() if cname else exam.get("name", "Exam")
+        sub = exam.get("name", "")
+        return f"{label} — {sub}" if sub and label != sub else label or sub
+
+    def fill_cell_lines(cell, lines):
+        cell.paragraphs[0].text = lines[0] if lines else ""
+        for line in lines[1:]:
+            cell.add_paragraph(line)
+
     # Lab-centric
     doc.add_heading("Lab Assignments", 1)
-    for lab in sorted(data.get("labs", []), key=lambda l: (l.get("name", ""), l.get("section", ""))):
-        doc.add_heading(lab_disp(lab), 2)
-        doc.add_paragraph(fmt_meetings(lab, DAY_LONG))
-        lab_asgn = [a for a in assignments if a["lab_id"] == lab["id"]]
-        if lab_asgn:
+    labs = data.get("labs", [])
+    course_names = sorted({lab.get("name", "") for lab in labs})
+    for course_name in course_names:
+        course_labs = sorted(
+            [lab for lab in labs if lab.get("name", "") == course_name],
+            key=lambda l: l.get("section", ""),
+        )
+        doc.add_heading(course_name, 2)
+        course_lab_ids = {lab["id"] for lab in course_labs}
+        course_asgn = [a for a in assignments if a["lab_id"] in course_lab_ids]
+        if course_asgn:
+            by_ta = {}
+            for a in course_asgn:
+                by_ta.setdefault(a["ta_id"], []).append(a)
             tbl = doc.add_table(rows=1, cols=3)
             tbl.style = "Table Grid"
             hdr = tbl.rows[0].cells
-            hdr[0].text, hdr[1].text, hdr[2].text = "Role", "TA", "Status"
-            for a in lab_asgn:
+            hdr[0].text, hdr[1].text, hdr[2].text = "TA", "Sections", "Email"
+            for ta_id in sorted(by_ta, key=lambda tid: tas_map.get(tid, {}).get("name", "")):
+                ta_asgns = sorted(
+                    by_ta[ta_id],
+                    key=lambda a: labs_map.get(a["lab_id"], {}).get("section", ""),
+                )
                 row = tbl.add_row().cells
-                row[0].text = roles_map.get(a["role_id"], {}).get("label", a.get("role_id", ""))
-                row[1].text = tas_map.get(a["ta_id"], {}).get("name", a.get("ta_id", ""))
-                row[2].text = "Locked" if a.get("locked") else "Assigned"
-        else:
-            doc.add_paragraph("No assignments")
+                row[0].text = tas_map.get(ta_id, {}).get("name", ta_id)
+                fill_cell_lines(row[1], [
+                    f"{labs_map.get(a['lab_id'], {}).get('section', '')} "
+                    f"({roles_map.get(a['role_id'], {}).get('label', a.get('role_id', ''))})"
+                    for a in ta_asgns
+                ])
+                row[2].text = tas_map.get(ta_id, {}).get("email", "")
+        doc.add_paragraph()
+        for lab in course_labs:
+            doc.add_heading(lab_disp(lab), 3)
+            doc.add_paragraph(fmt_meetings(lab, DAY_LONG))
+            lab_asgn = [a for a in assignments if a["lab_id"] == lab["id"]]
+            if lab_asgn:
+                tbl = doc.add_table(rows=1, cols=3)
+                tbl.style = "Table Grid"
+                hdr = tbl.rows[0].cells
+                hdr[0].text, hdr[1].text, hdr[2].text = "Role", "TA", "Email"
+                for a in lab_asgn:
+                    row = tbl.add_row().cells
+                    row[0].text = roles_map.get(a["role_id"], {}).get("label", a.get("role_id", ""))
+                    row[1].text = tas_map.get(a["ta_id"], {}).get("name", a.get("ta_id", ""))
+                    row[2].text = tas_map.get(a["ta_id"], {}).get("email", "")
+            else:
+                doc.add_paragraph("No assignments")
+            doc.add_paragraph()
+
+    other_duty_rows = [
+        (ta, od)
+        for ta in data.get("tas", [])
+        for od in ta.get("outside_duties", [])
+    ]
+    if other_duty_rows:
+        doc.add_heading("Other Duties", 2)
+        tbl = doc.add_table(rows=1, cols=2)
+        tbl.style = "Table Grid"
+        hdr = tbl.rows[0].cells
+        hdr[0].text, hdr[1].text = "TA", "Duty"
+        for ta, od in sorted(other_duty_rows, key=lambda pair: (pair[0].get("name", ""), pair[1].get("label", ""))):
+            row = tbl.add_row().cells
+            row[0].text = ta.get("name", "")
+            row[1].text = od.get("label", "Other Duty")
         doc.add_paragraph()
 
     # Exam proctoring
     exams = data.get("exams", [])
     if exams and proctor_assignments:
         doc.add_heading("Exam Proctoring", 1)
-        sorted_exams = sorted(exams, key=lambda e: (e.get("course_name", ""), e.get("section", ""), e.get("date", "")))
-        for exam in sorted_exams:
-            exam_asgn = [a for a in proctor_assignments if a["exam_id"] == exam["id"]]
-            if not exam_asgn:
+
+        def exam_course_key(exam):
+            return exam.get("course_name") or exam.get("name", "")
+
+        course_keys = sorted({exam_course_key(e) for e in exams})
+        for course_key in course_keys:
+            course_exams = [e for e in exams if exam_course_key(e) == course_key]
+            course_exam_ids = {e["id"] for e in course_exams}
+            if not any(a["exam_id"] in course_exam_ids for a in proctor_assignments):
                 continue
-            cname = exam.get("course_name", "")
-            sect = exam.get("section", "")
-            label = f"{cname} {sect}".strip() if cname else exam.get("name", "Exam")
-            sub = exam.get("name", "")
-            doc.add_heading(f"{label} — {sub}" if sub and label != sub else label or sub, 2)
-            if exam.get("time_tbd"):
-                time_str = "Time TBD"
-            else:
-                time_str = (
-                    f"{fmt_time(exam.get('start_min', 0))} – "
-                    f"{fmt_time(exam.get('end_min', 0))}"
+            doc.add_heading(course_key or "Exam", 2)
+            sections = sorted({e.get("section", "") for e in course_exams})
+            for section in sections:
+                section_exams = sorted(
+                    [e for e in course_exams if e.get("section", "") == section],
+                    key=lambda e: e.get("date", ""),
                 )
-            doc.add_paragraph(f"{exam.get('date', '—')}, {time_str}")
-            for a in exam_asgn:
-                ta = tas_map.get(a["ta_id"])
-                status = "Locked" if a.get("locked") else "Assigned"
-                doc.add_paragraph(f"  {ta.get('name', a['ta_id']) if ta else a['ta_id']} ({status})")
-        doc.add_paragraph()
+                section_exam_ids = {e["id"] for e in section_exams}
+                if not any(a["exam_id"] in section_exam_ids for a in proctor_assignments):
+                    continue
+                section_heading = f"{course_key} {section}".strip() if course_key else section
+                doc.add_heading(section_heading or "—", 3)
+                for exam in section_exams:
+                    exam_asgn = [a for a in proctor_assignments if a["exam_id"] == exam["id"]]
+                    if not exam_asgn:
+                        continue
+                    if exam.get("time_tbd"):
+                        time_str = "Time TBD"
+                    else:
+                        time_str = (
+                            f"{fmt_time(exam.get('start_min', 0))} – "
+                            f"{fmt_time(exam.get('end_min', 0))}"
+                        )
+                    doc.add_heading(f"{exam.get('name', 'Exam')} — {exam.get('date', '—')}, {time_str}", 4)
+                    tbl = doc.add_table(rows=1, cols=2)
+                    tbl.style = "Table Grid"
+                    hdr = tbl.rows[0].cells
+                    hdr[0].text, hdr[1].text = "TA", "Email"
+                    for a in exam_asgn:
+                        ta = tas_map.get(a["ta_id"])
+                        row = tbl.add_row().cells
+                        row[0].text = ta.get("name", a["ta_id"]) if ta else a["ta_id"]
+                        row[1].text = ta.get("email", "") if ta else ""
+            doc.add_paragraph()
 
     # TA-centric
     doc.add_heading("TA Assignments", 1)
     for ta in data.get("tas", []):
         doc.add_heading(ta["name"], 2)
-        email_str = f", Email: {ta['email']}" if ta.get('email') else ''
-        doc.add_paragraph(
-            f"{ta.get('experience','').capitalize()}, Max SE: {ta.get('max_se', 2.0):.1f}{email_str}"
-        )
+        if ta.get("email"):
+            doc.add_paragraph(f"Email: {ta['email']}")
         schedule_lines = []
         for gc_id in ta.get("grad_course_ids", []):
             gc = gc_map.get(gc_id)
@@ -988,25 +1120,24 @@ def generate_docx(data):
                 f"{dc['label']} — {dc['date']} {fmt_time(dc['start_min'])}–{fmt_time(dc['end_min'])}"
             )
         if schedule_lines:
-            doc.add_paragraph("Schedule")
+            doc.add_heading("Schedule", 3)
             for line in schedule_lines:
-                doc.add_paragraph(line)
+                doc.add_paragraph(line, style="List Bullet")
         ta_asgn = [a for a in assignments if a["ta_id"] == ta["id"]]
         outside = ta.get("outside_duties", [])
         ta_proctor = sorted(
             [a for a in proctor_assignments if a["ta_id"] == ta["id"]],
             key=lambda a: (
-                exams_map.get(a["exam_id"], {}).get("course_name", ""),
-                exams_map.get(a["exam_id"], {}).get("section", ""),
                 exams_map.get(a["exam_id"], {}).get("date", ""),
+                exams_map.get(a["exam_id"], {}).get("start_min", 0),
             ),
         )
         if ta_asgn or outside:
-            tbl = doc.add_table(rows=1, cols=4)
+            doc.add_heading("Lab Assignments", 3)
+            tbl = doc.add_table(rows=1, cols=3)
             tbl.style = "Table Grid"
             hdr = tbl.rows[0].cells
-            hdr[0].text, hdr[1].text, hdr[2].text, hdr[3].text = "Lab", "Role", "Time", "SE"
-            total_se = 0.0
+            hdr[0].text, hdr[1].text, hdr[2].text = "Lab", "Role", "Time"
             for a in sorted(
                 ta_asgn,
                 key=lambda a: (
@@ -1016,61 +1147,37 @@ def generate_docx(data):
             ):
                 lab = labs_map.get(a["lab_id"], {})
                 role = roles_map.get(a["role_id"], {})
-                se = role.get("se_value", 0)
-                total_se += se
                 row = tbl.add_row().cells
                 row[0].text = lab_disp(lab)
                 row[1].text = role.get("label", "")
                 if lab:
                     row[2].text = fmt_meetings(lab)
-                row[3].text = f"{se:.1f}"
             for od in outside:
-                se = od.get("se_value", 0)
-                total_se += se
                 row = tbl.add_row().cells
-                row[0].text = od.get("label", "Outside Duty")
-                row[1].text = "Outside Duty"
+                row[0].text = od.get("label", "Other Duty")
+                row[1].text = "Other Duty"
                 row[2].text = "—"
-                row[3].text = f"{se:.1f}"
-            tot = tbl.add_row().cells
-            tot[0].text = "Total SE"
-            tot[3].text = f"{total_se:.1f} / {ta.get('max_se', 2.0):.1f}"
         outside_proctor = ta.get("outside_proctoring", [])
         if ta_proctor or outside_proctor:
-            doc.add_paragraph("Proctoring")
-            ptbl = doc.add_table(rows=1, cols=4)
+            doc.add_heading("Proctoring", 3)
+            ptbl = doc.add_table(rows=1, cols=3)
             ptbl.style = "Table Grid"
             phdr = ptbl.rows[0].cells
-            phdr[0].text, phdr[1].text, phdr[2].text, phdr[3].text = "Exam", "Date", "Time", "PE"
-            total_pe = 0.0
+            phdr[0].text, phdr[1].text, phdr[2].text = "Date", "Time", "Exam"
             for pa in ta_proctor:
                 exam = exams_map.get(pa["exam_id"], {})
-                pe = exam.get("pe_value", 0)
-                total_pe += pe
-                cname = exam.get("course_name", "")
-                sect = exam.get("section", "")
-                label = f"{cname} {sect}".strip() if cname else exam.get("name", "Exam")
-                sub = exam.get("name", "")
-                exam_label = f"{label} — {sub}" if sub and label != sub else label or sub
                 prow = ptbl.add_row().cells
-                prow[0].text = exam_label
-                prow[1].text = exam.get("date", "—")
-                prow[2].text = (
+                prow[0].text = exam.get("date", "—")
+                prow[1].text = (
                     f"{fmt_time(exam.get('start_min', 0))}–{fmt_time(exam.get('end_min', 0))}"
                     if exam.get("date") else "—"
                 )
-                prow[3].text = f"{pe:.1f}"
+                prow[2].text = full_exam_label(exam)
             for op in outside_proctor:
-                pe = op.get("pe_value", 0)
-                total_pe += pe
                 orow = ptbl.add_row().cells
-                orow[0].text = op.get("label", "Outside Proctoring")
+                orow[0].text = "—"
                 orow[1].text = "—"
-                orow[2].text = "—"
-                orow[3].text = f"{pe:.1f}"
-            ptot = ptbl.add_row().cells
-            ptot[0].text = "Total PE"
-            ptot[3].text = f"{total_pe:.1f}"
+                orow[2].text = op.get("label", "Outside Proctoring")
         if not ta_asgn and not outside and not ta_proctor and not outside_proctor:
             doc.add_paragraph("No assignments")
         doc.add_paragraph()

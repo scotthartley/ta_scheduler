@@ -2146,12 +2146,12 @@ const LOAD_SECTIONS = {
   duties: {
     field: 'outside_duties', valueKey: 'se_value', unit: 'SE',
     sectionId: 'outside-duties-section',
-    title: 'Outside Duties', addLabel: '+ Add Duty',
-    addTitle: "Add an outside duty that counts toward a TA's SE but has no fixed meeting time",
+    title: 'Other Duties', addLabel: '+ Add Duty',
+    addTitle: "Add another duty that counts toward a TA's SE but has no fixed meeting time",
     hint: "Duties that count toward a TA's SE but have no fixed meeting time",
-    modalTitle: 'Add Outside Duty', placeholder: 'e.g. Grading',
+    modalTitle: 'Add Other Duty', placeholder: 'e.g. Grading',
     defaultValue: 0.5, defaultLabel: 'Duty',
-    // Outside duties count toward Used SE, so refresh the summary too.
+    // Other duties count toward Used SE, so refresh the summary too.
     afterChange: () => renderTASummary($id('sched-ta-summary')),
   },
   proctoring: {
@@ -2566,7 +2566,7 @@ function renderSummary() {
       for (const od of outside) {
         const se = od.se_value ?? 0;
         totalSE += se;
-        seRows.push([od.label||'Outside Duty', 'Outside Duty', '—', se.toFixed(1)]);
+        seRows.push([od.label||'Other Duty', 'Other Duty', '—', se.toFixed(1)]);
       }
       seRows.push(['Total SE', '', '', `${totalSE.toFixed(1)} / ${(ta.max_se??2).toFixed(1)}`]);
       c.append(buildTable(['Lab','Role','Time','SE'], seRows, 1));
@@ -4035,7 +4035,7 @@ function showHelpModal() {
           <li><strong>PE (Proctoring Equivalent):</strong> unit of proctoring workload. Independent from SE.</li>
           <li><strong>Experienced / Inexperienced:</strong> controls experience-preference soft constraints.</li>
           <li><strong>Locked assignments:</strong> preserved by the solver; unlocked ones can be replaced.</li>
-          <li><strong>Outside duties:</strong> SE-consuming responsibilities with no fixed meeting time.</li>
+          <li><strong>Other duties:</strong> SE-consuming responsibilities with no fixed meeting time.</li>
         </ul>
       </div>
       <div class="modal-footer">
