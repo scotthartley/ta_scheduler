@@ -26,6 +26,7 @@ EMPTY_DATA = {
     "roles": [],
     "grad_courses": [], "labs": [], "tas": [], "assignments": [],
     "exams": [], "proctor_assignments": [],
+    "settings": {},
 }
 
 
@@ -49,7 +50,7 @@ def load_data():
     # Backward compat: fill missing keys
     for key in EMPTY_DATA:
         if key not in data:
-            data[key] = copy.deepcopy(EMPTY_DATA[key]) if key == "roles" else []
+            data[key] = copy.deepcopy(EMPTY_DATA[key])
     return data
 
 
@@ -422,10 +423,31 @@ _EXPERIENCE_BONUS    = 200
 _NEW_ROLE_PENALTY    = 800   # cost of opening a new (TA, role) pairing
 _LOAD_BALANCE_WEIGHT = 500
 
+_LAB_FAMILIARITY_BONUS      = 300
+_LAB_SECTION_BONUS          = 150
+_SAME_COURSE_PROCTOR_BONUS  = 200
+_SAME_SECTION_PROCTOR_BONUS = 100
+_PROC_LOAD_BALANCE_WEIGHT   = 500
+
 _SPREAD_WINDOW_DAYS     = 7    # exams within this many days of each other count as "clustered"
 _SPREAD_PENALTY_PER_DAY = 40   # max penalty 280 (same-day) — under one PE load-balance unit (500),
                                 # so this nudges ties rather than overriding load balance or
                                 # course/section familiarity
+
+# Single source of truth for user-configurable solver weights, persisted in
+# data["settings"]. Keep keys in sync with DEFAULT_SETTINGS in static/index.html.
+_DEFAULT_SETTINGS = {
+    "experience_bonus": _EXPERIENCE_BONUS,
+    "new_role_penalty": _NEW_ROLE_PENALTY,
+    "load_balance_weight": _LOAD_BALANCE_WEIGHT,
+    "lab_familiarity_bonus": _LAB_FAMILIARITY_BONUS,
+    "lab_section_bonus": _LAB_SECTION_BONUS,
+    "same_course_proctor_bonus": _SAME_COURSE_PROCTOR_BONUS,
+    "same_section_proctor_bonus": _SAME_SECTION_PROCTOR_BONUS,
+    "proc_load_balance_weight": _PROC_LOAD_BALANCE_WEIGHT,
+    "spread_window_days": _SPREAD_WINDOW_DAYS,
+    "spread_penalty_per_day": _SPREAD_PENALTY_PER_DAY,
+}
 
 
 def solve(data):
@@ -434,6 +456,11 @@ def solve(data):
     tas       = data.get("tas", [])
     assignments_in = data.get("assignments", [])
     gc_map    = {gc["id"]: gc for gc in data.get("grad_courses", [])}
+
+    settings = {**_DEFAULT_SETTINGS, **(data.get("settings") or {})}
+    experience_bonus    = settings["experience_bonus"]
+    new_role_penalty    = settings["new_role_penalty"]
+    load_balance_weight = settings["load_balance_weight"]
 
     if not labs or not tas:
         return {"status": "feasible", "assignments": assignments_in, "diagnostics": {}}
@@ -541,15 +568,15 @@ def solve(data):
     def score(st, ta, lab, rr):
         s = _BASE_SCORE
         if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
-            s += _EXPERIENCE_BONUS
+            s += experience_bonus
         roles_held = st["roles"][ta["id"]]
         if rr["role_id"] not in roles_held:
             # Opening a new (TA, role) pairing is the thing being minimised, so it is
             # charged even for a TA's first role — that is what lets a TA already in
             # this role outrank an idle one. Scaling by roles already held sends
             # unavoidable new pairings to the least-fragmented TA.
-            s -= _NEW_ROLE_PENALTY * (1 + len(roles_held))
-        s -= st["used_se"][ta["id"]] * _LOAD_BALANCE_WEIGHT
+            s -= new_role_penalty * (1 + len(roles_held))
+        s -= st["used_se"][ta["id"]] * load_balance_weight
         s += random.random()
         return s
 
@@ -655,6 +682,15 @@ def solve_proctoring(data):
     labs = data.get("labs", [])
     gc_map = {gc["id"]: gc for gc in data.get("grad_courses", [])}
     assignments = data.get("assignments", [])
+
+    settings = {**_DEFAULT_SETTINGS, **(data.get("settings") or {})}
+    lab_familiarity_bonus      = settings["lab_familiarity_bonus"]
+    lab_section_bonus          = settings["lab_section_bonus"]
+    same_course_proctor_bonus  = settings["same_course_proctor_bonus"]
+    same_section_proctor_bonus = settings["same_section_proctor_bonus"]
+    proc_load_balance_weight   = settings["proc_load_balance_weight"]
+    spread_window_days         = settings["spread_window_days"]
+    spread_penalty_per_day     = settings["spread_penalty_per_day"]
 
     if not exams or not tas:
         return {"status": "feasible", "proctor_assignments": proctor_in, "diagnostics": {}}
@@ -821,16 +857,16 @@ def solve_proctoring(data):
         key = (course_name, section)
         # Lab familiarity bonus (same course)
         if course_name and course_name in ta_lab_courses.get(tid, set()):
-            s += 300
+            s += lab_familiarity_bonus
         # Lab section bonus (same course + section)
         if course_name and section and key in ta_lab_sections.get(tid, set()):
-            s += 150
+            s += lab_section_bonus
         # Same-course proctoring bonus
         if course_name and course_name in st["courses"][tid]:
-            s += 200
+            s += same_course_proctor_bonus
         # Same-section proctoring bonus
         if course_name and section and key in st["sections"][tid]:
-            s += 100
+            s += same_section_proctor_bonus
         # Spread bonus — discourage clustering this TA's exams close together in time
         if not exam.get("time_tbd"):
             exam_date = exam_date_obj.get(exam["id"])
@@ -838,10 +874,10 @@ def solve_proctoring(data):
                 prior_dates = [d for d, _, _ in st["times"][tid] if d is not None]
                 if prior_dates:
                     min_gap = min(abs((exam_date - d).days) for d in prior_dates)
-                    if min_gap < _SPREAD_WINDOW_DAYS:
-                        s -= (_SPREAD_WINDOW_DAYS - min_gap) * _SPREAD_PENALTY_PER_DAY
+                    if min_gap < spread_window_days:
+                        s -= (spread_window_days - min_gap) * spread_penalty_per_day
         # Load balancing
-        s -= st["used_pe"][tid] * 500
+        s -= st["used_pe"][tid] * proc_load_balance_weight
         s += random.random()
         return s
 

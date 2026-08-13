@@ -101,30 +101,41 @@ Hard constraints (eligibility filters):
 3. No double-booking: a TA cannot be assigned to two labs whose meetings overlap on the same day (checks all meetings in `meetings[]`)
 4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments
 
-Scoring (higher is better), with all magnitudes as named constants beside
-`_SOLVER_ITERATIONS`:
+Scoring (higher is better), with all magnitudes as **user-configurable
+weights** — defaults live in `_DEFAULT_SETTINGS` in `ta_scheduler.py`, the
+single source of truth (mirrored in `DEFAULT_SETTINGS` in
+`static/index.html`), and are overridden per-schedule by `data["settings"]`,
+edited via the Preferences (⚙) modal. `_SOLVER_ITERATIONS` and `_BASE_SCORE`
+are the exceptions: iteration count is a performance/quality tradeoff, not a
+scoring weight, and the base score is a constant offset added identically to
+every candidate for a slot, so it never affects ranking — neither is
+user-configurable.
 
-- `_BASE_SCORE` 1000
-- `+ _EXPERIENCE_BONUS` 200 — role has `preferred_experienced` and the TA is experienced
-- `− _NEW_ROLE_PENALTY × (1 + roles already held)` — 800 per new (TA, role) pairing.
+- `_BASE_SCORE` 1000 (fixed, not configurable)
+- `+ experience_bonus` (default 200) — role has `preferred_experienced` and the TA is experienced
+- `− new_role_penalty × (1 + roles already held)` — default 800 per new (TA, role) pairing.
   Charged whenever the role is not already in `st["roles"][ta_id]`, **including a
   TA's first role**: that is what lets a TA already in a role outrank an idle one.
   Scaling by roles already held makes the objective "minimize the total number of
   distinct (TA, role) pairings" rather than a binary one-vs-many flag.
-- `− _LOAD_BALANCE_WEIGHT × current SE` — 500
+- `− load_balance_weight × current SE` — default 500
 - `+ random tiebreak`
+
+The rest of this section describes the relationship between the *default*
+values; it changes if the user edits their weights via Preferences.
 
 800 is deliberately above one load unit (500) so continuing a role beats an idle
 rival, and below two so a TA near their cap still yields. Concentration therefore
 outranks load balancing: loads come out lumpier (slack pools in one or two TAs)
-in exchange for near-zero split TAs. `_NEW_ROLE_PENALTY = 400` is the moderate
+in exchange for near-zero split TAs. `new_role_penalty = 400` is the moderate
 setting if that ever feels too aggressive.
 
-The break-even between the two is `_NEW_ROLE_PENALTY / _LOAD_BALANCE_WEIGHT` =
-**1.6 SE**: past that load, an idle TA outscores a TA who already holds the role,
-so a role's last seats can land on a fresh person even when an existing holder is
-still under their cap. That is the intended "near-cap TAs yield" behavior, but it
-is also the first thing to check when a role looks more scattered than expected.
+The break-even between the two is `new_role_penalty / load_balance_weight` =
+**1.6 SE** at the defaults: past that load, an idle TA outscores a TA who already
+holds the role, so a role's last seats can land on a fresh person even when an
+existing holder is still under their cap. That is the intended "near-cap TAs
+yield" behavior, but it is also the first thing to check when a role looks more
+scattered than expected.
 
 Slots are processed in ascending order of eligible TA count (fail-first). The highest-scoring eligible TA is assigned to each slot.
 
@@ -153,17 +164,20 @@ Hard constraints:
 
 `time_tbd` exams (date known, time flexible) are exempt from constraints 2–6 entirely — the PE cap (1) still applies. They are not skipped like `tbd` exams: they're still built into slots and still solved for.
 
-Scoring (higher is better): base 1000, then
+Scoring (higher is better): base 1000 (fixed, not configurable), then — again as
+**user-configurable weights**, defaulted from `_DEFAULT_SETTINGS` and overridden
+by `data["settings"]`:
 
-- +300 lab familiarity — TA is assigned a lab for the same course
-- +150 lab section — TA is assigned the lab for that same course *and* section
-- +200 same-course proctoring — TA already proctors another exam for that course
-- +100 same-section proctoring — …for that same course and section
+- + lab_familiarity_bonus (default 300) — TA is assigned a lab for the same course
+- + lab_section_bonus (default 150) — TA is assigned the lab for that same course *and* section
+- + same_course_proctor_bonus (default 200) — TA already proctors another exam for that course
+- + same_section_proctor_bonus (default 100) — …for that same course and section
 - − spread penalty — this TA already proctors another (non-`time_tbd`) exam within
-  `_SPREAD_WINDOW_DAYS` (7) days; scales linearly with closeness up to
-  `_SPREAD_WINDOW_DAYS × _SPREAD_PENALTY_PER_DAY` = 280 at same-day, capped below one
-  load-balance PE unit (500) so it nudges rather than overrides
-- − load-balancing penalty (current PE × 500)
+  `spread_window_days` (default 7) days; scales linearly with closeness up to
+  `spread_window_days × spread_penalty_per_day` (default 280 at same-day), capped
+  below one load-balance PE unit (default 500) so it nudges rather than overrides,
+  at the default values
+- − load-balancing penalty (current PE × proc_load_balance_weight, default 500)
 - + random tiebreak
 
 Also runs up to 50 iterations, keeping the best result. It gets the same

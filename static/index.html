@@ -68,6 +68,7 @@ header { display: flex; align-items: center; gap: 15px; padding: 10px 20px;
 header h1 { font-size: var(--fs-base); font-weight: 600; letter-spacing: .5px; }
 header .spacer { flex: 1; }
 #save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #fff; }
+#pref-btn { font-size: var(--fs-lg); }
 
 /* ── tabs ───────────────────────────────────────────────────── */
 nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
@@ -190,7 +191,13 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
   appearance: auto; -webkit-appearance: auto; }
 
 /* control widths — element-qualified so they outrank .form-group's width:100% */
-input.num-input, .num-input { width: 64px; flex-shrink: 0; }
+input.num-input, .num-input { width: 64px; flex-shrink: 0;
+  appearance: textfield; -webkit-appearance: textfield; }
+/* appearance:textfield alone doesn't suppress WKWebView's spin buttons, which
+   render only on focus and widen the box beyond width:64px — hide the
+   pseudo-elements directly. */
+input.num-input::-webkit-outer-spin-button,
+input.num-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input.w-full, select.w-full, .w-full { width: 100%; }
 
 /* ── right panel / grid ─────────────────────────────────────── */
@@ -343,9 +350,14 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 100;
                    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
                    display: flex; align-items: center; justify-content: center; }
-.modal-box { background: var(--panel); border-radius: var(--r-lg); padding: 24px; min-width: 420px;
-              max-width: 90vw; max-height: 80vh; overflow-y: auto;
-              box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10); }
+/* .modal-shell owns the radius/shadow and clips its scrolling child (.modal-box)
+   to a rounded corner — a browser's native scrollbar doesn't round itself to
+   match border-radius on the element it scrolls, so that element can't own
+   both overflow and the radius without a square-cornered scrollbar. */
+.modal-shell { border-radius: var(--r-lg); overflow: hidden;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10); }
+.modal-box { background: var(--panel); padding: 24px; min-width: 420px;
+              max-width: 90vw; max-height: 80vh; overflow-y: auto; }
 .modal-box h2 { font-size: var(--fs-xl); font-weight: 700; margin-bottom: 15px; }
 .modal-box h3 { font-size: var(--fs-base); font-weight: 600; margin-bottom: 10px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
@@ -486,6 +498,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
   <button onclick="openNative()" title="Open an existing schedule file">Open…</button>
   <button onclick="importClassList()" title="Import courses and labs from a departmental class list CSV">Import Class Info</button>
   <button onclick="exportDocx()" title="Export the current schedule as a Word document">Export DOCX</button>
+  <button id="pref-btn" onclick="openPreferencesModal()" title="Edit optimization preferences">⚙</button>
   <button onclick="showHelpModal()" title="Open help reference">?</button>
 </header>
 
@@ -701,7 +714,7 @@ function heatColor(frac) {
 // STATE
 // ════════════════════════════════════════════════════════════════
 const S = {
-  data: { roles:[], grad_courses:[], labs:[], tas:[], assignments:[], exams:[], proctor_assignments:[] },
+  data: { roles:[], grad_courses:[], labs:[], tas:[], assignments:[], exams:[], proctor_assignments:[], settings:{} },
   tab: 'labs',
   selId: null,
   drag: null,
@@ -902,6 +915,7 @@ async function loadData() {
     S.data = await dataRes.json();
     S.data.exams = S.data.exams || [];
     S.data.proctor_assignments = S.data.proctor_assignments || [];
+    S.data.settings = S.data.settings || {};
     S.schedDiag = {}; S.schedStatus = null;
     S.proctorDiag = {}; S.proctorStatus = null;
     currentFilePath = (await pathRes.json()).path || '';
@@ -951,6 +965,7 @@ async function openNative() {
     S.data = result.data;
     S.data.exams = S.data.exams || [];
     S.data.proctor_assignments = S.data.proctor_assignments || [];
+    S.data.settings = S.data.settings || {};
     S.selId = null;
     S.schedDiag = {}; S.schedStatus = null;
     S.proctorDiag = {}; S.proctorStatus = null;
@@ -2247,6 +2262,106 @@ function confirmAddLoad(which) {
   cfg.afterChange();
 }
 
+// ── Preferences (solver weights) ──
+// Mirrors _DEFAULT_SETTINGS in ta_scheduler.py — keep the two in sync; there is
+// no shared source of truth between the Python and JS sides.
+const DEFAULT_SETTINGS = {
+  experience_bonus: 200,
+  new_role_penalty: 800,
+  load_balance_weight: 500,
+  lab_familiarity_bonus: 300,
+  lab_section_bonus: 150,
+  same_course_proctor_bonus: 200,
+  same_section_proctor_bonus: 100,
+  proc_load_balance_weight: 500,
+  spread_window_days: 7,
+  spread_penalty_per_day: 40,
+};
+
+// Single source of truth for preference field DOM ids — reused by
+// openPreferencesModal, resetPreferencesForm and savePreferences.
+const PREF_FIELD_IDS = {
+  experience_bonus: 'pref-experience-bonus',
+  new_role_penalty: 'pref-new-role-penalty',
+  load_balance_weight: 'pref-load-balance-weight',
+  lab_familiarity_bonus: 'pref-lab-familiarity-bonus',
+  lab_section_bonus: 'pref-lab-section-bonus',
+  same_course_proctor_bonus: 'pref-same-course-proctor-bonus',
+  same_section_proctor_bonus: 'pref-same-section-proctor-bonus',
+  proc_load_balance_weight: 'pref-proc-load-balance-weight',
+  spread_window_days: 'pref-spread-window-days',
+  spread_penalty_per_day: 'pref-spread-penalty-per-day',
+};
+
+const PREF_SECTIONS = [
+  { title: 'Lab Assignment', fields: [
+    { key: 'experience_bonus', label: 'Experience bonus',
+      hint: 'Added when a role prefers experienced TAs and the candidate is experienced' },
+    { key: 'new_role_penalty', label: 'New role penalty',
+      hint: 'Cost of assigning a TA to a role they do not already hold' },
+    { key: 'load_balance_weight', label: 'Load balance weight',
+      hint: 'Penalty per SE unit a TA already carries' },
+  ]},
+  { title: 'Proctoring', fields: [
+    { key: 'lab_familiarity_bonus', label: 'Lab familiarity bonus',
+      hint: "Added when the TA is assigned a lab for the exam's course" },
+    { key: 'lab_section_bonus', label: 'Lab section bonus',
+      hint: "Added when the TA is assigned the lab for the exam's course and section" },
+    { key: 'same_course_proctor_bonus', label: 'Same-course proctoring bonus',
+      hint: 'Added when the TA already proctors another exam for this course' },
+    { key: 'same_section_proctor_bonus', label: 'Same-section proctoring bonus',
+      hint: 'Added when the TA already proctors another exam for this course and section' },
+    { key: 'proc_load_balance_weight', label: 'Load balance weight',
+      hint: 'Penalty per PE unit a TA already carries' },
+    { key: 'spread_window_days', label: 'Spread window (days)',
+      hint: 'Exams within this many days of each other are considered clustered' },
+    { key: 'spread_penalty_per_day', label: 'Spread penalty per day',
+      hint: 'Penalty per day of closeness within the spread window, up to the window size' },
+  ]},
+];
+
+function openPreferencesModal() {
+  const current = {...DEFAULT_SETTINGS, ...(S.data.settings||{})};
+  const sectionsHtml = PREF_SECTIONS.map(sec => `
+    <h3>${escHtml(sec.title)}</h3>
+    ${sec.fields.map(f => `
+      <div class="form-group" style="margin-top:10px;" title="${escHtml(f.hint)}">
+        <label>${escHtml(f.label)}<br>
+          <input id="${PREF_FIELD_IDS[f.key]}" class="num-input" type="number" step="1"
+                 value="${current[f.key]}" style="margin-top:4px;">
+        </label>
+      </div>`).join('')}
+  `).join('');
+  showModal(`
+    <div class="modal-box" style="width:560px;">
+      <h2>Preferences</h2>
+      <p class="help-text">Tune the scoring weights used by the lab and proctoring solvers. Saved with this schedule file.</p>
+      ${sectionsHtml}
+      <div class="modal-footer">
+        <button class="btn-sm" style="margin-right:auto;" onclick="resetPreferencesForm()">Reset to Defaults</button>
+        <button class="btn-sm" onclick="closeModal()">Cancel</button>
+        <button class="btn-sm btn-primary" onclick="savePreferences()">Save</button>
+      </div>
+    </div>`);
+}
+
+function resetPreferencesForm() {
+  Object.entries(PREF_FIELD_IDS).forEach(([key, id]) => {
+    const inp = $id(id);
+    if (inp) inp.value = DEFAULT_SETTINGS[key];
+  });
+}
+
+function savePreferences() {
+  const settings = {};
+  Object.entries(PREF_FIELD_IDS).forEach(([key, id]) => {
+    settings[key] = parseFloat($id(id).value) || 0;
+  });
+  S.data.settings = settings;
+  markDirty();
+  closeModal();
+}
+
 // ── Assignment modal (shared by lab roles and exam proctoring) ──
 // config: {titleHtml, subtitleHtml?, isAssigned(ta), loadInfo(ta),
 //          conflictReasons(ta), onToggle(ta, isAssigned)}
@@ -2868,7 +2983,12 @@ function attachCourseRole(lab) {
 // ════════════════════════════════════════════════════════════════
 function showModal(html) {
   const backdrop = el('div','modal-backdrop');
-  backdrop.innerHTML = html;
+  // .modal-box itself scrolls (overflow-y:auto) when its content is taller than
+  // max-height, and browsers don't round a native scrollbar to match an
+  // element's own border-radius. Wrapping it in a non-scrolling .modal-shell
+  // that owns the radius + box-shadow clips the scrollbar to a rounded corner
+  // instead of a square one, for every modal, without touching each caller.
+  backdrop.innerHTML = `<div class="modal-shell">${html}</div>`;
   backdrop.onclick = e => { if (e.target===backdrop) closeModal(); };
   $id('modal-container').appendChild(backdrop);
   if ($id('import-grad-list')) renderImportGradList();
