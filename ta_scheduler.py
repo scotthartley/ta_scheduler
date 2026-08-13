@@ -909,6 +909,7 @@ def generate_docx(data):
     roles_map = {r["id"]: r for r in data.get("roles", [])}
     tas_map = {t["id"]: t for t in data.get("tas", [])}
     labs_map = {l["id"]: l for l in data.get("labs", [])}
+    gc_map = {gc["id"]: gc for gc in data.get("grad_courses", [])}
     assignments = data.get("assignments", [])
     exams_map = {e["id"]: e for e in data.get("exams", [])}
     proctor_assignments = data.get("proctor_assignments", [])
@@ -973,6 +974,23 @@ def generate_docx(data):
         doc.add_paragraph(
             f"{ta.get('experience','').capitalize()}, Max SE: {ta.get('max_se', 2.0):.1f}{email_str}"
         )
+        schedule_lines = []
+        for gc_id in ta.get("grad_course_ids", []):
+            gc = gc_map.get(gc_id)
+            if gc:
+                schedule_lines.append(f"{lab_disp(gc)} — {fmt_meetings(gc, DAY_SHORT)}")
+        for oc in ta.get("other_commitments", []):
+            schedule_lines.append(
+                f"{oc['label']} — {DAY_SHORT[oc['day']]} {fmt_time(oc['start_min'])}–{fmt_time(oc['end_min'])}"
+            )
+        for dc in ta.get("date_conflicts", []):
+            schedule_lines.append(
+                f"{dc['label']} — {dc['date']} {fmt_time(dc['start_min'])}–{fmt_time(dc['end_min'])}"
+            )
+        if schedule_lines:
+            doc.add_paragraph("Schedule")
+            for line in schedule_lines:
+                doc.add_paragraph(line)
         ta_asgn = [a for a in assignments if a["ta_id"] == ta["id"]]
         outside = ta.get("outside_duties", [])
         ta_proctor = sorted(
