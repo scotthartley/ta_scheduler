@@ -1299,14 +1299,39 @@ function renderCourseForm(item, form) {
   deL.appendChild(deInp); deG.appendChild(deL); drRow.appendChild(deG);
   form.appendChild(drRow);
 
-  // Exam list
+  // Exam list — the add-action is this group's footer row.
   form.appendChild(formHeading('Exams'));
+  const addExamBtn = el('button','btn-sm','+ Add Exam');
   const exams = item.exams||[];
-  form.appendChild(inlineList(exams.map((ex, i) => ({
+  const examList = inlineList(exams.map((ex, i) => ({
     cells: [`${ex.date || ex.date_raw || '(TBD)'}  ${fmtRange(ex.start_min, ex.end_min)}`],
     removeTitle: 'Remove exam',
     onRemove: () => { item.exams.splice(i, 1); markDirty(); renderItemForm(); },
-  })), {empty: 'No exams'}));
+  })), {empty: 'No exams', footer: addExamBtn});
+  form.appendChild(examList);
+
+  addExamBtn.onclick = () => {
+    if ($id('exam-inline-form')) { $id('exam-inline-form').remove(); return; }
+    const f = el('div','inline-form'); f.id='exam-inline-form';
+    const dateInp = document.createElement('input');
+    dateInp.type='date'; dateInp.className='w-full'; dateInp.style.marginBottom='4px';
+    let startMin = 480, endMin = 600;
+    const startSel = timeSelect(startMin, v => startMin = v);
+    const endSel   = timeSelect(endMin, v => endMin = v);
+    const saveBtn = el('button','btn-sm btn-primary','Add');
+    saveBtn.style.marginTop='6px';
+    saveBtn.onclick = () => {
+      if (!dateInp.value) { alert('Please select a date.'); return; }
+      item.exams = item.exams||[];
+      item.exams.push({date:dateInp.value, start_min:startMin, end_min:endMin});
+      markDirty(); renderItemForm();
+    };
+    const row = el('div','form-row'); row.style.alignItems='center'; row.style.gap='4px';
+    startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
+    row.append(startSel, el('span',null,'–'), endSel);
+    f.append(dateInp, row, saveBtn);
+    examList.insertAdjacentElement('afterend', f);
+  };
 
   form.appendChild(formActions(deleteCurrentItem));
 }
