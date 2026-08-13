@@ -121,6 +121,8 @@ def _date_conflict_window_for_day(dc, days, day):
     d0, d1 = days
     if day < d0 or day > d1:
         return None
+    if dc.get("all_day"):
+        return 0, 1440
     start_min = dc.get("start_min", 0) if day == d0 else 0
     end_min = dc.get("end_min", 1440) if day == d1 else 1440
     return start_min, end_min
@@ -1310,11 +1312,17 @@ def generate_docx(data):
             )
         for dc in ta.get("date_conflicts", []):
             start_date, end_date = _dc_dates(dc)
-            start_min, end_min = dc.get("start_min", 0), dc.get("end_min", 0)
-            if start_date == end_date:
-                date_str = f"{start_date} {fmt_time(start_min)}–{fmt_time(end_min)}"
+            if dc.get("all_day"):
+                if start_date == end_date:
+                    date_str = f"{start_date} All day"
+                else:
+                    date_str = f"{start_date} – {end_date} All day"
             else:
-                date_str = f"{start_date} {fmt_time(start_min)} – {end_date} {fmt_time(end_min)}"
+                start_min, end_min = dc.get("start_min", 0), dc.get("end_min", 0)
+                if start_date == end_date:
+                    date_str = f"{start_date} {fmt_time(start_min)}–{fmt_time(end_min)}"
+                else:
+                    date_str = f"{start_date} {fmt_time(start_min)} – {end_date} {fmt_time(end_min)}"
             schedule_lines.append(f"{dc.get('label', '')} — {date_str}")
         if schedule_lines:
             doc.add_heading("Schedule", 3)

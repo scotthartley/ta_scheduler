@@ -810,6 +810,7 @@ function dateConflictSpan(dc) {
 // _date_conflict_window_for_day().
 function dateConflictWindowForDay(dc, span, day) {
   if (day < span.d0 || day > span.d1) return null;
+  if (dc.all_day) return [0, 1440];
   const startMin = day.getTime() === span.d0.getTime() ? (dc.start_min ?? 0) : 0;
   const endMin = day.getTime() === span.d1.getTime() ? (dc.end_min ?? 1440) : 1440;
   return [startMin, endMin];
@@ -861,6 +862,9 @@ function dateConflictOverlapsDate(dc, dateStr, startMin, endMin) {
 function dateConflictLabel(dc) {
   const [startDate, endDate] = dcDates(dc);
   if (!startDate) return '?';
+  if (dc.all_day) {
+    return startDate === endDate ? `${startDate} All day` : `${startDate} – ${endDate} All day`;
+  }
   const startMin = dc.start_min ?? 0, endMin = dc.end_min ?? 0;
   if (startDate === endDate) {
     return `${startDate} ${fmtRange(startMin, endMin)}`;
@@ -1391,11 +1395,27 @@ function dateConflictRangeFields(initial = {}) {
   startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
   timeRow.append(startSel, el('span',null,'–'), endSel);
 
+  // All day — greys out (not hides) the time selects, mirroring the exam
+  // TBD/time_tbd pattern: values stay set, just not used for scoring.
+  let allDay = !!initial.all_day;
+  const allDayRow = el('div','checkbox-row');
+  const allDayCb = document.createElement('input');
+  allDayCb.type = 'checkbox'; allDayCb.checked = allDay;
+  allDayCb.style.cssText = 'margin:0;flex-shrink:0;';
+  allDayRow.append(allDayCb, el('span',null,'All day'));
+
+  const updateTimeInputsState = () => {
+    startSel.disabled = allDay; endSel.disabled = allDay;
+    timeRow.style.opacity = allDay ? '0.4' : '';
+  };
+  updateTimeInputsState();
+  allDayCb.onchange = () => { allDay = allDayCb.checked; updateTimeInputsState(); };
+
   return {
-    dateRow, timeRow,
+    dateRow, timeRow, allDayRow,
     getValues: () => {
       const endDate = endDateInp.value || startDateInp.value;
-      return {start_date: startDateInp.value, end_date: endDate, start_min: startMin, end_min: endMin};
+      return {start_date: startDateInp.value, end_date: endDate, start_min: startMin, end_min: endMin, all_day: allDay};
     },
     validate: () => {
       if (!startDateInp.value) return 'Please select a start date.';
@@ -1649,6 +1669,7 @@ function renderTAForm(item, form) {
       start_date: existing.start_date || existing.date,
       end_date: existing.end_date || existing.date,
       start_min: existing.start_min, end_min: existing.end_min,
+      all_day: existing.all_day,
     } : {});
     const exemptRow = el('div','checkbox-row'); exemptRow.style.marginTop='4px';
     const exemptCb = document.createElement('input'); exemptCb.type='checkbox';
@@ -1678,7 +1699,7 @@ function renderTAForm(item, form) {
       };
       btnRow.append(deleteBtn);
     }
-    f.append(lblInp, rf.dateRow, rf.timeRow, exemptRow, btnRow);
+    f.append(lblInp, rf.dateRow, rf.timeRow, rf.allDayRow, exemptRow, btnRow);
     dcList.insertAdjacentElement('afterend', f);
   }
   addDcBtn.onclick = () => openDcForm(null, null);
@@ -4274,54 +4295,77 @@ function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
 
 function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
   const reasons = [];
+  // Full time known — weekday/time-based checks (grad course, lab, commitments)
+  // and the exact-overlap date_conflicts check all need a real start/end.
   const hasDates = !exam.tbd && !exam.time_tbd && exam.date;
   let examWd = null;
   if (hasDates) {
     // JS getDay() is 0=Sun; our model is 0=Mon.
     try { examWd = [6,0,1,2,3,4,5][new Date(exam.date + 'T00:00:00').getDay()]; } catch(e) {}
   }
-  if (examWd === null || examWd === undefined) return reasons;
 
-  const inRange = item => !item.date_start || !item.date_end ||
-    (exam.date >= item.date_start && exam.date <= item.date_end);
+  if (hasDates && examWd !== null && examWd !== undefined) {
+    const inRange = item => !item.date_start || !item.date_end ||
+      (exam.date >= item.date_start && exam.date <= item.date_end);
 
-  // Grad course conflicts
-  for (const gcId of (ta.grad_course_ids || [])) {
-    const gc = maps.gc[gcId];
-    if (!gc) continue;
-    for (const m of getMeetings(gc)) {
-      if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
-          && inRange(gc)) {
-        reasons.push(`conflicts with ${gc.name}`);
+    // Grad course conflicts
+    for (const gcId of (ta.grad_course_ids || [])) {
+      const gc = maps.gc[gcId];
+      if (!gc) continue;
+      for (const m of getMeetings(gc)) {
+        if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
+            && inRange(gc)) {
+          reasons.push(`conflicts with ${gc.name}`);
+        }
+      }
+      for (const gcEx of (gc.exams || [])) {
+        if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
+          reasons.push(`conflicts with ${gc.name} exam`);
+        }
       }
     }
-    for (const gcEx of (gc.exams || [])) {
-      if (gcEx.date === exam.date && overlap(exam.start_min, exam.end_min, gcEx.start_min, gcEx.end_min)) {
-        reasons.push(`conflicts with ${gc.name} exam`);
+    // Lab assignment conflicts
+    S.data.assignments.filter(a => a.ta_id === ta.id).forEach(a => {
+      const lab = maps.labs[a.lab_id];
+      if (!lab) return;
+      for (const m of getMeetings(lab)) {
+        if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
+            && inRange(lab)) {
+          reasons.push(`conflicts with lab ${lab.name}`);
+        }
+      }
+    });
+    // Other commitment conflicts
+    for (const oc of (ta.other_commitments || [])) {
+      if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
+        reasons.push(`conflicts with commitment`);
       }
     }
   }
-  // Lab assignment conflicts
-  S.data.assignments.filter(a => a.ta_id === ta.id).forEach(a => {
-    const lab = maps.labs[a.lab_id];
-    if (!lab) return;
-    for (const m of getMeetings(lab)) {
-      if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
-          && inRange(lab)) {
-        reasons.push(`conflicts with lab ${lab.name}`);
+
+  // Date conflicts — always enforced, regardless of ignore_for_labs. Mirrors
+  // the backend's _fixed_conflict(): a normal exam checks the exact overlap;
+  // a time_tbd exam (known date, unknown time) can only be blocked by a
+  // date_conflicts[] entry that covers the TA's entire day on that date.
+  if (!exam.tbd && exam.date) {
+    if (hasDates) {
+      for (const dc of (ta.date_conflicts || [])) {
+        if (dateConflictOverlapsDate(dc, exam.date, exam.start_min, exam.end_min)) {
+          reasons.push(`conflicts with date conflict "${dc.label || 'Conflict'}"`);
+        }
       }
-    }
-  });
-  // Other commitment conflicts
-  for (const oc of (ta.other_commitments || [])) {
-    if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
-      reasons.push(`conflicts with commitment`);
-    }
-  }
-  // Date conflicts — always enforced, regardless of ignore_for_labs
-  for (const dc of (ta.date_conflicts || [])) {
-    if (dateConflictOverlapsDate(dc, exam.date, exam.start_min, exam.end_min)) {
-      reasons.push(`conflicts with date conflict "${dc.label || 'Conflict'}"`);
+    } else if (exam.time_tbd) {
+      const examDay = new Date(exam.date + 'T00:00:00');
+      if (!isNaN(examDay)) {
+        for (const dc of (ta.date_conflicts || [])) {
+          const span = dateConflictSpan(dc);
+          if (!span) continue;
+          const window = dateConflictWindowForDay(dc, span, examDay);
+          if (window && window[0] === 0 && window[1] === 1440) {
+            reasons.push(`conflicts with date conflict "${dc.label || 'Conflict'}" (all day)`);
+          }
+        }
+      }
     }
   }
   return reasons;
