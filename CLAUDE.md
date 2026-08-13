@@ -170,7 +170,17 @@ by `data["settings"]`:
 
 - + lab_familiarity_bonus (default 300) — TA is assigned a lab for the same course
 - + lab_section_bonus (default 150) — TA is assigned the lab for that same course *and* section
-- + same_course_proctor_bonus (default 200) — TA already proctors another exam for that course
+- − `new_course_penalty × (1 + courses already proctored)` — default 1600 per new
+  (TA, course) pairing, charged whenever the exam's course is not already in
+  `st["courses"][ta_id]`, **including a TA's first course**. The exact twin of
+  the lab solver's `new_role_penalty`, and adopted for the same reason: it
+  replaced a flat `same_course_proctor_bonus` (200) that could never actually
+  concentrate anything, because it paid the incumbent a fixed amount while
+  `proc_load_balance_weight` charged that same incumbent 500 for *every* PE they
+  already carried. Break-even against an idle rival was one third of a PE unit;
+  a TA one 1.0-PE exam ahead already lost. Charging the newcomer instead — and
+  scaling by courses already held — makes the objective "minimize the total
+  number of distinct (TA, course) pairings", exactly as on the lab side.
 - + same_section_proctor_bonus (default 100) — …for that same course and section
 - − spread penalty — this TA already proctors another (non-`tbd`, non-`time_tbd`) exam within
   `spread_window_days` (default 7) days; scales linearly with closeness up to
@@ -180,6 +190,22 @@ by `data["settings"]`:
 - − load-balancing penalty (current PE × proc_load_balance_weight, default 500)
 - + random tiebreak
 
+`new_course_penalty / proc_load_balance_weight` = **3.2 PE** at the defaults, so
+a TA already proctoring a course keeps winning its remaining exams until they are
+3.2 PE ahead of an idle rival (6.4 for a rival already holding one course, which
+is the usual case once a run is under way). 800 is the gentler setting. Note
+`lab_familiarity_bonus` (300) is now far smaller than the opening cost, so it no
+longer decides *whether* a course gets opened — only who opens it, among TAs the
+load term has left level.
+
+**Scoring cannot beat the slot ordering, and on a capacity-tight file the
+ordering wins.** A course processed after the PE budget is spent cannot be
+concentrated by any weight, because greedy has no lookahead and nothing reserves
+capacity. On a file at ~92% of total PE capacity this is the dominant effect:
+raising `new_course_penalty` from 1600 to 10000 changed the outcome for a
+late-processed course not at all — it was the course-block ordering below that
+moved it. Reach for capacity or ordering there, not weights.
+
 Also runs up to 50 iterations, keeping the best result. It gets similar hoisting
 treatment to the lab solver: `exam_wd`, the `static_conflicts` frozenset of
 `(ta_id, exam_id)` pairs, and each exam's `eligible_count` (from locked-only
@@ -187,25 +213,48 @@ state) are all computed once. `exam_date_obj` (each exam's parsed
 `datetime.date`, or `None`) is hoisted the same way and covers every exam — not
 just slot exams — since locked assignments seed `st["times"]` from exams that
 may be fully locked and absent from the slot list. Slot *order* is deliberately
-not hoisted — `_greedy_pass()` re-sorts `slots` on each call by
+not hoisted — `_greedy_pass()` re-sorts `slots` on each call, in **course
+blocks, fail-first within each block**:
 
 ```
-(eligible_count - proctor_count, -pe_value, random.random())
+(course_order[course_name],           # drawn fresh per pass
+ eligible_count - proctor_count, -pe_value, random.random())
 ```
 
-Fail-first here is measured in **slack, not pool size**. An exam needing
-`proctor_count` *distinct* TAs (a TA can't take two seats at the same exam)
-consumes that many of its own candidates, so `eligible_count - proctor_count` is
-what's left over once it is fully staffed: a 13-candidate/8-seat exam (slack 5)
-is harder than an 11-candidate/3-seat one (slack 8) and must be placed first.
-This is what keeps `tbd`/`time_tbd` exams from starving — their conflict
-exemptions give them the *largest* candidate pool (often every TA), so a sort on
-raw `eligible_count` puts them strictly last, past the point where
-`proc_load_balance_weight` has spread PE evenly and fragmented everyone's
-remaining headroom into sub-`pe_value` crumbs. Note the per-iteration
-`random.random()` alone cannot fix that: it only shuffles *within* a tie group,
-and such an exam usually sits alone above the pack rather than in one.
-`-pe_value` places the expensive seats while headroom is still unfragmented.
+Blocking by course is what lets `new_course_penalty` concentrate at all: once a
+TA opens a course they are the cheap candidate for the rest of it, and keeping
+those slots consecutive puts them in front of the solver while that TA's PE
+headroom is still free. Interleaved, the penalty just watches capacity drain
+into whichever course happened to be processed first.
+
+The block order is **drawn per pass, not sorted**. Any fail-first rule ranks a
+course by how constrained its exams are, which sends the loosest course —
+single-proctor sittings with few conflicts, typically the make-ups — dead last,
+every pass. Redrawing lets some of the 50 iterations hand that course an early
+block, and best-of-50 keeps a draw that worked out. (Sorting blocks fail-first
+was measured and behaves like no blocking at all, for exactly this reason.)
+
+Within a block, fail-first is measured in **slack, not pool size**. An exam
+needing `proctor_count` *distinct* TAs (a TA can't take two seats at the same
+exam) consumes that many of its own candidates, so `eligible_count -
+proctor_count` is what's left over once it is fully staffed: a 13-candidate/
+8-seat exam (slack 5) is harder than an 11-candidate/3-seat one (slack 8) and
+must be placed first. This is what keeps `tbd`/`time_tbd` exams from starving —
+their conflict exemptions give them the *largest* candidate pool (often every
+TA), so a sort on raw `eligible_count` puts them last, past the point where
+`proc_load_balance_weight` has fragmented everyone's remaining headroom into
+sub-`pe_value` crumbs. A per-iteration `random.random()` alone cannot fix that:
+it only shuffles *within* a tie group, and such an exam usually sits alone above
+the pack rather than in one. `-pe_value` places the expensive seats while
+headroom is still unfragmented.
+
+The 50 iterations select on **unfilled count only**, stopping at the first
+feasible pass — they buy feasibility, never quality. Selecting the
+highest-*scoring* feasible pass instead was measured: it improves the global
+objective (distinct (TA, course) pairings 23.0 → 21.1) but costs ~8× the
+runtime and consistently overrides a user's locked assignment as a seed for
+concentration, since the global optimum concentrates somewhere else. Left as-is
+deliberately.
 
 When the best of the 50 passes still leaves slots unfilled, each `unfilled`
 diagnostics entry carries a `reason` string ("9 of 13 TAs at PE cap (needs 1.5

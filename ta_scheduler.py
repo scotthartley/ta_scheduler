@@ -520,7 +520,7 @@ _LOAD_BALANCE_WEIGHT = 500
 
 _LAB_FAMILIARITY_BONUS      = 300
 _LAB_SECTION_BONUS          = 150
-_SAME_COURSE_PROCTOR_BONUS  = 200
+_NEW_COURSE_PENALTY         = 1600  # cost of opening a new (TA, course) pairing
 _SAME_SECTION_PROCTOR_BONUS = 100
 _PROC_LOAD_BALANCE_WEIGHT   = 500
 
@@ -537,7 +537,7 @@ _DEFAULT_SETTINGS = {
     "load_balance_weight": _LOAD_BALANCE_WEIGHT,
     "lab_familiarity_bonus": _LAB_FAMILIARITY_BONUS,
     "lab_section_bonus": _LAB_SECTION_BONUS,
-    "same_course_proctor_bonus": _SAME_COURSE_PROCTOR_BONUS,
+    "new_course_penalty": _NEW_COURSE_PENALTY,
     "same_section_proctor_bonus": _SAME_SECTION_PROCTOR_BONUS,
     "proc_load_balance_weight": _PROC_LOAD_BALANCE_WEIGHT,
     "spread_window_days": _SPREAD_WINDOW_DAYS,
@@ -800,7 +800,7 @@ def solve_proctoring(data):
     settings = {**_DEFAULT_SETTINGS, **(data.get("settings") or {})}
     lab_familiarity_bonus      = settings["lab_familiarity_bonus"]
     lab_section_bonus          = settings["lab_section_bonus"]
-    same_course_proctor_bonus  = settings["same_course_proctor_bonus"]
+    new_course_penalty         = settings["new_course_penalty"]
     same_section_proctor_bonus = settings["same_section_proctor_bonus"]
     proc_load_balance_weight   = settings["proc_load_balance_weight"]
     spread_window_days         = settings["spread_window_days"]
@@ -990,9 +990,15 @@ def solve_proctoring(data):
         # Lab section bonus (same course + section)
         if course_name and section and key in ta_lab_sections.get(tid, set()):
             s += lab_section_bonus
-        # Same-course proctoring bonus
-        if course_name and course_name in st["courses"][tid]:
-            s += same_course_proctor_bonus
+        # New-course penalty — the proctoring twin of the lab solver's
+        # new_role_penalty, and for the same reason: a flat bonus for continuing
+        # a course cannot beat the load-balance term, which charges the
+        # incumbent for every PE they already carry. Charging the *newcomer*
+        # instead, scaled by how many courses they already proctor (their first
+        # course included), makes the objective "minimize the total number of
+        # distinct (TA, course) pairings".
+        if course_name and course_name not in st["courses"][tid]:
+            s -= new_course_penalty * (1 + len(st["courses"][tid]))
         # Same-section proctoring bonus
         if course_name and section and key in st["sections"][tid]:
             s += same_section_proctor_bonus
@@ -1019,17 +1025,36 @@ def solve_proctoring(data):
 
     def _greedy_pass():
         st = initial_state()
-        # Fail-first, by *slack* rather than raw pool size: an exam needing
-        # proctor_count distinct TAs consumes that many of its candidates, so
-        # eligible_count - proctor_count is what is left over once it is fully
-        # staffed. This is what keeps a tbd/time_tbd exam from being starved —
-        # its conflict exemptions give it the largest pool (often every TA), so
-        # a raw eligible_count sort puts it strictly last, past the point where
-        # load balancing has fragmented everyone's remaining PE into crumbs.
-        # -pe_value places the expensive seats while headroom is still
-        # unfragmented; random.random() breaks the remaining ties differently
-        # per iteration.
+        # Slots are ordered in course blocks, fail-first *within* each block.
+        #
+        # Blocking by course is what lets new_course_penalty concentrate at all:
+        # once a TA opens a course they are the cheap candidate for the rest of
+        # it, and keeping those slots consecutive puts them in front of the
+        # solver while that TA's PE headroom is still free. Interleaved, the
+        # penalty just watches capacity drain into whatever course happened to
+        # be processed first.
+        #
+        # The block order is *drawn* per pass, not sorted. Any fail-first rule
+        # ranks a course by how constrained its exams are, which sends the
+        # loosest course — single-proctor sittings with few conflicts, typically
+        # the make-ups — dead last, reaching the solver only after the PE budget
+        # is spent. No scoring weight can recover from that, since greedy has no
+        # lookahead and nothing reserves capacity. Redrawing each pass lets some
+        # of the 50 iterations hand that course an early block, and best-of-50
+        # keeps a draw that worked out.
+        #
+        # Within a block, order by *slack* rather than raw pool size: an exam
+        # needing proctor_count distinct TAs consumes that many of its own
+        # candidates, so eligible_count - proctor_count is what is left once it
+        # is fully staffed. That is what keeps a tbd/time_tbd exam from starving
+        # inside its block — its conflict exemptions give it the largest pool
+        # (often every TA), so a raw eligible_count sort would put it last.
+        # -pe_value places the expensive seats while headroom is unfragmented.
+        course_order = {}
+        for ex in slots:
+            course_order.setdefault(ex.get("course_name", ""), random.random())
         order = sorted(slots, key=lambda ex: (
+            course_order[ex.get("course_name", "")],
             eligible_count[ex["id"]] - ex.get("proctor_count", 1),
             -ex.get("pe_value", 1.0),
             random.random()))
