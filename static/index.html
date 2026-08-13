@@ -750,6 +750,9 @@ function displayName(item) {
   const n = item?.name || '(unnamed)';
   return item?.section ? `${n} ${item.section}` : n;
 }
+function sortedTAs(list) {
+  return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
 
 // The single source of truth for an item's meeting times. Mirrors the backend's
 // _get_meetings(): prefer meetings[], else fall back to the legacy top-level
@@ -1203,7 +1206,7 @@ function renderLeftPanel() {
   const headerExtra = $id('panel-header-extra');
   headerExtra.innerHTML = '';
   if (S.tab === 'tas') {
-    headerExtra.appendChild(mailtoBtn(S.data.tas, 'Mail all TAs', { alwaysShow: true }));
+    headerExtra.appendChild(mailtoBtn(sortedTAs(S.data.tas), 'Mail all TAs', { alwaysShow: true }));
   }
 }
 
@@ -2257,7 +2260,7 @@ function renderLabView(container) {
       const role = rolesMap[rr.role_id];
       const labAssigns = S.data.assignments.filter(
         a => a.lab_id===lab.id && a.role_id===rr.role_id
-      );
+      ).sort((a,b) => (tasMap[a.ta_id]?.name||'').localeCompare(tasMap[b.ta_id]?.name||''));
       const tr = el('tr');
       if (idx === 0) {
         const labTd = el('td');
@@ -2364,14 +2367,7 @@ function renderTASummaryTable(container, headers, rowFn) {
 
   container.appendChild(el('h4','section-h4','TA Summary'));
 
-  // Assignment counts, computed once — the comparator ran a full filter per
-  // comparison before.
-  const labCount = {};
-  (S.data.assignments||[]).forEach(a => { labCount[a.ta_id] = (labCount[a.ta_id]||0) + 1; });
-  const sortedTAs = [...S.data.tas].sort((a,b) =>
-    (labCount[b.id]||0) - (labCount[a.id]||0) || a.name.localeCompare(b.name));
-
-  container.appendChild(buildTable(headers, sortedTAs.map(rowFn)));
+  container.appendChild(buildTable(headers, sortedTAs(S.data.tas).map(rowFn)));
 }
 
 function renderTASummary(container) {
@@ -2440,7 +2436,7 @@ function renderLoadSection(which) {
   sec.appendChild(el('p','help-text',cfg.hint));
 
   const rows = [];
-  S.data.tas.forEach(ta => (ta[cfg.field]||[]).forEach((entry,i) => rows.push({ta,entry,i})));
+  sortedTAs(S.data.tas).forEach(ta => (ta[cfg.field]||[]).forEach((entry,i) => rows.push({ta,entry,i})));
   if (!rows.length) return;
 
   sec.appendChild(buildTable(['TA','Duty',cfg.unit,''], rows.map(({ta, entry, i}) => {
@@ -2484,7 +2480,7 @@ function openAddLoadModal(which) {
       </div>
     </div>`);
   const sel = $id('load-ta-sel');
-  S.data.tas.forEach(ta => {
+  sortedTAs(S.data.tas).forEach(ta => {
     const o = document.createElement('option'); o.value=ta.id; o.textContent=ta.name;
     sel.appendChild(o);
   });
@@ -2610,7 +2606,7 @@ function savePreferences() {
 //          conflictReasons(ta), onToggle(ta, isAssigned)}
 function openAssignPicker(cfg) {
   const eligible = [], conflicted = [], assigned = [];
-  S.data.tas.forEach(ta => {
+  sortedTAs(S.data.tas).forEach(ta => {
     if (cfg.isAssigned(ta)) { assigned.push(ta); return; }
     const reasons = cfg.conflictReasons(ta);
     if (reasons.length) conflicted.push({ta, reasons});
@@ -2880,6 +2876,7 @@ function renderSummary() {
   const tasMap    = Object.fromEntries(d.tas.map(t => [t.id, t]));
   const labsMap   = Object.fromEntries(d.labs.map(l => [l.id, l]));
   const examsMap  = Object.fromEntries((d.exams||[]).map(e => [e.id, e]));
+  const sortedTasList = sortedTAs(d.tas);
 
   // ── Section 1: Lab Assignments ───────────────────────────────────────
   const h1 = el('h1','summary-h1'); h1.textContent = 'Lab Assignments'; c.append(h1);
@@ -2912,7 +2909,8 @@ function renderSummary() {
 
     const sectionWrap = el('div','summary-course-sections');
     for (const lab of courseLabs) {
-      const labAsgn = d.assignments.filter(a => a.lab_id === lab.id);
+      const labAsgn = d.assignments.filter(a => a.lab_id === lab.id)
+        .sort((a,b) => (tasMap[a.ta_id]?.name||'').localeCompare(tasMap[b.ta_id]?.name||''));
       const h2 = el('h2','summary-h2 with-action');
       const h2txt = el('span'); h2txt.textContent = displayName(lab); h2.append(h2txt);
       const labTas = labAsgn.map(a => tasMap[a.ta_id]).filter(Boolean);
@@ -2949,7 +2947,8 @@ function renderSummary() {
 
     for (const exam of sortedExams) {
       const sub2  = examFullLabel(exam);
-      const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id);
+      const eAsgn = proctorAsgn.filter(a => a.exam_id === exam.id)
+        .sort((a,b) => (tasMap[a.ta_id]?.name||'').localeCompare(tasMap[b.ta_id]?.name||''));
       const h2e = el('h2','summary-h2 with-action');
       const h2etxt = el('span'); h2etxt.textContent = sub2; h2e.append(h2etxt);
       const examTas = eAsgn.map(a => tasMap[a.ta_id]).filter(Boolean);
@@ -2972,12 +2971,12 @@ function renderSummary() {
   }
 
   // ── Section 3: TA Assignments ────────────────────────────────────────
-  const taSummaries = new Map(d.tas.map(ta =>
+  const taSummaries = new Map(sortedTasList.map(ta =>
     [ta.id, taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn })]));
 
   const h1t = el('h1','summary-h1 with-action');
   const h1ttxt = el('span'); h1ttxt.textContent = 'TA Assignments'; h1t.append(h1ttxt);
-  const emailableTas = d.tas.filter(ta => ta.email);
+  const emailableTas = sortedTasList.filter(ta => ta.email);
   const emailAllSpecs = [
     ['Email All TAs', 'all', emailableTas],
     ['Email All TAs (Labs only)', 'labs', emailableTas.filter(ta => taSummaries.get(ta.id).seLines.length)],
@@ -3001,7 +3000,7 @@ function renderSummary() {
   }
   c.append(h1t);
 
-  for (const ta of d.tas) {
+  for (const ta of sortedTasList) {
     const summary = taSummaries.get(ta.id);
     const h2t = el('h2','summary-h2 with-action');
     const h2ttxt = el('span'); h2ttxt.textContent = ta.name; h2t.append(h2ttxt);
@@ -4030,7 +4029,8 @@ function renderProctorExamView(container) {
     tr.appendChild(el('td',null,escHtml(exam.name)));
     tr.appendChild(el('td',null, examDateTimeLabel(exam)));
 
-    const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id);
+    const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id)
+      .sort((a,b) => (tasMap[a.ta_id]?.name||'').localeCompare(tasMap[b.ta_id]?.name||''));
     tr.appendChild(el('td',null,`${assigns.length}/${exam.proctor_count||1}`));
     tr.appendChild(el('td',null,(exam.pe_value||0).toFixed(1)));
 

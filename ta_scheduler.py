@@ -1177,7 +1177,10 @@ def generate_docx(data):
         for lab in course_labs:
             doc.add_heading(lab_disp(lab), 3)
             doc.add_paragraph(fmt_meetings(lab, DAY_LONG))
-            lab_asgn = [a for a in assignments if a["lab_id"] == lab["id"]]
+            lab_asgn = sorted(
+                [a for a in assignments if a["lab_id"] == lab["id"]],
+                key=lambda a: tas_map.get(a["ta_id"], {}).get("name", ""),
+            )
             if lab_asgn:
                 tbl = doc.add_table(rows=1, cols=3)
                 tbl.style = "Table Grid"
@@ -1236,7 +1239,10 @@ def generate_docx(data):
                 section_heading = f"{course_key} {section}".strip() if course_key else section
                 doc.add_heading(section_heading or "—", 3)
                 for exam in section_exams:
-                    exam_asgn = [a for a in proctor_assignments if a["exam_id"] == exam["id"]]
+                    exam_asgn = sorted(
+                        [a for a in proctor_assignments if a["exam_id"] == exam["id"]],
+                        key=lambda a: tas_map.get(a["ta_id"], {}).get("name", ""),
+                    )
                     if not exam_asgn:
                         continue
                     if exam.get("time_tbd"):
@@ -1260,7 +1266,7 @@ def generate_docx(data):
 
     # TA-centric
     doc.add_heading("TA Assignments", 1)
-    for ta in data.get("tas", []):
+    for ta in sorted(data.get("tas", []), key=lambda t: t.get("name", "")):
         doc.add_heading(ta["name"], 2)
         if ta.get("email"):
             doc.add_paragraph(f"Email: {ta['email']}")
