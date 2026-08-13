@@ -395,21 +395,34 @@ input.w-full, select.w-full, .w-full { width: 100%; }
               text-overflow: ellipsis; }
 
 /* ── exam calendar ──────────────────────────────────────────── */
-.cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+/* The calendar fills its panel: nav and TBD box keep their natural height,
+   the grid takes the slack and its week rows split it evenly. */
+#exam-calendar { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#exam-calendar > .warn-box { flex-shrink: 0; }
+.cal-nav { flex-shrink: 0; display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .cal-nav span { font-weight: 600; font-size: var(--fs-base); min-width: 140px; text-align: center; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; overflow: hidden; }
+/* grid-template-rows is set from renderExamCalendar() — it depends on the week count.
+   The 1px gaps show through as hairlines matching .hour-line / .day-col. */
+.cal-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr);
+            gap: 1px; background: var(--border); overflow: auto; }
 .cal-hdr { background: var(--gray-lt); text-align: center; font-size: var(--fs-sm); font-weight: 600;
            padding: 6px 0; color: var(--text2); }
-.cal-day { background: var(--panel); min-height: 70px; padding: 4px; font-size: var(--fs-sm);
-           color: var(--text2); position: relative; }
+.cal-day { background: var(--panel); padding: 4px; font-size: var(--fs-sm);
+           color: var(--text2); position: relative; overflow: hidden;
+           display: flex; flex-direction: column; gap: 3px; }
 .cal-day.other-month { background: #fafafa; color: var(--text2); opacity: .45; }
-.cal-day .day-num { font-weight: 600; margin-bottom: 2px; }
-.cal-day.has-exam { background: var(--blue-lt); }
-.cal-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-           background: var(--blue); margin: 1px; }
-.cal-exam-label { font-size: var(--fs-xs); color: var(--blue); white-space: nowrap; overflow: hidden;
-                  text-overflow: ellipsis; display: block; cursor: pointer; }
-.cal-exam-label:hover { text-decoration: underline; }
+.cal-day .day-num { font-weight: 600; flex-shrink: 0; }
+.cal-exams { flex: 1; min-height: 0; overflow-y: auto;
+             display: flex; flex-direction: column; gap: 3px; }
+/* mirrors .block + .block-lab + .block-label / .block-time so the two read alike */
+.cal-exam-label { display: block; flex-shrink: 0; cursor: pointer;
+                  background: var(--blue-lt); border-left: 3px solid var(--blue);
+                  color: var(--blue-dk); border-radius: var(--r-sm);
+                  font-size: var(--fs-sm); padding: 3px 5px; }
+.cal-exam-label:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+.cal-exam-label.sel { box-shadow: inset 0 0 0 2px var(--blue); }
+.cal-exam-name { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cal-exam-time { opacity: .75; font-size: var(--fs-xs); }
 .tbd-list { padding-left: 18px; margin-top: 4px; font-size: var(--fs-sm); }
 .tbd-list li { margin-bottom: 2px; cursor: pointer; }
 
@@ -3890,14 +3903,23 @@ function renderExamCalendar() {
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const examsOnDay = examMap[dateStr]||[];
-    const d = el('div','cal-day'+(examsOnDay.length?' has-exam':''));
-    let html = `<div class="day-num">${day}</div>`;
-    examsOnDay.forEach(ex => {
-      const courseLabel = examLabel(ex, '');
-      const calLabel = courseLabel ? `${courseLabel}: ${ex.name}` : ex.name;
-      html += `<span class="cal-exam-label" onclick="S.examSelId='${ex.id}';renderExamsTab();" title="${escHtml(calLabel)}">${escHtml(calLabel)}</span>`;
-    });
-    d.innerHTML = html;
+    const d = el('div','cal-day');
+    d.appendChild(el('div','day-num', String(day)));
+    if (examsOnDay.length) {
+      const wrap = el('div','cal-exams');
+      examsOnDay.forEach(ex => {
+        const courseLabel = examLabel(ex, '');
+        const calLabel = courseLabel ? `${courseLabel}: ${ex.name}` : ex.name;
+        const chip = el('div','cal-exam-label'+(ex.id===S.examSelId?' sel':''));
+        chip.title = calLabel;
+        chip.appendChild(el('div','cal-exam-name', escHtml(calLabel)));
+        chip.appendChild(el('div','cal-exam-time',
+          ex.time_tbd ? 'Time TBD' : escHtml(fmtRange(ex.start_min, ex.end_min))));
+        chip.onclick = () => { S.examSelId = ex.id; renderExamsTab(); };
+        wrap.appendChild(chip);
+      });
+      d.appendChild(wrap);
+    }
     grid.appendChild(d);
   }
 
@@ -3909,6 +3931,11 @@ function renderExamCalendar() {
     d.innerHTML = `<div class="day-num">${i}</div>`;
     grid.appendChild(d);
   }
+
+  // auto for the .cal-hdr row; the week rows split the leftover height, down to a 70px
+  // floor past which .cal-grid scrolls.
+  const weekRows = (firstDay + daysInMonth + remaining) / 7;
+  grid.style.gridTemplateRows = `auto repeat(${weekRows}, minmax(70px, 1fr))`;
 
   cal.appendChild(grid);
 
