@@ -988,6 +988,22 @@ function migrateCourseRoles() {
   return changed;
 }
 
+// Repair pass: strip lab.roles[]/assignments[] entries left behind by role
+// deletions that predate the onRemove cleanup. Idempotent — safe to run every load.
+function pruneOrphanRoles() {
+  const validIds = new Set(S.data.roles.map(r => r.id));
+  let changed = false;
+  S.data.labs.forEach(l => {
+    const before = (l.roles||[]).length;
+    l.roles = (l.roles||[]).filter(rr => validIds.has(rr.role_id));
+    if (l.roles.length !== before) changed = true;
+  });
+  const before = S.data.assignments.length;
+  S.data.assignments = S.data.assignments.filter(a => validIds.has(a.role_id));
+  if (S.data.assignments.length !== before) changed = true;
+  return changed;
+}
+
 async function loadData() {
   try {
     const [dataRes, pathRes] = await Promise.all([
@@ -1003,8 +1019,9 @@ async function loadData() {
     currentFilePath = (await pathRes.json()).path || '';
     updateStatusBar();
     const migrated = migrateCourseRoles();
+    const pruned = pruneOrphanRoles();
     renderAll();
-    if (migrated) markDirty(); else markClean();
+    if (migrated || pruned) markDirty(); else markClean();
   } catch(e) { alert('Failed to load data from server: ' + e); }
 }
 
@@ -1054,8 +1071,9 @@ async function openNative() {
     currentFilePath = result.path;
     updateStatusBar();
     const migrated = migrateCourseRoles();
+    const pruned = pruneOrphanRoles();
     renderAll();
-    if (migrated) markDirty(); else markClean();
+    if (migrated || pruned) markDirty(); else markClean();
   } catch(e) { alert('Open failed: ' + e); }
 }
 
@@ -3070,6 +3088,8 @@ function roleListRow(role) {
     removeTitle: 'Remove role',
     onRemove: () => {
       S.data.roles = S.data.roles.filter(x => x !== role);
+      S.data.labs.forEach(l => { l.roles = (l.roles||[]).filter(rr => rr.role_id !== role.id); });
+      S.data.assignments = S.data.assignments.filter(a => a.role_id !== role.id);
       markDirty(); syncRolesPanel();
     },
   };
