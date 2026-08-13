@@ -91,7 +91,7 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 
 ## Tab order (left to right)
 
-Lab Sections | Exams | Graduate Courses | TAs | Schedule Labs | Schedule Proctoring | Summary | Meeting Finder
+Lab Sections | Exams | TAs | Graduate Courses | Schedule Labs | Schedule Proctoring | Summary | Meeting Finder
 
 ## Solver (greedy — lab scheduling)
 
