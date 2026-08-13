@@ -1323,6 +1323,44 @@ function formHeading(text) {
   h.textContent = text;
   return h;
 }
+
+// Builds the start/end date + time-of-day picker rows shared by the
+// Date-Specific Conflict add and edit forms. `initial` may supply
+// start_date/end_date/start_min/end_min to prefill.
+function dateConflictRangeFields(initial = {}) {
+  const dateRow = el('div','form-row'); dateRow.style.alignItems='center'; dateRow.style.gap='4px';
+  const startDateInp = document.createElement('input');
+  startDateInp.type='date'; startDateInp.style.flex='1'; startDateInp.style.minWidth='0';
+  startDateInp.value = initial.start_date || '';
+  const endDateInp = document.createElement('input');
+  endDateInp.type='date'; endDateInp.style.flex='1'; endDateInp.style.minWidth='0';
+  endDateInp.value = initial.end_date || '';
+  let endTouched = !!initial.end_date;
+  startDateInp.oninput = () => { if (!endTouched) endDateInp.value = startDateInp.value; };
+  endDateInp.oninput = () => { endTouched = true; };
+  dateRow.append(startDateInp, el('span',null,'–'), endDateInp);
+
+  let startMin = initial.start_min ?? 480, endMin = initial.end_min ?? 600;
+  const startSel = timeSelect(startMin, v => startMin = v);
+  const endSel   = timeSelect(endMin, v => endMin = v);
+  const timeRow = el('div','form-row'); timeRow.style.alignItems='center'; timeRow.style.gap='4px';
+  startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
+  timeRow.append(startSel, el('span',null,'–'), endSel);
+
+  return {
+    dateRow, timeRow,
+    getValues: () => {
+      const endDate = endDateInp.value || startDateInp.value;
+      return {start_date: startDateInp.value, end_date: endDate, start_min: startMin, end_min: endMin};
+    },
+    validate: () => {
+      if (!startDateInp.value) return 'Please select a start date.';
+      const endDate = endDateInp.value || startDateInp.value;
+      if (endDate < startDateInp.value) return 'End date cannot be before start date.';
+      return null;
+    },
+  };
+}
 // Name (flexible) + Section (fixed width) — identical in the course and lab forms.
 function nameSectionRow(item, isLab) {
   const row = el('div','form-row');
@@ -1503,83 +1541,80 @@ function renderTAForm(item, form) {
   }), {empty: 'No commitments'}));
 
   // Date-Specific Conflicts — the add-action is this group's footer row.
+  // Both "+ Add" and each row's "Edit" open the same inline form
+  // (openDcForm) so there's exactly one UI for entering a conflict's
+  // label/dates/times/exempt flag, not a parallel add-form and edit-form.
   form.appendChild(formHeading('Date-Specific Conflicts'));
   form.appendChild(el('p','help-text',
     'Blocks the matching weekday/time for the whole semester in lab scheduling, not just the specific date(s) — lab assignments are weekly-recurring.'));
   const addDcBtn = el('button','btn-sm','+ Add Date Conflict');
   const dcList = inlineList((item.date_conflicts||[]).map((dc, i) => {
-    const lbl = document.createElement('input');
-    lbl.type='text'; lbl.value=dc.label||''; lbl.placeholder='Label';
-    lbl.style.cssText = 'flex:1;min-width:0;padding-left:0;';
-    lbl.oninput = () => { dc.label=lbl.value; markDirty(); };
-    const exemptWrap = el('span');
-    exemptWrap.style.cssText = 'display:flex;align-items:center;gap:4px;flex-shrink:0;';
-    const exemptCb = document.createElement('input');
-    exemptCb.type = 'checkbox';
-    exemptCb.checked = !!dc.ignore_for_labs;
-    exemptCb.title = 'Exempt from lab assignments (still blocks proctoring)';
-    exemptCb.onchange = () => {
-      dc.ignore_for_labs = exemptCb.checked; markDirty(); renderTAConflictList(item);
-    };
-    exemptWrap.append(exemptCb, el('span','il-meta','Labs exempt'));
-    // Top line: label + exempt toggle. Bottom line: the date range, given its
-    // own full-width row so it never needs to wrap or squeeze the label.
-    const topRow = el('div');
-    topRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
-    topRow.append(lbl, exemptWrap);
-    const info = el('div','il-meta');
-    info.textContent = dateConflictLabel(dc);
-    info.style.whiteSpace = 'normal';
-    const stack = el('div');
-    stack.style.cssText = 'display:flex;flex-direction:column;flex:1;min-width:0;gap:2px;';
-    stack.append(topRow, info);
-    return {
-      cells: [stack],
-      removeTitle: 'Remove conflict',
-      onRemove: () => { item.date_conflicts.splice(i,1); markDirty(); renderItemForm(); },
-    };
+    const nameEl = el('span');
+    nameEl.textContent = dc.label || 'Conflict';
+    const metaEl = el('span');
+    metaEl.style.cssText = 'font-size:var(--fs-xs);color:var(--text2);white-space:normal;';
+    metaEl.textContent = dateConflictLabel(dc) + (dc.ignore_for_labs ? ' · Labs exempt' : '');
+    const info = el('div');
+    info.style.cssText = 'display:flex;flex-direction:column;flex:1;min-width:0;gap:2px;';
+    info.append(nameEl, metaEl);
+
+    const editBtn = el('button','btn-sm','Edit');
+    editBtn.type = 'button';
+    editBtn.onclick = () => openDcForm(dc, i);
+
+    return {cells: [info, editBtn]};
   }), {empty: 'No conflicts', footer: addDcBtn});
   form.appendChild(dcList);
 
-  addDcBtn.onclick = () => {
-    if ($id('dc-inline-form')) { $id('dc-inline-form').remove(); return; }
-    const f = el('div','inline-form'); f.id='dc-inline-form';
+  // `existing`/`index` are null when adding; otherwise the conflict being edited.
+  function openDcForm(existing, index) {
+    const open = $id('dc-inline-form');
+    const wasThisTarget = open && open.dataset.dcIndex === (existing ? String(index) : 'new');
+    if (open) open.remove();
+    if (wasThisTarget) return;
+
+    const f = el('div','inline-form'); f.id = 'dc-inline-form';
+    f.dataset.dcIndex = existing ? String(index) : 'new';
     const lblInp = document.createElement('input');
-    lblInp.type='text'; lblInp.placeholder='Label';
+    lblInp.type='text'; lblInp.placeholder='Label'; lblInp.value = existing ? (existing.label||'') : '';
     lblInp.className='w-full'; lblInp.style.marginBottom='4px';
-    const dateRow = el('div','form-row'); dateRow.style.alignItems='center'; dateRow.style.gap='4px';
-    const startDateInp = document.createElement('input');
-    startDateInp.type='date'; startDateInp.style.flex='1'; startDateInp.style.minWidth='0';
-    const endDateInp = document.createElement('input');
-    endDateInp.type='date'; endDateInp.style.flex='1'; endDateInp.style.minWidth='0';
-    let endTouched = false;
-    startDateInp.oninput = () => { if (!endTouched) endDateInp.value = startDateInp.value; };
-    endDateInp.oninput = () => { endTouched = true; };
-    dateRow.append(startDateInp, el('span',null,'–'), endDateInp);
-    let startMin = 480, endMin = 600;
-    const startSel = timeSelect(startMin, v => startMin = v);
-    const endSel   = timeSelect(endMin, v => endMin = v);
-    const timeRow = el('div','form-row'); timeRow.style.alignItems='center'; timeRow.style.gap='4px';
-    startSel.style.flex = endSel.style.flex = '1'; startSel.style.minWidth = endSel.style.minWidth = '0';
-    timeRow.append(startSel, el('span',null,'–'), endSel);
+    const rf = dateConflictRangeFields(existing ? {
+      start_date: existing.start_date || existing.date,
+      end_date: existing.end_date || existing.date,
+      start_min: existing.start_min, end_min: existing.end_min,
+    } : {});
     const exemptRow = el('div','checkbox-row'); exemptRow.style.marginTop='4px';
     const exemptCb = document.createElement('input'); exemptCb.type='checkbox';
+    exemptCb.checked = existing ? !!existing.ignore_for_labs : false;
     exemptRow.append(exemptCb, el('span',null,'Exempt from lab assignments (still blocks proctoring)'));
-    const saveBtn = el('button','btn-sm btn-primary','Add');
-    saveBtn.style.marginTop='6px';
+
+    const btnRow = el('div'); btnRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+    const saveBtn = el('button','btn-sm btn-primary', existing ? 'Save' : 'Add');
     saveBtn.onclick = () => {
-      if (!startDateInp.value) { alert('Please select a start date.'); return; }
-      const endDate = endDateInp.value || startDateInp.value;
-      if (endDate < startDateInp.value) { alert('End date cannot be before start date.'); return; }
-      item.date_conflicts = item.date_conflicts||[];
-      item.date_conflicts.push({label:lblInp.value||'Conflict',
-        start_date:startDateInp.value, end_date:endDate,
-        start_min:startMin, end_min:endMin, ignore_for_labs:exemptCb.checked});
+      const err = rf.validate();
+      if (err) { alert(err); return; }
+      const values = Object.assign(
+        {label:lblInp.value||'Conflict', ignore_for_labs:exemptCb.checked}, rf.getValues());
+      if (existing) Object.assign(existing, values);
+      else { item.date_conflicts = item.date_conflicts||[]; item.date_conflicts.push(values); }
       markDirty(); renderItemForm();
     };
-    f.append(lblInp, dateRow, timeRow, exemptRow, saveBtn);
+    const cancelBtn = el('button','btn-sm','Cancel');
+    cancelBtn.type = 'button';
+    cancelBtn.onclick = () => { f.remove(); };
+    btnRow.append(saveBtn, cancelBtn);
+    if (existing) {
+      const deleteBtn = el('button','btn-sm btn-danger','Delete');
+      deleteBtn.type = 'button';
+      deleteBtn.onclick = () => {
+        item.date_conflicts.splice(index,1); markDirty(); renderItemForm();
+      };
+      btnRow.append(deleteBtn);
+    }
+    f.append(lblInp, rf.dateRow, rf.timeRow, exemptRow, btnRow);
     dcList.insertAdjacentElement('afterend', f);
-  };
+  }
+  addDcBtn.onclick = () => openDcForm(null, null);
 
   const completeRow = el('div','checkbox-row');
   completeRow.style.marginTop = '14px';
