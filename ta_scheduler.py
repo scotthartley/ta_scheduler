@@ -781,6 +781,12 @@ def solve(data):
 
 # ── proctoring solver ────────────────────────────────────────────────────────
 
+def _no_fixed_time(exam):
+    """True if an exam's own start_min/end_min are unknown — either the whole
+    date is TBD, or the date is known but the time isn't."""
+    return bool(exam.get("time_tbd") or exam.get("tbd"))
+
+
 def solve_proctoring(data):
     exams = data.get("exams", [])
     tas = data.get("tas", [])
@@ -838,8 +844,6 @@ def solve_proctoring(data):
 
     slots = []
     for exam in exams:
-        if exam.get("tbd"):
-            continue  # Skip TBD exams — no date/time to schedule against
         count = exam.get("proctor_count", 1)
         locked_count = len(init_per_exam.get(exam["id"], set()))
         for _ in range(count - locked_count):
@@ -861,8 +865,27 @@ def solve_proctoring(data):
     def _fixed_conflict(ta, exam):
         """True if a TA has an input-derived conflict with this exam: an assigned
         lab, a grad course meeting or exam, a commitment, or a date conflict."""
+        eid = exam["id"]
+        exam_dobj = exam_date_obj.get(eid)
+
         if exam.get("time_tbd"):
+            # The exam's own time is unknown, so weekday/time-based checks (lab,
+            # grad course, commitments) and partial-day date_conflicts can't be
+            # evaluated. A date_conflicts[] entry that blocks the TA's ENTIRE
+            # day still applies, though — no matter what time the exam ends up
+            # at, it would fall inside it.
+            if exam_dobj is not None:
+                for dc in ta.get("date_conflicts", []):
+                    days = _date_conflict_days(dc)
+                    if days is None:
+                        continue
+                    if _date_conflict_window_for_day(dc, days, exam_dobj) == (0, 1440):
+                        return True
             return False
+
+        if exam.get("tbd"):
+            return False  # no date at all — nothing left to check
+
         wd = exam_wd.get(exam["id"])
         es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
         if wd is not None:
@@ -886,7 +909,6 @@ def solve_proctoring(data):
                 if oc["day"] == wd and times_overlap(
                         es, ee, oc["start_min"], oc["end_min"]):
                     return True
-        exam_dobj = exam_date_obj.get(exam["id"])
         if exam_dobj is not None:
             for dc in ta.get("date_conflicts", []):
                 if _date_conflict_overlaps(dc, exam_dobj, es, ee):
@@ -921,7 +943,7 @@ def solve_proctoring(data):
                 continue
             st["used_pe"][tid] += exam.get("pe_value", 1.0)
             st["assigned_exams"][tid].add(eid)
-            if not exam.get("time_tbd"):
+            if not _no_fixed_time(exam):
                 st["times"][tid].append(
                     (exam_date_obj.get(eid), exam.get("start_min", 0), exam.get("end_min", 0)))
             course_name = exam.get("course_name", "")
@@ -945,7 +967,7 @@ def solve_proctoring(data):
             if eid in st["assigned_exams"][tid]:
                 continue
             # Same-date time conflicts with exams already being proctored
-            if not exam.get("time_tbd") and any(
+            if not _no_fixed_time(exam) and any(
                     pdate == edate and times_overlap(es, ee, ps, pe)
                     for pdate, ps, pe in st["times"][tid]):
                 continue
@@ -973,7 +995,7 @@ def solve_proctoring(data):
         if course_name and section and key in st["sections"][tid]:
             s += same_section_proctor_bonus
         # Spread bonus — discourage clustering this TA's exams close together in time
-        if not exam.get("time_tbd"):
+        if not _no_fixed_time(exam):
             exam_date = exam_date_obj.get(exam["id"])
             if exam_date is not None:
                 prior_dates = [d for d, _, _ in st["times"][tid] if d is not None]
@@ -986,15 +1008,20 @@ def solve_proctoring(data):
         s += random.random()
         return s
 
-    # Slot order is derived from locked-only state, so it is identical on every
-    # iteration — compute it once.
+    # Per-exam eligible count is derived from locked-only state, so it is
+    # identical on every iteration — compute it once. The tie-break order among
+    # slots sharing a count is randomized per iteration (see _greedy_pass), so
+    # tbd/time_tbd exams — which tend to tie for the highest eligible count and
+    # would otherwise always sort last, since new exams are appended to the end
+    # of data["exams"] — aren't deterministically starved on every pass.
     init_st = initial_state()
-    sorted_slots = sorted(slots, key=lambda ex: len(eligible_tas(init_st, ex)))
+    eligible_count = {ex["id"]: len(eligible_tas(init_st, ex)) for ex in slot_exams.values()}
 
     def _greedy_pass():
         st = initial_state()
+        order = sorted(slots, key=lambda ex: (eligible_count[ex["id"]], random.random()))
         result = list(locked)
-        for exam in sorted_slots:
+        for exam in order:
             candidates = eligible_tas(st, exam)
             if not candidates:
                 continue
@@ -1007,7 +1034,7 @@ def solve_proctoring(data):
             })
             st["used_pe"][tid] += exam.get("pe_value", 1.0)
             st["assigned_exams"][tid].add(exam["id"])
-            if not exam.get("time_tbd"):
+            if not _no_fixed_time(exam):
                 st["times"][tid].append(
                     (exam_date_obj.get(exam["id"]), exam.get("start_min", 0), exam.get("end_min", 0)))
             cname = exam.get("course_name", "")
@@ -1037,8 +1064,6 @@ def solve_proctoring(data):
     # Diagnostics
     unfilled = []
     for exam in exams:
-        if exam.get("tbd"):
-            continue  # Never scheduled, so never "unfilled"
         count = exam.get("proctor_count", 1)
         assigned = [a for a in result if a["exam_id"] == exam["id"]]
         if len(assigned) < count:
@@ -1245,14 +1270,18 @@ def generate_docx(data):
                     )
                     if not exam_asgn:
                         continue
-                    if exam.get("time_tbd"):
-                        time_str = "Time TBD"
+                    if exam.get("tbd"):
+                        heading = f"{exam.get('name', 'Exam')} — Date/Time TBD"
                     else:
-                        time_str = (
-                            f"{fmt_time(exam.get('start_min', 0))} – "
-                            f"{fmt_time(exam.get('end_min', 0))}"
-                        )
-                    doc.add_heading(f"{exam.get('name', 'Exam')} — {exam.get('date', '—')}, {time_str}", 4)
+                        if exam.get("time_tbd"):
+                            time_str = "Time TBD"
+                        else:
+                            time_str = (
+                                f"{fmt_time(exam.get('start_min', 0))} – "
+                                f"{fmt_time(exam.get('end_min', 0))}"
+                            )
+                        heading = f"{exam.get('name', 'Exam')} — {exam.get('date', '—')}, {time_str}"
+                    doc.add_heading(heading, 4)
                     tbl = doc.add_table(rows=1, cols=2)
                     tbl.style = "Table Grid"
                     hdr = tbl.rows[0].cells

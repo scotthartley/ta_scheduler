@@ -78,8 +78,8 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - `outside_proctoring[]`: `[{label, pe_value}]` — external proctoring duties counted toward max_pe
 - `other_commitments[]`: `[{label, day, start_min, end_min}]` — recurring weekly blocks
 - `date_conflicts[]`: `[{label, start_date, end_date, start_min, end_min, ignore_for_labs}]` — a block spanning `start_date`/`start_min` to `end_date`/`end_min` (equal dates for the common single-day case). Always a hard constraint for the proctoring solver; also a hard constraint for the lab solver unless `ignore_for_labs` is set on that entry (see "Solver (greedy — lab scheduling)"). Legacy entries may still use the old singular `date` field instead of `start_date`/`end_date` — there is no migration pass, so every reader falls back to `date` at point of use (`start_date = dc.get('start_date') or dc.get('date')`, etc.), matching the rest of this codebase's convention of defensive per-field reads rather than upfront normalization.
-- `tbd`: if true, the exam has no date/time yet. It is skipped by the proctoring solver *and* by its diagnostics, so a TBD exam never reports the schedule as partial.
-- `time_tbd`: if true, the exam has a confirmed `date` but no fixed `start_min`/`end_min` yet. Unlike `tbd`, a `time_tbd` exam is still scheduled by the proctoring solver — only the PE cap applies to it; it's exempt from double-booking and every weekday/date conflict check, in both directions (it is never blocked by another assignment, and its own assignment never blocks anything else).
+- `tbd`: if true, the exam has no date/time yet. It is still built into the proctoring solver's slot list and diagnostics, exactly like any other exam — only the PE cap applies to it; with no date at all, it's exempt from every other check, in both directions (it is never blocked by another assignment, and its own assignment never blocks anything else).
+- `time_tbd`: if true, the exam has a confirmed `date` but no fixed `start_min`/`end_min` yet. Like `tbd`, it's scheduled and diagnosed like any other exam with only the PE cap enforced — it's exempt from double-booking and every weekday/lab/grad-course/commitment check — but because its date *is* known, it's still checked against a TA's `date_conflicts[]` for whole-day blocks (a multi-day conflict's interior days, never a boundary day's partial-time window, since the exam might still land outside that window once its time is set).
 
 ## Grid
 
@@ -161,9 +161,8 @@ Hard constraints:
 4. No conflict with grad course regular meetings (weekday) or grad course exams (date-specific)
 5. No conflict with other_commitments (weekday)
 6. No conflict with the TA's `date_conflicts[]` (date-specific) — an interval-overlap test against the exam's exact date: the conflict's first day contributes from `start_min`, its last day up to `end_min`, and any days between are treated as full days. Always enforced regardless of `ignore_for_labs` (that flag only ever narrows the lab-side check)
-7. TBD exams (no date/time) are skipped
 
-`time_tbd` exams (date known, time flexible) are exempt from constraints 2–6 entirely — the PE cap (1) still applies. They are not skipped like `tbd` exams: they're still built into slots and still solved for.
+`tbd` exams (no date at all) and `time_tbd` exams (date known, time flexible) are both scheduled and diagnosed like any other exam — the PE cap (1) always applies — but are exempt from constraints 2–6, since none of them can be evaluated without a fixed time. The one exception: a `time_tbd` exam's known date is still checked against constraint 6, but only for a `date_conflicts[]` entry that blocks the TA's *entire* day (a multi-day conflict's interior days) — never a boundary day, whose partial-time window the exam might still fall outside once its actual time is set. A `tbd` exam has no date to check against constraint 6 at all.
 
 Scoring (higher is better): base 1000 (fixed, not configurable), then — again as
 **user-configurable weights**, defaulted from `_DEFAULT_SETTINGS` and overridden
@@ -173,7 +172,7 @@ by `data["settings"]`:
 - + lab_section_bonus (default 150) — TA is assigned the lab for that same course *and* section
 - + same_course_proctor_bonus (default 200) — TA already proctors another exam for that course
 - + same_section_proctor_bonus (default 100) — …for that same course and section
-- − spread penalty — this TA already proctors another (non-`time_tbd`) exam within
+- − spread penalty — this TA already proctors another (non-`tbd`, non-`time_tbd`) exam within
   `spread_window_days` (default 7) days; scales linearly with closeness up to
   `spread_window_days × spread_penalty_per_day` (default 280 at same-day), capped
   below one load-balance PE unit (default 500) so it nudges rather than overrides,
@@ -181,12 +180,22 @@ by `data["settings"]`:
 - − load-balancing penalty (current PE × proc_load_balance_weight, default 500)
 - + random tiebreak
 
-Also runs up to 50 iterations, keeping the best result. It gets the same
-hoisting treatment as the lab solver: `exam_wd`, the `static_conflicts` frozenset of
-`(ta_id, exam_id)` pairs, and `sorted_slots` are all computed once. `exam_date_obj`
-(each exam's parsed `datetime.date`, or `None`) is hoisted the same way and covers
-every exam — not just slot exams — since locked assignments seed `st["times"]` from
-exams that may be fully locked and absent from the slot list.
+Also runs up to 50 iterations, keeping the best result. It gets similar hoisting
+treatment to the lab solver: `exam_wd`, the `static_conflicts` frozenset of
+`(ta_id, exam_id)` pairs, and each exam's `eligible_count` (from locked-only
+state) are all computed once. `exam_date_obj` (each exam's parsed
+`datetime.date`, or `None`) is hoisted the same way and covers every exam — not
+just slot exams — since locked assignments seed `st["times"]` from exams that
+may be fully locked and absent from the slot list. Unlike the lab solver, slot
+order is *not* fully hoisted: `tbd`/`time_tbd` exams tend to tie for the
+highest eligible count (they're exempt from most conflict checks), and since
+new exams are always appended to the end of `data["exams"]`, a fixed sort would
+deterministically place them last on every iteration — starving them whenever
+overall PE capacity is tight. Instead, `_greedy_pass()` re-sorts `slots` by
+`(eligible_count, random.random())` on each call, so the eligible-count
+ordering is stable but ties break differently per iteration, letting the
+existing best-of-50 selection surface iterations where a TBD exam got
+processed earlier and filled.
 
 ## CSV import
 
