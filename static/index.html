@@ -2358,7 +2358,11 @@ function numCell(value, onChange) {
   const inp = document.createElement('input');
   inp.type = 'number'; inp.step = '0.5'; inp.min = '0';
   inp.value = Number(value).toFixed(1);
-  inp.onchange = () => { onChange(parseFloat(inp.value) || 0); };
+  inp.onchange = () => {
+    const v = parseFloat(inp.value) || 0;
+    inp.value = v.toFixed(1);
+    onChange(v);
+  };
   return inp;
 }
 
@@ -4124,11 +4128,12 @@ function renderProctorTASummary(container) {
   const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
 
   renderTASummaryTable(container,
-    ['TA','Max PE','Used PE','Lab Assignments','Assigned Exams'],
+    ['TA','Max PE','Used PE','Lab Assignments','Assigned Exams','Other Duties'],
     ta => {
       const taProctorAssigns = (S.data.proctor_assignments||[]).filter(a=>a.ta_id===ta.id);
+      const otherProctoring = ta.outside_proctoring||[];
       const usedPE = taProctorAssigns.reduce((sum,a) => sum + (examsMap[a.exam_id]?.pe_value||0), 0)
-        + (ta.outside_proctoring||[]).reduce((s,op)=>s+(op.pe_value||0), 0);
+        + otherProctoring.reduce((s,op)=>s+(op.pe_value||0), 0);
       return [
         strongCell(ta.name),
         numCell(ta.max_pe ?? 2.0, v => { ta.max_pe = v; markDirty(); updateProctorPETotals(); }),
@@ -4141,6 +4146,7 @@ function renderProctorTASummary(container) {
           return assignChip((course ? `${course} — ` : '') + (exam?.name||a.exam_id),
             {locked: a.locked, onToggle: () => { a.locked = !a.locked; markDirty(); renderProctoring(); }});
         }),
+        otherProctoring.map(op => assignChip(`${op.label} (${Number(op.pe_value||0).toFixed(1)} PE)`)),
       ];
     });
 }
