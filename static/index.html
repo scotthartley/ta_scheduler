@@ -65,7 +65,6 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 /* ── header ─────────────────────────────────────────────────── */
 header { display: flex; align-items: center; gap: 15px; padding: 10px 20px;
          background: var(--toolbar-bg); color: var(--text); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-header h1 { font-size: var(--fs-base); font-weight: 600; letter-spacing: .5px; }
 header .spacer { flex: 1; }
 #save-btn.dirty { background: var(--amber); border-color: var(--amber); color: #fff; }
 #pref-btn { font-size: var(--fs-lg); }
@@ -492,11 +491,10 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 <body>
 
 <header>
-  <h1>TA Scheduler</h1>
-  <div class="spacer"></div>
+  <button onclick="openNative()" title="Open an existing schedule file">Open…</button>
   <button id="save-btn" onclick="saveData()" title="Save schedule to current file (Ctrl+S)">Save</button>
   <button onclick="saveAsData()" title="Save schedule to a new file">Save As…</button>
-  <button onclick="openNative()" title="Open an existing schedule file">Open…</button>
+  <div class="spacer"></div>
   <button onclick="importClassList()" title="Import courses and labs from a departmental class list CSV">Import Class Info</button>
   <button onclick="exportDocx()" title="Export the current schedule as a Word document">Export DOCX</button>
   <button id="pref-btn" onclick="openPreferencesModal()" title="Edit optimization preferences">⚙</button>
