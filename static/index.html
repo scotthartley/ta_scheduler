@@ -1910,7 +1910,13 @@ function renderLabForm(item, form) {
   item.roles = item.roles||[];
 
   // Course roles only apply to their own course; shared roles apply everywhere.
-  const visibleRoles = S.data.roles.filter(role => !role.course_name || role.course_name === item.name);
+  // A *foreign* course role is shown too when this assignment still carries a
+  // non-zero requirement for it — a requirement stranded by a rename (the role
+  // was attached under the old name) would otherwise have no UI to remove it,
+  // while still producing solver slots.
+  const isForeign = role => role.course_name && role.course_name !== item.name;
+  const visibleRoles = S.data.roles.filter(role =>
+    !isForeign(role) || (item.roles.find(rr => rr.role_id === role.id)?.count > 0));
 
   form.appendChild(inlineList(visibleRoles.map(role => {
     let rr = item.roles.find(r => r.role_id === role.id);
@@ -1920,7 +1926,10 @@ function renderLabForm(item, form) {
 
     const nameDiv = el('div','role-req-name');
     nameDiv.innerHTML = escHtml(role.label) +
-      `<span class="role-se-note">(${role.se_value} SE)</span>`;
+      `<span class="role-se-note">(${role.se_value} SE)</span>` +
+      (isForeign(role)
+        ? ` <span class="chip" title="This role belongs to ${escHtml(role.course_name)}. Set Number to 0 to remove it from this assignment.">from ${escHtml(role.course_name)}</span>`
+        : '');
     block.appendChild(nameDiv);
 
     const row = el('div','form-row');
