@@ -649,10 +649,25 @@ def solve(data):
             fixed.append((oc["day"], oc["start_min"], oc["end_min"], None, None))
         ta_fixed_times[ta["id"]] = fixed
 
+    # Date-specific blocks a TA already owns: their grad courses' exam sittings.
+    # Only dated lab meetings are tested against these — a one-off exam should
+    # not block an entire weekly series. Each entry is (iso_date, start, end).
+    ta_fixed_dates = {}
+    for ta in tas:
+        dated = []
+        for gc_id in ta.get("grad_course_ids", []):
+            gc = gc_map.get(gc_id)
+            for gc_ex in (gc or {}).get("exams", []):
+                if gc_ex.get("date"):
+                    dated.append((gc_ex["date"], gc_ex.get("start_min", 0),
+                                  gc_ex.get("end_min", 0)))
+        ta_fixed_dates[ta["id"]] = dated
+
     def _fixed_blocks_lab(ta_id, lab_id):
         """Weekly lab meetings vs. fixed times by weekday; one-off dated lab
         meetings additionally require the date to fall inside the fixed time's
-        own range."""
+        own range, and are also tested against the TA's grad-course exam
+        sittings by exact date."""
         fixed = ta_fixed_times[ta_id]
         for ld, ls, le in lab_meetings[lab_id]:
             for fd, fs, fe, _fds, _fde in fixed:
@@ -663,6 +678,9 @@ def solve(data):
             for fd, fs, fe, fds, fde in fixed:
                 if (dobj.weekday() == fd and times_overlap(ls, le, fs, fe)
                         and _date_in_range(iso, fds, fde)):
+                    return True
+            for xd, xs, xe in ta_fixed_dates[ta_id]:
+                if xd == iso and times_overlap(ls, le, xs, xe):
                     return True
         return False
 
@@ -1009,7 +1027,10 @@ def solve_proctoring(data):
                 if not gc:
                     continue
                 for gd, gs, ge in _get_meetings(gc):
-                    if gd == wd and times_overlap(es, ee, gs, ge):
+                    if (gd == wd and times_overlap(es, ee, gs, ge)
+                            and _date_in_range(exam.get("date"),
+                                               gc.get("date_start"),
+                                               gc.get("date_end"))):
                         return True
                 exam_date = exam.get("date")
                 if exam_date:
