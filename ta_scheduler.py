@@ -612,6 +612,13 @@ def _ta_date_conflict_blocks_lab(ta, lab, meetings, date_meetings=()):
 
 def solve(data):
     roles_map = {r["id"]: r for r in data.get("roles", [])}
+    # Roles the user has flagged as sitting out the concentration objective —
+    # typically meeting-less duties (grading, stockroom) where spreading the work
+    # is fine. They are never added to st["roles"], so they are neither charged
+    # new_role_penalty nor counted in the multiplier that prices a TA's next role.
+    exempt_roles = frozenset(
+        r["id"] for r in data.get("roles", []) if r.get("exempt_from_split")
+    )
     labs      = data.get("labs", [])
     tas       = data.get("tas", [])
     assignments_in = data.get("assignments", [])
@@ -756,8 +763,7 @@ def solve(data):
         st = {"used_se": {}, "booked_labs": {}, "roles": {}, "per_slot": {}}
         for ta in tas:
             tid = ta["id"]
-            st["used_se"][tid]     = sum(d.get("se_value", 0)
-                                         for d in ta.get("outside_duties", []))
+            st["used_se"][tid]     = 0.0
             st["booked_labs"][tid] = set()
             st["roles"][tid]       = set()
         for a in locked_assignments:
@@ -767,7 +773,8 @@ def solve(data):
             if lab and tid in st["used_se"]:
                 st["used_se"][tid] += role.get("se_value", 1.0)
                 st["booked_labs"][tid].add(lid)
-                st["roles"][tid].add(rid)
+                if rid not in exempt_roles:
+                    st["roles"][tid].add(rid)
             st["per_slot"].setdefault((lid, rid), set()).add(tid)
         return st
 
@@ -798,11 +805,13 @@ def solve(data):
         if rr.get("preferred_experienced", 0) > 0 and ta.get("experience") == "experienced":
             s += experience_bonus
         roles_held = st["roles"][ta["id"]]
-        if rr["role_id"] not in roles_held:
+        if rr["role_id"] not in exempt_roles and rr["role_id"] not in roles_held:
             # Opening a new (TA, role) pairing is the thing being minimised, so it is
             # charged even for a TA's first role — that is what lets a TA already in
             # this role outrank an idle one. Scaling by roles already held sends
-            # unavoidable new pairings to the least-fragmented TA.
+            # unavoidable new pairings to the least-fragmented TA. Exempt roles are
+            # absent from roles_held, so they neither pay this nor inflate the
+            # multiplier — only load balancing decides who takes them.
             s -= new_role_penalty * (1 + len(roles_held))
         s -= st["used_se"][ta["id"]] * load_balance_weight
         s += random.random()
@@ -837,7 +846,8 @@ def solve(data):
 
             st["used_se"][best["id"]] += role.get("se_value", 1.0)
             st["booked_labs"][best["id"]].add(lab["id"])
-            st["roles"][best["id"]].add(rr["role_id"])
+            if rr["role_id"] not in exempt_roles:
+                st["roles"][best["id"]].add(rr["role_id"])
             st["per_slot"].setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
 
         return result_assignments
@@ -1441,23 +1451,6 @@ def generate_docx(data):
                 doc.add_paragraph("No assignments")
             doc.add_paragraph()
 
-    other_duty_rows = [
-        (ta, od)
-        for ta in data.get("tas", [])
-        for od in ta.get("outside_duties", [])
-    ]
-    if other_duty_rows:
-        doc.add_heading("Other Duties", 2)
-        tbl = doc.add_table(rows=1, cols=2)
-        tbl.style = "Table Grid"
-        hdr = tbl.rows[0].cells
-        hdr[0].text, hdr[1].text = "TA", "Duty"
-        for ta, od in sorted(other_duty_rows, key=lambda pair: (pair[0].get("name", ""), pair[1].get("label", ""))):
-            row = tbl.add_row().cells
-            row[0].text = ta.get("name", "")
-            row[1].text = od.get("label", "Other Duty")
-        doc.add_paragraph()
-
     # Exam proctoring
     exams = data.get("exams", [])
     if exams and proctor_assignments:
@@ -1548,7 +1541,6 @@ def generate_docx(data):
             for line in schedule_lines:
                 doc.add_paragraph(line, style="List Bullet")
         ta_asgn = [a for a in assignments if a["ta_id"] == ta["id"]]
-        outside = ta.get("outside_duties", [])
         ta_proctor = sorted(
             [a for a in proctor_assignments if a["ta_id"] == ta["id"]],
             key=lambda a: (
@@ -1556,7 +1548,7 @@ def generate_docx(data):
                 exams_map.get(a["exam_id"], {}).get("start_min", 0),
             ),
         )
-        if ta_asgn or outside:
+        if ta_asgn:
             doc.add_heading("Lab Assignments", 3)
             tbl = doc.add_table(rows=1, cols=3)
             tbl.style = "Table Grid"
@@ -1585,11 +1577,6 @@ def generate_docx(data):
                     if len(parts) == 2 and parts[0] == "—":
                         parts = parts[1:]
                     row[2].text = "; ".join(parts)
-            for od in outside:
-                row = tbl.add_row().cells
-                row[0].text = od.get("label", "Other Duty")
-                row[1].text = "Other Duty"
-                row[2].text = "—"
         outside_proctor = ta.get("outside_proctoring", [])
         if ta_proctor or outside_proctor:
             doc.add_heading("Proctoring", 3)
@@ -1611,7 +1598,7 @@ def generate_docx(data):
                 orow[0].text = "—"
                 orow[1].text = "—"
                 orow[2].text = op.get("label", "Outside Proctoring")
-        if not ta_asgn and not outside and not ta_proctor and not outside_proctor:
+        if not ta_asgn and not ta_proctor and not outside_proctor:
             doc.add_paragraph("No assignments")
         doc.add_paragraph()
 

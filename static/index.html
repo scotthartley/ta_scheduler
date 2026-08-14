@@ -167,7 +167,10 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
    row. Controls inside a row are borderless at rest so the group's own frame
    is the only box on screen. */
 .ilist { border: 1px solid var(--border); border-radius: var(--r-md);
-         background: var(--panel); overflow: hidden; margin-top: 4px; }
+         background: var(--panel); overflow: hidden; margin-top: 4px;
+         /* horizontal padding of the quiet controls below — shared so the
+            two-line left-edge correction cannot drift from it */
+         --il-pad-x: 6px; }
 .ilist-row { display: flex; align-items: center; gap: 8px;
              padding: 4px 8px; min-height: 34px; font-size: var(--fs-base); }
 .ilist-row + .ilist-row,
@@ -179,15 +182,36 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .il-label { flex: 1; min-width: 0; }
 .il-meta  { font-size: var(--fs-xs); color: var(--text2); flex-shrink: 0; white-space: nowrap; }
 .il-unit  { font-size: var(--fs-sm); color: var(--text2); flex-shrink: 0; }
+/* margin-left:auto parks the flag on the right edge, under the chip/× column.
+   padding-right matches .btn-x's own side padding, so the label's right edge
+   lines up with the × glyph above it rather than overshooting it. */
+.il-exempt { display: flex; align-items: center; gap: 4px; cursor: pointer;
+             margin-left: auto; padding-right: 5px;
+             font-size: var(--fs-xs); color: var(--text2); flex-shrink: 0; white-space: nowrap; }
+/* two-line rows (inlineList's `subCells`): identity on top, settings beneath.
+   The 400px roles panel cannot fit a role's name, course, SE and split flag on
+   one line, so those stack instead of squeezing. */
+.il-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.il-line  { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Line 1 leads with a text input, whose own border + padding indents its text
+   relative to a bare <span>. Inset the settings line by exactly that much so
+   both lines share one left edge. */
+.il-line + .il-line { padding-left: calc(var(--il-pad-x) + 1px); }
 .chip     { font-size: var(--fs-xs); padding: 2px 7px; border-radius: var(--r-pill);
             background: var(--gray-lt); color: var(--text2); flex-shrink: 0; white-space: nowrap; }
 
-/* quiet controls: the row frame is the only box until you touch one */
-.ilist-row :is(input, select) { border-color: transparent; background: transparent;
-                                box-shadow: none; padding: 3px 6px; }
-.ilist-row :is(input, select):hover { border-color: var(--border); background: var(--panel); }
-.ilist-row :is(input, select):focus { border-color: var(--blue); background: var(--panel);
-                                      box-shadow: 0 0 0 3px rgba(0,122,255,0.2); }
+/* quiet controls: the row frame is the only box until you touch one.
+   Checkboxes are excluded — they have no border or background of their own to
+   quiet, and blanking them hides the control entirely (same carve-out the
+   control base above makes). */
+.ilist-row :is(input:not([type=checkbox]), select) {
+                                border-color: transparent; background: transparent;
+                                box-shadow: none; padding: 3px var(--il-pad-x); }
+.ilist-row :is(input:not([type=checkbox]), select):hover {
+                                border-color: var(--border); background: var(--panel); }
+.ilist-row :is(input:not([type=checkbox]), select):focus {
+                                border-color: var(--blue); background: var(--panel);
+                                box-shadow: 0 0 0 3px rgba(0,122,255,0.2); }
 .ilist-row input[type=number] { appearance: textfield; -webkit-appearance: textfield; }
 .ilist-row input[type=number]:hover, .ilist-row input[type=number]:focus {
   appearance: auto; -webkit-appearance: auto; }
@@ -606,7 +630,6 @@ input.w-full, select.w-full, .w-full { width: 100%; }
     </div>
     <div id="diagnostics" style="display:none;"></div>
     <div class="data-table-wrap"><div id="sched-table"></div></div>
-    <div id="outside-duties-section"></div>
     <div id="sched-ta-summary"></div>
   </div>
 
@@ -977,16 +1000,34 @@ function xBtn(onClick, title = 'Remove', extraCls = '') {
 }
 
 // One grouped inset list — the only row-list builder. items:
-// [{cells, onRemove, removeTitle}], where a cell is either a string (wrapped in
-// an .il-label) or a DOM node. opts: {empty, footer}. `footer` is a node or an
-// array of nodes rendered as the group's last row (add-actions live there).
+// [{cells, subCells, onRemove, removeTitle}], where a cell is either a string
+// (wrapped in an .il-label) or a DOM node. `subCells` is optional: when present
+// the row becomes two lines — `cells` (identity) on top, `subCells` (settings)
+// beneath — for rows carrying more controls than the panel width fits. It is
+// opt-in per item, so every single-line list keeps its existing flat DOM.
+// opts: {empty, footer}. `footer` is a node or an array of nodes rendered as
+// the group's last row (add-actions live there).
 function inlineList(items, {empty, footer} = {}) {
   const wrap = el('div','ilist');
+  const addCells = (host, cells) => (cells || []).forEach(c =>
+    host.append(typeof c === 'string' ? el('span','il-label', escHtml(c)) : c));
   items.forEach(it => {
     const row = el('div','ilist-row');
-    (it.cells || []).forEach(c =>
-      row.append(typeof c === 'string' ? el('span','il-label', escHtml(c)) : c));
-    if (it.onRemove) row.append(xBtn(it.onRemove, it.removeTitle));
+    if (it.subCells) {
+      const lines = el('div','il-lines');
+      const top = el('div','il-line'), sub = el('div','il-line');
+      addCells(top, it.cells);
+      addCells(sub, it.subCells);
+      // The × goes *inside* line 1 rather than alongside the stack, so it centres
+      // on the entry's name for free. As a sibling of .il-lines it would centre
+      // on the whole two-line block instead, landing in the gutter.
+      if (it.onRemove) top.append(xBtn(it.onRemove, it.removeTitle));
+      lines.append(top, sub);
+      row.append(lines);
+    } else {
+      addCells(row, it.cells);
+      if (it.onRemove) row.append(xBtn(it.onRemove, it.removeTitle));
+    }
     wrap.append(row);
   });
   if (!items.length && empty) wrap.append(el('div','ilist-empty', escHtml(empty)));
@@ -1313,7 +1354,7 @@ function createNewItem() {
     S.data.grad_courses.push(item);
   } else if (S.tab === 'tas') {
     item = {id:uid(), name:'New TA', experience:'inexperienced', max_se:2.0, max_pe:2.0,
-            grad_course_ids:[], outside_duties:[], outside_proctoring:[], other_commitments:[],
+            grad_course_ids:[], outside_proctoring:[], other_commitments:[],
             email:'', date_conflicts:[], schedule_complete:false};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
@@ -1638,7 +1679,7 @@ function renderTAForm(item, form) {
   const seL = el('label'); seL.textContent = 'Max SE';
   const seInp = document.createElement('input');
   seInp.type='number'; seInp.step='0.5'; seInp.min='0'; seInp.value=item.max_se||2.0;
-  seInp.title = 'Maximum service-equivalent units this TA can be assigned (labs + outside duties)';
+  seInp.title = 'Maximum service-equivalent units this TA can be assigned';
   seInp.oninput = () => { item.max_se=parseFloat(seInp.value)||0; markDirty(); };
   seL.appendChild(seInp); seG.appendChild(seL); sepeRow.appendChild(seG);
 
@@ -2549,7 +2590,6 @@ function renderSchedule(diag, status) {
   tbl.innerHTML = '';
   if (S.schedViewMode === 'grid') renderScheduleGrid(tbl);
   else renderLabView(tbl);
-  renderOutsideDuties();
   renderTASummary($id('sched-ta-summary'));
 }
 
@@ -2707,13 +2747,14 @@ function renderTASummary(container) {
   const labsMap  = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
 
   renderTASummaryTable(container,
-    ['TA','Experience','Max SE','Used SE','Roles','Assigned Labs','Other Duties'],
+    ['TA','Experience','Max SE','Used SE','Roles','Assigned Labs'],
     ta => {
       const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
-      const otherDuties = ta.outside_duties||[];
-      const usedSE = taAssigns.reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0)
-        + otherDuties.reduce((s,d)=>s+(d.se_value||0),0);
-      const roleCount = new Set(taAssigns.map(a => a.role_id)).size;
+      const usedSE = taAssigns.reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0);
+      // Exempt roles are invisible to the solver's concentration objective, so
+      // they must not show up in the split count that reports on it either.
+      const roleCount = new Set(taAssigns.map(a => a.role_id)
+        .filter(rid => !rolesMap[rid]?.exempt_from_split)).size;
       return [
         strongCell(ta.name),
         ta.experience==='experienced'?'Experienced':'Inexperienced',
@@ -2722,25 +2763,14 @@ function renderTASummary(container) {
         el('span', roleCount > 1 ? 'role-split' : null, String(roleCount)),
         taAssigns.map(a => assignChip(
           (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id))),
-        otherDuties.map(d => assignChip(`${d.label} (${Number(d.se_value||0).toFixed(1)} SE)`)),
       ];
     });
 }
 
-// ── Outside load tables (SE duties on the lab tab, PE duties on the proctoring
-//    tab). One renderer and one add-modal, parameterised by the load field. ──
+// ── Outside load table (PE duties on the proctoring tab). One renderer and one
+//    add-modal, parameterised by the load field — duties with no fixed meeting
+//    time are ordinary meeting-less Assignments, not a separate SE list. ──
 const LOAD_SECTIONS = {
-  duties: {
-    field: 'outside_duties', valueKey: 'se_value', unit: 'SE',
-    sectionId: 'outside-duties-section',
-    title: 'Other Duties', addLabel: '+ Add Duty',
-    addTitle: "Add another duty that counts toward a TA's SE but has no fixed meeting time",
-    hint: "Duties that count toward a TA's SE but have no fixed meeting time",
-    modalTitle: 'Add Other Duty', placeholder: 'e.g. Grading',
-    defaultValue: 0.5, defaultLabel: 'Duty',
-    // Other duties count toward Used SE, so refresh the summary too.
-    afterChange: () => renderTASummary($id('sched-ta-summary')),
-  },
   proctoring: {
     field: 'outside_proctoring', valueKey: 'pe_value', unit: 'PE',
     sectionId: 'outside-proctoring-section',
@@ -2795,7 +2825,6 @@ function renderLoadSection(which) {
   })));
 }
 
-function renderOutsideDuties()     { renderLoadSection('duties'); }
 function renderOutsideProctoring() { renderLoadSection('proctoring'); }
 
 function openAddLoadModal(which) {
@@ -3000,7 +3029,7 @@ function openAssignModal(lab, rr, rolesMap) {
   // usedSE was recomputed three times per row before; do it once per TA.
   const rolesById = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
   const usedSE = {};
-  S.data.tas.forEach(ta => { usedSE[ta.id] = (ta.outside_duties||[]).reduce((s,d)=>s+(d.se_value||0),0); });
+  S.data.tas.forEach(ta => { usedSE[ta.id] = 0; });
   S.data.assignments.forEach(a => {
     if (a.ta_id in usedSE) usedSE[a.ta_id] += rolesById[a.role_id]?.se_value || 0;
   });
@@ -3098,7 +3127,6 @@ function buildTable(headers, rows, totalRows = 0) {
 // computes each TA's lab/proctoring rows (with totals) exactly once.
 function taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn }) {
   const taAsgn    = d.assignments.filter(a => a.ta_id === ta.id);
-  const outside   = ta.outside_duties ?? [];
   const taProctor = [...proctorAsgn.filter(a => a.ta_id === ta.id)].sort((a,b) => {
     const ea = examsMap[a.exam_id]??{}, eb = examsMap[b.exam_id]??{};
     return ((ea.course_name||'')+' '+(ea.section||'')+' '+(ea.date||''))
@@ -3109,7 +3137,7 @@ function taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn }
   let totalSE = 0;
   const seRows = [];
   const seLines = [];
-  if (taAsgn.length || outside.length) {
+  if (taAsgn.length) {
     for (const a of [...taAsgn].sort((a,b) => {
         const la = labsMap[a.lab_id]??{}, lb = labsMap[b.lab_id]??{};
         return (la.day??0)*10000+(la.start_min??0) - ((lb.day??0)*10000+(lb.start_min??0));
@@ -3122,12 +3150,6 @@ function taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn }
       seRows.push([displayName(lab)||'—', role.label||'—', time, se.toFixed(1)]);
       const courseSection = displayName(lab) || '—', roleLabel = role.label || '—';
       seLines.push(time === '—' ? `${courseSection}, ${roleLabel}` : `${courseSection}, ${roleLabel}: ${time}`);
-    }
-    for (const od of outside) {
-      const se = od.se_value ?? 0;
-      totalSE += se;
-      seRows.push([od.label||'Other Duty', 'Other Duty', '—', se.toFixed(1)]);
-      seLines.push(od.label || 'Other Duty');
     }
     seRows.push(['Total SE', '', '', `${totalSE.toFixed(1)} / ${(ta.max_se??2).toFixed(1)}`]);
   }
@@ -3161,7 +3183,7 @@ function taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn }
     peRows.push(['Total PE', '', '', totalPE.toFixed(1)]);
   }
 
-  const hasAny = !!(taAsgn.length || outside.length || taProctor.length || outsideProctor.length);
+  const hasAny = !!(taAsgn.length || taProctor.length || outsideProctor.length);
 
   return { seRows, seLines, totalSE, peRows, peLines, totalPE, hasAny };
 }
@@ -3533,12 +3555,31 @@ function roleListRow(role) {
   seInp.step='0.5'; seInp.min='0'; seInp.value=role.se_value; seInp.className='num-input';
   seInp.oninput = () => { role.se_value=parseFloat(seInp.value)||0; markDirty(); syncItemForm(); };
 
+  // "Allow split" = exempt_from_split: the role sits out the solver's concentration
+  // objective entirely — a TA is neither charged for taking it nor has it counted
+  // against their other roles. Named for the split penalty it switches off, the
+  // same word TA Summary's .role-split column uses. Meant for duties (grading,
+  // stockroom hours) where spreading the work across TAs is fine.
+  const exemptLbl = el('label','il-exempt');
+  exemptLbl.title = 'Allow this role to be split across TAs — the solver neither penalises '
+    + 'a TA for taking it nor counts it against the roles they already hold';
+  const exemptCb = document.createElement('input'); exemptCb.type='checkbox';
+  exemptCb.checked = !!role.exempt_from_split;
+  exemptCb.onchange = () => {
+    role.exempt_from_split = exemptCb.checked;
+    markDirty(); renderTASummary($id('sched-ta-summary'));
+  };
+  exemptLbl.append(exemptCb, el('span',null,'Allow split'));
+
+  // Line 1 is what the role *is* (name, and the course it belongs to); line 2 is
+  // how it behaves (SE weight, split flag). Five controls do not fit the 400px
+  // panel on one line — the same reason Role Requirements stacks its block.
   const cells = [lblInp];
   if (role.course_name) cells.push(el('span','chip', escHtml(role.course_name)));
-  cells.push(el('span','il-unit','SE'), seInp);
 
   return {
     cells,
+    subCells: [el('span','il-unit','SE'), seInp, exemptLbl],
     removeTitle: 'Remove role',
     onRemove: () => {
       S.data.roles = S.data.roles.filter(x => x !== role);
@@ -4886,7 +4927,9 @@ function showHelpModal() {
         <p>Define the duties TAs are assigned to — undergraduate lab sections and anything
         else that needs staffing. Set weekly meeting times on the grid, or list one-off
         <strong>Specific Dates</strong> for work that only happens in certain weeks, then
-        configure how many TAs each role requires. Assignments drive the scheduling.</p>
+        configure how many TAs each role requires. Assignments drive the scheduling.
+        Work with no fixed meeting time at all (grading, stockroom hours) is an
+        assignment too — just delete its meeting times; its SE comes from its role.</p>
 
         <h3>Graduate Courses</h3>
         <p>Add graduate courses taken by TAs. Meeting times entered here are used to
@@ -4904,8 +4947,7 @@ function showHelpModal() {
         <h3>Schedule Labs</h3>
         <p>Use <strong>Assign TAs</strong> to auto-fill open slots, or use <strong>+ TA</strong> to assign manually.
         Lock assignments you want to keep; the solver won't overwrite locked slots.
-        Switch between Lab View and TA View. Add outside duties (grading etc.) that count
-        toward SE but have no meeting time. Export DOCX when done.</p>
+        Switch between Lab View and TA View. Export DOCX when done.</p>
 
         <h3>Schedule Proctoring</h3>
         <p>Use <strong>Assign Proctors</strong> to auto-fill exam proctoring slots.
@@ -4929,7 +4971,8 @@ function showHelpModal() {
           <li><strong>PE (Proctoring Equivalent):</strong> unit of proctoring workload. Independent from SE.</li>
           <li><strong>Experienced / Inexperienced:</strong> controls experience-preference soft constraints.</li>
           <li><strong>Locked assignments:</strong> preserved by the solver; unlocked ones can be replaced.</li>
-          <li><strong>Other duties:</strong> SE-consuming responsibilities with no fixed meeting time.</li>
+          <li><strong>Meeting-less assignments:</strong> SE-consuming responsibilities with no fixed
+              meeting time — created on the Assignments tab with their meeting times deleted.</li>
         </ul>
       </div>
       <div class="modal-footer">

@@ -57,12 +57,12 @@ Install: `uv sync`
 ## Data model (JSON schema)
 
 ```
-roles:              [{id, label, se_value}]
+roles:              [{id, label, se_value, course_name?, exempt_from_split?}]
 grad_courses:       [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?}]
 labs:               [{id, name, section, day, start_min, end_min, meetings?, date_meetings?, exams?, date_start?, date_end?, roles[]}]
                     date_meetings[]: [{date, start_min, end_min, label?}]
                     roles[]: [{role_id, count, preferred_experienced}]
-tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
+tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[],
                       outside_proctoring[], other_commitments[], date_conflicts[], schedule_complete?}]
 assignments:        [{lab_id, role_id, ta_id, locked}]
 exams:              [{id, name, course_name, section, date, start_min, end_min, tbd, time_tbd, proctor_count, pe_value}]
@@ -103,13 +103,23 @@ Assignments | Exams | TAs | Graduate Courses | Schedule Labs | Schedule Proctori
 
 Hard constraints (eligibility filters):
 1. Role count: assignments per role ≤ configured count
-2. SE cap: total SE assigned to a TA ≤ their max_se (including outside duties)
+2. SE cap: total SE assigned to a TA ≤ their max_se
 3. No double-booking: a TA cannot hold two labs that clash. Precomputed once into `lab_conflicts` (`lab_id → frozenset` of clashing lab ids), so `double_booked()` is a set-membership test rather than a nested scan. Pairwise rule:
    - **weekly × weekly** — same weekday + time overlap. Deliberately does *not* consult date ranges, preserving the conservative behavior that predates `date_meetings[]`.
    - **weekly × dated** — the dated meeting's weekday matches the weekly meeting's day, times overlap, and the dated meeting's date falls inside the weekly lab's `date_start`/`date_end` (an absent bound never excludes).
    - **dated × dated** — same *date* + time overlap. This exactness is what stops two one-off sessions on the same weekday but different dates from being falsely reported as double-booked.
 4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments. `ta_fixed_times` entries are `(day, start, end, date_start, date_end)` — the trailing range is the grad course's own (`None, None` for `other_commitments`, which recur all term). Weekly lab meetings are matched by weekday and ignore the range; a `date_meetings[]` session additionally requires its date to fall inside it. A `date_meetings[]` session is also checked against the TA's grad courses' `exams[]` sittings by exact date (`ta_fixed_dates`); weekly lab meetings deliberately are **not** — a one-off exam should not block an entire weekly series.
 5. `date_conflicts[]`: evaluated per (TA, lab) pair, not folded into the flat, lab-agnostic fixed-times list — a conflict's effect on a given lab depends on that lab's own `date_start`/`date_end`. The conflict's date span is clamped to the lab's `date_start`/`date_end` (when present) before being expanded into weekday+time windows checked against that lab's meetings; if the lab has no date range set, the check falls back to the conflict's own unclamped span. Entries with `ignore_for_labs` are skipped entirely for this check. Because the app has no per-occurrence lab-assignment model, a lab that's actively meeting on the conflicting weekday within the (clamped) window is blocked entirely, not just for the specific date(s) within the conflict — the residual imprecision the `ignore_for_labs` toggle exists to work around. A `date_meetings[]` session *has* a real date, so it skips all of that and goes straight through `_date_conflict_overlaps(dc, date_obj, s, e)` — the exact-date test, no weekday collapsing and no clamping. That path is strictly more precise and is the one case where `ignore_for_labs` should not be needed.
+
+**Duties with no fixed meeting time** (grading, stockroom hours, …) are modelled
+as ordinary meeting-less `labs[]` entries — `meetings: []`, `day: null`, no
+`date_meetings[]` — whose SE comes from their role's `se_value`, like any other
+assignment. There is no separate per-TA duty list. Such an entry is
+unconstrained by hard constraints 3–5 *by construction*: every one of those
+checks loops over the entry's meetings, so with none they can never fire, and
+only the role count (1) and the SE cap (2) bind. The slot list is built purely
+from `lab.roles[].count` minus locked seats and never consults meetings, so
+duty seats are solver-fillable exactly like lab seats.
 
 Scoring (higher is better), with all magnitudes as **user-configurable
 weights** — defaults live in `_DEFAULT_SETTINGS` in `ta_scheduler.py`, the
@@ -128,6 +138,9 @@ user-configurable.
   TA's first role**: that is what lets a TA already in a role outrank an idle one.
   Scaling by roles already held makes the objective "minimize the total number of
   distinct (TA, role) pairings" rather than a binary one-vs-many flag.
+  Roles flagged `exempt_from_split` are skipped here and are never added to
+  `st["roles"]`, so they neither pay the charge nor inflate the multiplier for
+  anyone else's next role (see "Roles").
 - `− load_balance_weight × current SE` — default 500
 - `+ random tiebreak`
 
@@ -325,6 +338,31 @@ only `role_id`, never the lab's course name. When a shared role still comes out
 split across course lines, the cause is a hard constraint (overlapping lab times
 between the courses, or the SE cap), not the scoring.
 
+### `exempt_from_split`
+
+A role may carry `exempt_from_split: true` — the "Allow split" checkbox in each
+Roles panel row. It takes the role out of the concentration objective in **both**
+directions: `score()` never charges `new_role_penalty` for it, and it is never
+added to `st["roles"]`, so holding it does not raise the `1 + len(roles_held)`
+multiplier that prices a TA's *other* roles. Only load balancing and the hard
+constraints then decide who takes it. `renderTASummary()`'s `role-split` count
+filters exempt roles out for the same reason — that column reports on the
+objective, so it must not count something the objective ignores.
+
+The flag lives on the **role**, not on the assignment or the role requirement,
+because `score()` only ever sees `rr["role_id"]` against a flat set of role ids —
+nothing about the lab reaches it. A per-requirement flag would make a TA's charge
+depend on which seat greedy happened to fill first (exempt seat first → the role
+is absent from the set → the later real seat is charged; other order → it isn't),
+which is order-dependence the 50-pass best-of would surface as flapping. Since
+`ensureCourseRole()` mints a 1:1 role per course name, flagging the role is
+already per-duty control in practice.
+
+Intended for meeting-less duty assignments (grading, stockroom hours) where
+spreading the work across TAs is fine and concentration is not a goal. Absent on
+every pre-existing role; read defensively (`r.get("exempt_from_split")`) rather
+than migrated, matching the rest of this codebase.
+
 ## Frontend utilities
 
 **Extend these rather than writing a parallel copy** — the lab and proctoring sides
@@ -346,10 +384,12 @@ Data accessors:
 
 Rendering primitives:
 - `buildTable(headers, rows, totalRows)` — the one table builder; emits `.data-table` inside a `.data-table-wrap`. A cell may be a string, a DOM node, or an array of nodes, so tables with live inputs and chips go through it too. The last `totalRows` rows get `.summary-total`.
-- `inlineList(items, {empty, footer})` — the one row-list builder; emits an `.ilist` grouped inset list. `items` is `[{cells, onRemove, removeTitle}]`, where a cell is a string (wrapped in `.il-label`) or a DOM node, so lists with live inputs go through it too. `footer` is a node or array of nodes rendered as the group's last row — every add-action lives there rather than in a card of its own. Used by Meeting Times, course exams, Other Commitments, Date-Specific Conflicts, Role Requirements and both Roles-panel groups.
+- `inlineList(items, {empty, footer})` — the one row-list builder; emits an `.ilist` grouped inset list. `items` is `[{cells, subCells, onRemove, removeTitle}]`, where a cell is a string (wrapped in `.il-label`) or a DOM node, so lists with live inputs go through it too. `footer` is a node or array of nodes rendered as the group's last row — every add-action lives there rather than in a card of its own. Used by Meeting Times, course exams, Other Commitments, Date-Specific Conflicts, Role Requirements and both Roles-panel groups.
+  - `subCells` is optional and makes the row **two lines** — `cells` (what the entry *is*) on top, `subCells` (how it behaves) beneath, wrapped in `.il-lines` / `.il-line`. The `×` is appended **inside line 1** rather than beside the stack, so it centres on the entry's name for free; as a sibling of `.il-lines` it would centre on the whole block and land in the gutter between the lines. Opt-in per item: an item without it takes the original flat path and produces byte-identical DOM, so the single-line lists are unaffected. Only the Roles panel uses it — a role's name, course chip, SE value and "Allow split" flag do not fit the 400px `.roles-panel` on one line.
+  - Two alignment details are load-bearing and look wrong the moment they drift: line 2 is inset by `calc(var(--il-pad-x) + 1px)` to cancel the border+padding that indents line 1's leading text `<input>`, so both lines share a left edge (`--il-pad-x` is declared on `.ilist` and consumed by the quiet-control rule, so the two cannot disagree); and `.il-exempt` carries `padding-right` matching `.btn-x`'s side padding so its right edge lines up with the `×` glyph above rather than overshooting it.
 - `renderAssignGrid(container, cfg)` — the TA × slot matrix behind both Grid views. `cfg` supplies `columns`, `conflictFn`, `findAssignment`, `onAdd`, `onRemove`, `onToggleLock`.
 - `renderTASummaryTable(container, headers, rowFn)` — the "TA Summary" table under both schedule tabs.
-- `renderLoadSection(which)` / `openAddLoadModal(which)` — Outside Duties (SE) and Outside Proctoring (PE), driven by the `LOAD_SECTIONS` config.
+- `renderLoadSection(which)` / `openAddLoadModal(which)` — Outside Proctoring (PE), driven by the `LOAD_SECTIONS` config. `LOAD_SECTIONS` holds a single entry today; it stays parameterised because the two-entry shape is what the renderer was written against.
 - `openDateMeetingForm(item, mode, listEl, index?)` — the one inline form behind **+ Add Date** (`mode: 'single'`), **+ Add Weekly Series** (`mode: 'series'`) and each row's **Edit** in the Assignments form's Specific Dates section, following `openDcForm()`'s toggle-off/`insertAdjacentElement('afterend')` pattern (the toggle key is `dataset.dmTarget`, `mode + ':' + index`, so two different rows' Edit forms replace rather than toggle each other). `index` is null when adding, otherwise the `date_meetings[]` position being edited — always `mode: 'single'`, and the form grows Save/Delete instead of Add. The form's first field is the optional session name; a series applies the same name to every row it generates, and the name is part of the duplicate test so two sessions differing only in name are distinct. Rows therefore carry no `×`; deletion lives in the edit form, matching Date-Specific Conflicts. A series walks the date range day by day and pushes one ordinary `date_meetings[]` row per matching weekday, skipping exact duplicates — the result is ordinary rows, with no second meeting concept anywhere downstream.
 - `openAssignPicker(cfg)` — the assign-a-TA modal for both lab roles and exam proctoring.
 - `lockBadge(locked, onToggle?)` — the only 🔒/🔓 renderer. Interactive when given `onToggle`, static otherwise (for cells whose parent already handles the click).
@@ -371,7 +411,7 @@ Conflict detection (single source of truth, used by both the grids and the modal
 - All corners go through four radius tokens: `--r-sm` 4 (chips, small inline controls), `--r-md` 6 (the default — controls, buttons, cards, panels), `--r-lg` 12 (modals), `--r-pill` 999. No literal `border-radius` outside the print block, apart from `0` resets and `50%` circles.
 - **One control base**: a single `:where(input:not([type=checkbox]):not([type=radio]), select, textarea)` rule right after `body` styles every text/number/date/time control in the app. It is wrapped in `:where()` on purpose — zero specificity, so `.data-table input`, `.ilist-row`'s quiet controls and `.form-group`'s `width: 100%` all override it without `!important`. The matching `:focus` rule is deliberately *not* wrapped, so the focus ring outranks them. Never add a second control base; extend this one.
 - **One button base**: `.btn-sm, header button, .sched-controls button` share one rule, with `.sched-controls button` as the large-size modifier and `.btn-sm.btn-primary` / `.btn-sm.btn-danger` / `.btn-sm.btn-disabled` as variants. `.add-ta-btn` stays separate on purpose — it is a dashed ghost affordance inside grid cells, where a white shadowed button would be wrong. `.view-toggle button` must keep its `box-shadow: none`, or inactive segments inherit the drop shadow.
-- **One row-list system**: `.ilist` (grouped inset list — one bordered container per group, hairline dividers, `.ilist-footer` for the add-action, `.ilist-empty` for the empty state) with `.il-label` / `.il-meta` / `.il-unit` / `.chip` as cell modifiers. It replaced the old `.sublist-item` and `.role-check-row` per-row cards. Controls inside `.ilist-row` are borderless at rest and reveal their border (and number spinners) on hover/focus, so the group frame is the only box. Build these through `inlineList()`, never by hand.
+- **One row-list system**: `.ilist` (grouped inset list — one bordered container per group, hairline dividers, `.ilist-footer` for the add-action, `.ilist-empty` for the empty state) with `.il-label` / `.il-meta` / `.il-unit` / `.il-exempt` / `.chip` as cell modifiers, and `.il-lines` / `.il-line` for two-line rows (see `inlineList`'s `subCells`). It replaced the old `.sublist-item` and `.role-check-row` per-row cards. Controls inside `.ilist-row` are borderless at rest and reveal their border (and number spinners) on hover/focus, so the group frame is the only box — **checkboxes are excluded** from that quieting, since they have no border or background of their own and blanking them hides the control. Build these through `inlineList()`, never by hand.
 - One table system: `.data-table` inside `.data-table-wrap`, with `.lab-header` / `.ta-header` / `.summary-total` as row modifiers. The wrap uses `overflow-x: auto; overflow-y: hidden` — do not collapse those into the `overflow` shorthand, which resets the x-axis and kills horizontal scrolling. The static `.data-table-wrap`s around `#sched-table` / `#proctor-table` are the border for the hand-built tables in `renderLabView` / `renderProctorExamView` (which do *not* use `buildTable`), and `setViewMode()` toggles `.grid-mode` on them to drop that border in Grid view — don't remove them.
 - One bordered surface: `.grid-outer, .meeting-grid-wrap, .cal-grid, .assign-grid-wrap, .data-table-wrap, .picker-list` share a single border+radius rule; each keeps only its own `overflow`. `.picker-list` is the one scrolling picker surface (import checklists and the assign-TA list).
 - Workspace tabs are shown/hidden purely with the `.active` class (see `TAB_WORKSPACE`), never inline `style.display`.
