@@ -283,7 +283,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .block-editable:hover .block-delete:hover { opacity: 1; }
 
 /* ── meeting finder grid ─────────────────────────────────────── */
-.meeting-cell { position: absolute; left: 0; right: 0; pointer-events: none; }
+.meeting-cell { position: absolute; left: 0; right: 0; pointer-events: auto; }
 
 /* ── schedule workspace ──────────────────────────────────────── */
 #schedule-workspace {
@@ -297,6 +297,10 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .meeting-lab-row { padding: 9px 15px; display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); cursor: pointer; }
 .meeting-lab-row:hover { background: rgba(0,0,0,0.04); }
 .meeting-lab-row input[type=checkbox] { cursor: pointer; }
+.meeting-course-row { padding: 9px 15px; display: flex; align-items: center; gap: 8px;
+                      font-size: var(--fs-sm); font-weight: 600; cursor: pointer; }
+.meeting-course-row:hover { background: rgba(0,0,0,0.04); }
+.meeting-lab-sub { padding-left: 34px; }
 
 .sched-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .od-section-hdr { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
@@ -372,6 +376,14 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .meeting-body { display: flex; }
 .meeting-day-col { flex: 1; position: relative; border-left: 1px solid var(--border); }
 .meeting-day-col:first-child { border-left: none; }
+#meeting-tooltip { position: fixed; z-index: 200; display: none; pointer-events: none;
+                   max-width: 320px; background: var(--panel); border: 1px solid var(--border);
+                   border-radius: var(--r-md); box-shadow: 0 4px 14px rgba(0,0,0,0.16);
+                   padding: 8px 10px; font-size: var(--fs-sm); }
+#meeting-tooltip.show { display: block; }
+.mt-head { font-weight: 600; margin-bottom: 6px; }
+.mt-row  { display: flex; gap: 6px; line-height: 1.45; }
+.mt-what { color: var(--text2); }
 
 /* ── modal ───────────────────────────────────────────────────── */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 100;
@@ -650,7 +662,8 @@ input.w-full, select.w-full, .w-full { width: 100%; }
     </div>
     <!-- Right panel: legend + grid -->
     <div class="meeting-right">
-      <div><strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.</div>
+      <div><strong>Meeting Finder</strong> — darker shading = more TAs busy; green = all TAs free.
+           Hover a block to see who's busy.</div>
       <div class="meeting-legend" id="meeting-legend"></div>
       <div class="meeting-grid-wrap">
         <div class="meeting-grid-scroll">
@@ -3121,6 +3134,52 @@ function meetingDeselectAll() {
   renderMeetingFinder();
 }
 
+// ── Heatmap tooltip ────────────────────────────────────────────
+// One lazily-created element reused by every cell; cells are rebuilt on each
+// render, so per-cell tooltip nodes would leak.
+function meetingTooltipEl() {
+  let tt = $id('meeting-tooltip');
+  if (!tt) {
+    tt = el('div'); tt.id = 'meeting-tooltip';
+    document.body.appendChild(tt);
+  }
+  return tt;
+}
+function hideMeetingTooltip() {
+  const tt = $id('meeting-tooltip');
+  if (tt) tt.classList.remove('show');
+}
+function attachMeetingTooltip(cell, info) {
+  const place = (ev) => {
+    const tt = meetingTooltipEl();
+    const pad = 14;
+    const r = tt.getBoundingClientRect();
+    let x = ev.clientX + pad, y = ev.clientY + pad;
+    if (x + r.width  > window.innerWidth)  x = ev.clientX - pad - r.width;
+    if (y + r.height > window.innerHeight) y = ev.clientY - pad - r.height;
+    tt.style.left = Math.max(0, x) + 'px';
+    tt.style.top  = Math.max(0, y) + 'px';
+  };
+  cell.addEventListener('mouseenter', ev => {
+    const tt = meetingTooltipEl();
+    tt.innerHTML = '';
+    const when = `${DAY_SHORT[info.day]} ${fmtTime(info.start)}–${fmtTime(info.end)}`;
+    tt.appendChild(el('div','mt-head', info.occ.length
+      ? `${escHtml(when)} · ${info.free} of ${info.total} free`
+      : `${escHtml(when)} · All ${info.total} TAs free`));
+    info.occ.forEach(o => {
+      const row = el('div','mt-row');
+      row.appendChild(el('span', null, escHtml(o.name)));
+      row.appendChild(el('span','mt-what', '— ' + escHtml(o.what)));
+      tt.appendChild(row);
+    });
+    tt.classList.add('show');
+    place(ev);
+  });
+  cell.addEventListener('mousemove', place);
+  cell.addEventListener('mouseleave', hideMeetingTooltip);
+}
+
 // ════════════════════════════════════════════════════════════════
 // SUMMARY
 // ════════════════════════════════════════════════════════════════
@@ -3449,6 +3508,8 @@ function renderSummary() {
 }
 
 function renderMeetingFinder() {
+  hideMeetingTooltip(); // cells are rebuilt below, so no mouseleave will fire
+
   // ── Lab section filter ──────────────────────────────────────
   const labsWithAssignments = S.data.labs.filter(lab =>
     S.data.assignments.some(a => a.lab_id === lab.id)
@@ -3466,18 +3527,44 @@ function renderMeetingFinder() {
   const filterDiv = $id('meeting-filter');
   filterDiv.innerHTML = '';
   if (labsWithAssignments.length) {
+    // Group by course name; insertion order preserves the flat list's ordering.
+    const byCourse = new Map();
     labsWithAssignments.forEach(lab => {
-      const lbl = el('label', 'meeting-lab-row');
-      const cb = document.createElement('input'); cb.type = 'checkbox';
-      cb.checked = S.meetingLabFilter.has(lab.id);
-      cb.onchange = () => {
-        if (cb.checked) S.meetingLabFilter.add(lab.id);
-        else S.meetingLabFilter.delete(lab.id);
+      const key = lab.name || '(unnamed)';
+      if (!byCourse.has(key)) byCourse.set(key, []);
+      byCourse.get(key).push(lab);
+    });
+
+    byCourse.forEach((labs, courseName) => {
+      const nSel = labs.filter(l => S.meetingLabFilter.has(l.id)).length;
+      const hdr = el('label', 'meeting-course-row');
+      const hcb = document.createElement('input'); hcb.type = 'checkbox';
+      hcb.checked = nSel === labs.length;
+      hcb.indeterminate = nSel > 0 && nSel < labs.length;
+      hcb.onchange = () => {
+        labs.forEach(l => {
+          if (hcb.checked) S.meetingLabFilter.add(l.id);
+          else S.meetingLabFilter.delete(l.id);
+        });
         renderMeetingFinder();
       };
-      lbl.appendChild(cb);
-      lbl.appendChild(document.createTextNode(displayName(lab)));
-      filterDiv.appendChild(lbl);
+      hdr.appendChild(hcb);
+      hdr.appendChild(document.createTextNode(courseName));
+      filterDiv.appendChild(hdr);
+
+      labs.forEach(lab => {
+        const lbl = el('label', 'meeting-lab-row meeting-lab-sub');
+        const cb = document.createElement('input'); cb.type = 'checkbox';
+        cb.checked = S.meetingLabFilter.has(lab.id);
+        cb.onchange = () => {
+          if (cb.checked) S.meetingLabFilter.add(lab.id);
+          else S.meetingLabFilter.delete(lab.id);
+          renderMeetingFinder();
+        };
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(displayName(lab)));
+        filterDiv.appendChild(lbl);
+      });
     });
   } else {
     filterDiv.appendChild(el('p','help-text meeting-empty','No assignments with TAs yet'));
@@ -3492,25 +3579,39 @@ function renderMeetingFinder() {
   const filteredTAs = S.data.tas.filter(ta => taIds.has(ta.id));
   const numTAs = filteredTAs.length;
 
-  // Build unavailability grid: busy[day][minute] = count
-  const busy = Array.from({length:5}, () => new Uint8Array(GRID_MINS));
+  // Collect busy intervals per day: {lo, hi, name, what} in grid-relative minutes.
+  // Intervals rather than per-minute counts, so a segment can name *who* is busy.
+  // Weekday-only by design — date_meetings[]/date_conflicts[] are deliberately
+  // not projected onto a recurring weekly heatmap.
+  const intervals = Array.from({length:5}, () => []);
   const gcMap   = Object.fromEntries(S.data.grad_courses.map(gc=>[gc.id,gc]));
   const labsMap = Object.fromEntries(S.data.labs.map(l=>[l.id,l]));
   const labsByTa = {};
   S.data.assignments.forEach(a => (labsByTa[a.ta_id] = labsByTa[a.ta_id] || []).push(a.lab_id));
 
   filteredTAs.forEach(ta => {
-    const mark = (day, s, e) => {
+    const mark = (day, s, e, what) => {
       if (day < 0 || day > 4) return;
       const lo = Math.max(0, s - GRID_START);
       const hi = Math.min(GRID_MINS, e - GRID_START);
-      for (let m = lo; m < hi; m++) busy[day][m]++;
+      if (hi <= lo) return;
+      intervals[day].push({lo, hi, name: ta.name, what});
     };
-    const markAll = src => getMeetings(src).forEach(m => mark(m.day, m.start_min, m.end_min));
+    const markAll = (src, what) => {
+      if (!src) return;
+      getMeetings(src).forEach(m => mark(m.day, m.start_min, m.end_min, what));
+    };
 
-    (ta.grad_course_ids||[]).forEach(id => markAll(gcMap[id]));
-    (ta.other_commitments||[]).forEach(oc => mark(oc.day, oc.start_min, oc.end_min));
-    (labsByTa[ta.id]||[]).forEach(labId => markAll(labsMap[labId]));
+    (ta.grad_course_ids||[]).forEach(id => {
+      const gc = gcMap[id];
+      if (gc) markAll(gc, displayName(gc) + ' (grad course)');
+    });
+    (ta.other_commitments||[]).forEach(oc =>
+      mark(oc.day, oc.start_min, oc.end_min, oc.label || 'Commitment'));
+    (labsByTa[ta.id]||[]).forEach(labId => {
+      const lab = labsMap[labId];
+      if (lab) markAll(lab, displayName(lab) + ' (assignment)');
+    });
   });
 
   // Legend — built from the same stops flush() paints with, so it can't drift.
@@ -3553,24 +3654,44 @@ function renderMeetingFinder() {
 
     if (!numTAs) continue;
 
-    // Merge consecutive minutes with same busyness into segments
-    let segStart = 0, segBusy = busy[d][0];
-    const flush = (s, e, b) => {
-      if (e <= s || !numTAs) return;
-      const div = el('div','meeting-cell');
-      div.style.top    = (s / GRID_MINS * 100) + '%';
-      div.style.height = ((e - s) / GRID_MINS * 100) + '%';
-      div.style.background = heatColor(b / numTAs);
-      div.title = `${fmtTime(GRID_START+s)}–${fmtTime(GRID_START+e)}: ${numTAs-b}/${numTAs} free`;
-      col.appendChild(div);
-    };
-    for (let m=1; m<GRID_MINS; m++) {
-      if (busy[d][m] !== segBusy) {
-        flush(segStart, m, segBusy);
-        segStart = m; segBusy = busy[d][m];
-      }
+    // Between two consecutive interval boundaries the set of active intervals is
+    // constant, so each [s, e) pair is one candidate segment.
+    const bounds = new Set([0, GRID_MINS]);
+    intervals[d].forEach(iv => { bounds.add(iv.lo); bounds.add(iv.hi); });
+    const cuts = [...bounds].sort((a,b) => a-b);
+
+    const segs = [];
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const s = cuts[i], e = cuts[i+1];
+      if (e <= s) continue;
+      const occ = intervals[d]
+        .filter(iv => iv.lo <= s && iv.hi >= e)
+        .map(iv => ({name: iv.name, what: iv.what}))
+        .sort((a,b) => a.name.localeCompare(b.name) || a.what.localeCompare(b.what));
+      const key = occ.map(o => o.name + '\u0000' + o.what).join('\u0001');
+      const prev = segs[segs.length-1];
+      if (prev && prev.key === key && prev.e === s) prev.e = e;
+      else segs.push({s, e, key, occ});
     }
-    flush(segStart, GRID_MINS, segBusy);
+
+    segs.forEach(seg => {
+      // Busy count is distinct TAs — a TA double-booked across two labs is one
+      // person busy, not two.
+      const busyCount = new Set(seg.occ.map(o => o.name)).size;
+      const div = el('div','meeting-cell');
+      div.style.top    = (seg.s / GRID_MINS * 100) + '%';
+      div.style.height = ((seg.e - seg.s) / GRID_MINS * 100) + '%';
+      div.style.background = heatColor(busyCount / numTAs);
+      attachMeetingTooltip(div, {
+        day: d,
+        start: GRID_START + seg.s,
+        end: GRID_START + seg.e,
+        free: numTAs - busyCount,
+        total: numTAs,
+        occ: seg.occ,
+      });
+      col.appendChild(div);
+    });
   }
 
   // TA list below grid
