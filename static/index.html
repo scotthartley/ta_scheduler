@@ -2620,7 +2620,18 @@ function renderLabView(container) {
   const tbody = el('tbody');
 
   S.data.labs.forEach(lab => {
-    const timeStr = fmtMeetingsAll(lab);
+    const dateMeetings = getDateMeetings(lab);
+    let timeStr, timeTitle = null;
+    if (dateMeetings.length > 2) {
+      const weeklyStr = fmtMeetings(lab);
+      const parts = [];
+      if (weeklyStr !== '—') parts.push(weeklyStr);
+      parts.push(`${dateMeetings.length} dates`);
+      timeStr = parts.join(' · ');
+      timeTitle = fmtMeetingsAll(lab);
+    } else {
+      timeStr = fmtMeetingsAll(lab);
+    }
 
     const activeRoles = (lab.roles||[]).filter(rr=>rr.count>0);
 
@@ -2645,7 +2656,9 @@ function renderLabView(container) {
         tr.appendChild(labTd);
       }
       // escHtml because fmtMeetingsAll() can carry a user-typed session name.
-      tr.appendChild(el('td',null,escHtml(timeStr)));
+      const timeTd = el('td',null,escHtml(timeStr));
+      if (timeTitle) timeTd.title = timeTitle;
+      tr.appendChild(timeTd);
       const roleLabel = escHtml(role?.label||rr.role_id) +
         (rr.preferred_experienced>0 ? ` <span class="role-se-note">(${rr.preferred_experienced} exp pref)</span>` : '');
       const roleTd = el('td'); roleTd.innerHTML = roleLabel;
