@@ -91,6 +91,41 @@ def _get_meetings(item):
     return []
 
 
+def _date_meeting_rows(item):
+    """Return list of (datetime.date, start_min, end_min, label) for each
+    one-off, date-specific meeting of an item. `label` is the optional
+    per-session name, '' when unset. Missing/unparseable dates are dropped."""
+    result = []
+    for dm in item.get("date_meetings") or []:
+        try:
+            d = datetime.date.fromisoformat(dm["date"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        result.append((d, dm.get("start_min", 0), dm.get("end_min", 0),
+                       dm.get("label") or ""))
+    return result
+
+
+def _get_date_meetings(item):
+    """The solver's view of _date_meeting_rows(): (date, start_min, end_min).
+    Labels are display-only, so they are projected away here rather than
+    threaded through every conflict check."""
+    return [(d, s, e) for d, s, e, _label in _date_meeting_rows(item)]
+
+
+def _date_in_range(date_str, ds, de):
+    """True unless `date_str` falls outside [ds, de]. An absent bound never
+    excludes — the same rule as the frontend's dateInRange(). ISO strings are
+    compared directly, so the two sides cannot drift."""
+    if not date_str:
+        return True
+    if ds and date_str < ds:
+        return False
+    if de and date_str > de:
+        return False
+    return True
+
+
 def _dc_dates(dc):
     """(start_date, end_date) raw ISO strings for a date_conflicts[] entry,
     falling back to the legacy singular `date` field."""
@@ -193,6 +228,16 @@ def fmt_meetings(item, day_names=None):
     parts = [f"{names[d]} {fmt_time(s)}–{fmt_time(e)}"
              for d, s, e in _get_meetings(item) if 0 <= d < len(names)]
     return ", ".join(parts) if parts else "—"
+
+
+def fmt_date_meetings(item):
+    """Every one-off, date-specific meeting of an item, date-sorted:
+    'Tue Sep 15, 2026 1:00 PM–5:00 PM (Setup); Tue Sep 22, 2026 1:00 PM–5:00 PM'.
+    The trailing '(label)' appears only for sessions that were given a name."""
+    parts = [f"{d.strftime('%a %b %d, %Y')} {fmt_time(s)}–{fmt_time(e)}"
+             + (f" ({label})" if label else "")
+             for d, s, e, label in sorted(_date_meeting_rows(item))]
+    return "; ".join(parts)
 
 
 # ── CSV import helpers ────────────────────────────────────────────────────────
@@ -545,16 +590,22 @@ _DEFAULT_SETTINGS = {
 }
 
 
-def _ta_date_conflict_blocks_lab(ta, lab, meetings):
+def _ta_date_conflict_blocks_lab(ta, lab, meetings, date_meetings=()):
     """True if any of the TA's date_conflicts[] (not marked ignore_for_labs)
-    overlaps this lab's meetings once clamped to the lab's own date_start/
-    date_end (or the conflict's own span, if the lab has no date range)."""
+    overlaps this lab's meetings. Weekly meetings are checked by weekday, with
+    the conflict clamped to the lab's own date_start/date_end (or the conflict's
+    own span, if the lab has no date range). One-off date_meetings[] have a real
+    date, so they get the exact-date test instead — strictly more precise, and
+    exactly the residual imprecision `ignore_for_labs` exists to work around."""
     ds, de = lab.get("date_start"), lab.get("date_end")
     for dc in ta.get("date_conflicts", []):
         if dc.get("ignore_for_labs"):
             continue
         for wd, sm, em in _expand_date_conflict_weekdays(dc, ds, de):
             if any(ld == wd and times_overlap(sm, em, ls, le) for ld, ls, le in meetings):
+                return True
+        for dobj, ls, le in date_meetings:
+            if _date_conflict_overlaps(dc, dobj, ls, le):
                 return True
     return False
 
@@ -580,18 +631,40 @@ def solve(data):
     # ── precomputed, input-only data (constant across all iterations) ──────
 
     lab_meetings = {lab["id"]: _get_meetings(lab) for lab in labs}
+    lab_date_meetings = {lab["id"]: _get_date_meetings(lab) for lab in labs}
 
     # Every fixed time block a TA already owns: grad courses + other commitments.
+    # Each entry is (weekday, start, end, date_start, date_end) — the trailing
+    # date range is the source's own active span (None for commitments, which
+    # recur all term). Only the dated check below consults it.
     ta_fixed_times = {}
     for ta in tas:
         fixed = []
         for gc_id in ta.get("grad_course_ids", []):
             gc = gc_map.get(gc_id)
             if gc:
-                fixed.extend(_get_meetings(gc))
+                gds, gde = gc.get("date_start"), gc.get("date_end")
+                fixed.extend((d, s, e, gds, gde) for d, s, e in _get_meetings(gc))
         for oc in ta.get("other_commitments", []):
-            fixed.append((oc["day"], oc["start_min"], oc["end_min"]))
+            fixed.append((oc["day"], oc["start_min"], oc["end_min"], None, None))
         ta_fixed_times[ta["id"]] = fixed
+
+    def _fixed_blocks_lab(ta_id, lab_id):
+        """Weekly lab meetings vs. fixed times by weekday; one-off dated lab
+        meetings additionally require the date to fall inside the fixed time's
+        own range."""
+        fixed = ta_fixed_times[ta_id]
+        for ld, ls, le in lab_meetings[lab_id]:
+            for fd, fs, fe, _fds, _fde in fixed:
+                if ld == fd and times_overlap(ls, le, fs, fe):
+                    return True
+        for dobj, ls, le in lab_date_meetings[lab_id]:
+            iso = dobj.isoformat()
+            for fd, fs, fe, fds, fde in fixed:
+                if (dobj.weekday() == fd and times_overlap(ls, le, fs, fe)
+                        and _date_in_range(iso, fds, fde)):
+                    return True
+        return False
 
     # (ta_id, lab_id) pairs blocked by a fixed conflict. Depends only on the
     # input, so it is built once rather than re-derived on every eligibility test.
@@ -599,11 +672,44 @@ def solve(data):
         (ta["id"], lab["id"])
         for ta in tas
         for lab in labs
-        if any(ld == fd and times_overlap(ls, le, fs, fe)
-               for ld, ls, le in lab_meetings[lab["id"]]
-               for fd, fs, fe in ta_fixed_times[ta["id"]])
-        or _ta_date_conflict_blocks_lab(ta, lab, lab_meetings[lab["id"]])
+        if _fixed_blocks_lab(ta["id"], lab["id"])
+        or _ta_date_conflict_blocks_lab(ta, lab, lab_meetings[lab["id"]],
+                                        lab_date_meetings[lab["id"]])
     )
+
+    # Lab-vs-lab clashes: lab_id → frozenset of other lab_ids it cannot be held
+    # alongside. Input-only, so hoisted like static_conflicts.
+    #   weekly × weekly — same weekday + time overlap, deliberately WITHOUT
+    #     consulting date ranges (preserves the existing conservative behavior)
+    #   weekly × dated  — dated meeting's weekday matches, times overlap, and its
+    #     date falls inside the weekly lab's own date range
+    #   dated  × dated  — same date + time overlap
+    def _labs_clash(a_id, b_id):
+        a_wk, a_dt = lab_meetings[a_id], lab_date_meetings[a_id]
+        b_wk, b_dt = lab_meetings[b_id], lab_date_meetings[b_id]
+        for ad, as_, ae in a_wk:
+            for bd, bs, be in b_wk:
+                if ad == bd and times_overlap(as_, ae, bs, be):
+                    return True
+        for wk_id, wk, dt in ((b_id, b_wk, a_dt), (a_id, a_wk, b_dt)):
+            rng = (labs_by_id[wk_id].get("date_start"), labs_by_id[wk_id].get("date_end"))
+            for dobj, ds_, de_ in dt:
+                for wd, ws, we in wk:
+                    if (dobj.weekday() == wd and times_overlap(ds_, de_, ws, we)
+                            and _date_in_range(dobj.isoformat(), *rng)):
+                        return True
+        for adate, as_, ae in a_dt:
+            for bdate, bs, be in b_dt:
+                if adate == bdate and times_overlap(as_, ae, bs, be):
+                    return True
+        return False
+
+    lab_conflicts = {
+        lab["id"]: frozenset(other["id"] for other in labs
+                             if other["id"] != lab["id"]
+                             and _labs_clash(lab["id"], other["id"]))
+        for lab in labs
+    }
 
     # ── build work list (same every iteration) ─────────────────────────────
 
@@ -647,19 +753,13 @@ def solve(data):
             st["per_slot"].setdefault((lid, rid), set()).add(tid)
         return st
 
-    def double_booked(st, ta_id, lab_mtgs):
-        for booked_id in st["booked_labs"][ta_id]:
-            for bd, bs, be in lab_meetings.get(booked_id, ()):
-                for ld, ls, le in lab_mtgs:
-                    if ld == bd and times_overlap(ls, le, bs, be):
-                        return True
-        return False
+    def double_booked(st, ta_id, lab_id):
+        return not lab_conflicts[lab_id].isdisjoint(st["booked_labs"][ta_id])
 
     def eligible_tas(st, lab, rr):
         role     = roles_map.get(rr["role_id"], {})
         se_val   = role.get("se_value", 1.0)
         lab_id   = lab["id"]
-        lab_mtgs = lab_meetings[lab_id]
         already  = st["per_slot"].get((lab_id, rr["role_id"]), set())
         result   = []
         for ta in tas:
@@ -670,7 +770,7 @@ def solve(data):
                 continue
             if st["used_se"][tid] + se_val > ta.get("max_se", 2.0) + 0.001:
                 continue
-            if double_booked(st, tid, lab_mtgs):
+            if double_booked(st, tid, lab_id):
                 continue
             result.append(ta)
         return result
@@ -812,15 +912,24 @@ def solve_proctoring(data):
     exams_by_id = {ex["id"]: ex for ex in exams}
     locked = [a for a in proctor_in if a.get("locked")]
 
-    # Build lab assignments per TA: ta_id → [(weekday, start_min, end_min)]
+    # Build lab assignments per TA:
+    #   ta_lab_times: ta_id → [(weekday, start_min, end_min, date_start, date_end)]
+    #     — the lab's own active date range rides along so a weekday match outside
+    #       it doesn't block the TA (matching the frontend's dateInRange() check)
+    #   ta_lab_dates: ta_id → [(datetime.date, start_min, end_min)] for one-off
+    #     date-specific lab meetings, which are matched on the exact date instead
     labs_by_id = {l["id"]: l for l in labs}
     ta_lab_times = {}
+    ta_lab_dates = {}
     for a in assignments:
         lab = labs_by_id.get(a["lab_id"])
         if not lab:
             continue
+        lds, lde = lab.get("date_start"), lab.get("date_end")
         for d, s, e in _get_meetings(lab):
-            ta_lab_times.setdefault(a["ta_id"], []).append((d, s, e))
+            ta_lab_times.setdefault(a["ta_id"], []).append((d, s, e, lds, lde))
+        for d, s, e in _get_date_meetings(lab):
+            ta_lab_dates.setdefault(a["ta_id"], []).append((d, s, e))
 
     # TA → set of lab course names and sections (for familiarity bonus)
     ta_lab_courses = {}
@@ -891,8 +1000,9 @@ def solve_proctoring(data):
         wd = exam_wd.get(exam["id"])
         es, ee = exam.get("start_min", 0), exam.get("end_min", 0)
         if wd is not None:
-            for ld, ls, le in ta_lab_times.get(ta["id"], []):
-                if ld == wd and times_overlap(es, ee, ls, le):
+            for ld, ls, le, lds, lde in ta_lab_times.get(ta["id"], []):
+                if (ld == wd and times_overlap(es, ee, ls, le)
+                        and _date_in_range(exam.get("date"), lds, lde)):
                     return True
             for gc_id in ta.get("grad_course_ids", []):
                 gc = gc_map.get(gc_id)
@@ -912,6 +1022,12 @@ def solve_proctoring(data):
                         es, ee, oc["start_min"], oc["end_min"]):
                     return True
         if exam_dobj is not None:
+            # One-off, date-specific lab meetings — matched on the exact date.
+            # Both early returns above already exempt tbd/time_tbd exams, whose
+            # unknown time can't be tested against a timed lab session.
+            for ld, ls, le in ta_lab_dates.get(ta["id"], []):
+                if ld == exam_dobj and times_overlap(es, ee, ls, le):
+                    return True
             for dc in ta.get("date_conflicts", []):
                 if _date_conflict_overlaps(dc, exam_dobj, es, ee):
                     return True
@@ -1278,7 +1394,14 @@ def generate_docx(data):
         doc.add_paragraph()
         for lab in course_labs:
             doc.add_heading(lab_disp(lab), 3)
-            doc.add_paragraph(fmt_meetings(lab, DAY_LONG))
+            lab_dates = fmt_date_meetings(lab)
+            weekly = fmt_meetings(lab, DAY_LONG)
+            # Suppress the "—" placeholder when specific dates carry the whole
+            # story (a date-only assignment has no weekly meetings at all).
+            if weekly != "—" or not lab_dates:
+                doc.add_paragraph(weekly)
+            if lab_dates:
+                doc.add_paragraph(lab_dates)
             lab_asgn = sorted(
                 [a for a in assignments if a["lab_id"] == lab["id"]],
                 key=lambda a: tas_map.get(a["ta_id"], {}).get("name", ""),
@@ -1421,8 +1544,12 @@ def generate_docx(data):
             for a in sorted(
                 ta_asgn,
                 key=lambda a: (
-                    labs_map.get(a["lab_id"], {}).get("day", 0),
-                    labs_map.get(a["lab_id"], {}).get("start_min", 0),
+                    # A date-only assignment has day/start_min explicitly null
+                    # (syncTopLevel writes null once the last weekly meeting is
+                    # deleted), and .get(k, 0) returns None for a present-but-null
+                    # key — which would blow up the sort against an integer day.
+                    labs_map.get(a["lab_id"], {}).get("day") or 0,
+                    labs_map.get(a["lab_id"], {}).get("start_min") or 0,
                 ),
             ):
                 lab = labs_map.get(a["lab_id"], {})
@@ -1431,7 +1558,12 @@ def generate_docx(data):
                 row[0].text = lab_disp(lab)
                 row[1].text = role.get("label", "")
                 if lab:
-                    row[2].text = fmt_meetings(lab)
+                    parts = [p for p in (fmt_meetings(lab), fmt_date_meetings(lab)) if p]
+                    # fmt_meetings() returns "—" when there are no weekly times;
+                    # drop it when specific dates carry the whole story.
+                    if len(parts) == 2 and parts[0] == "—":
+                        parts = parts[1:]
+                    row[2].text = "; ".join(parts)
             for od in outside:
                 row = tbl.add_row().cells
                 row[0].text = od.get("label", "Other Duty")

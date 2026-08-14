@@ -59,7 +59,8 @@ Install: `uv sync`
 ```
 roles:              [{id, label, se_value}]
 grad_courses:       [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?}]
-labs:               [{id, name, section, day, start_min, end_min, meetings?, exams?, date_start?, date_end?, roles[]}]
+labs:               [{id, name, section, day, start_min, end_min, meetings?, date_meetings?, exams?, date_start?, date_end?, roles[]}]
+                    date_meetings[]: [{date, start_min, end_min, label?}]
                     roles[]: [{role_id, count, preferred_experienced}]
 tas:                [{id, name, email?, experience, max_se, max_pe, grad_course_ids[], outside_duties[],
                       outside_proctoring[], other_commitments[], date_conflicts[], schedule_complete?}]
@@ -71,6 +72,7 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - `day`: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri
 - `start_min` / `end_min`: minutes since midnight (e.g. 540 = 9:00 AM)
 - `meetings`: optional array of `{day, start_min, end_min}` — present on multi-day entries (e.g. MWF); `day`/`start_min`/`end_min` at the top level always hold the first meeting for backward compatibility
+- `date_meetings`: optional array of `{date, start_min, end_min, label?}` on a `labs[]` entry — one-off, date-specific sessions, for work that happens only in certain weeks rather than every week (`date` is ISO `YYYY-MM-DD`, matching `exams[].date`). Absent on every pre-existing record; there is no migration pass, so every reader goes through `_get_date_meetings()` / `getDateMeetings()` at point of use, matching the `date_conflicts[]` convention. An entry may have weekly `meetings[]`, `date_meetings[]`, or both; a **date-only assignment** has `meetings: []` and `day: null` (the state `syncTopLevel()` already produces once the last weekly meeting is deleted). `label` is an optional per-session name ("IR training"); it is **display-only** — the solvers never read it. Blank/absent means "use the assignment's own name", which is what the grid block and the lists fall back to. Not to be confused with `labs[].exams[]`, which CSV import populates with exam *sittings* that also feed the Exams tab as proctoring targets — that array is inert as far as lab meetings are concerned, and treating it as one would double-count.
 - `experience`: `"experienced"` | `"inexperienced"`
 - `se_value`: SE (service equivalent) units as a float (e.g. 1.0, 0.5)
 - `pe_value`: PE (proctoring equivalent) units as a float
@@ -86,21 +88,28 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 - Hours displayed: 7:00 AM – 7:00 PM (`GRID_START = 420`, `GRID_END = 1140`)
 - `HOUR_H = 75` px per hour; `PX_PER_MIN = GRID_H / GRID_MINS` (= 1.25 px/min)
 - Time snaps to 5-minute increments
-- The **main schedule grid** (Lab Sections, Graduate Courses, TAs tabs) uses pixel-based positioning via `minToY()` / `yToMin()`
+- The **main schedule grid** (Assignments, Graduate Courses, TAs tabs) uses pixel-based positioning via `minToY()` / `yToMin()`
+- On the Assignments tab the grid also paints `date_meetings[]` as `.block-labdate` (dashed green), on the weekday of each date, **deduplicated by `(weekday, start, end, label)`** so a four-week series is one block labelled `"… · 4 dates"` rather than four identical blocks fanned into lanes by `layoutOverlaps()`, while two differently-named sessions in the same slot stay separate blocks. The block shows the session's own `label` when it has one, falling back to `displayName(item)`; its `title` is the name plus the full date list. These blocks are `editable: false` and carry **no `eraseType`/`commitIndex`** — those are positional indices into `meetings[]` consumed by `applyBlockChange()` / `eraseBlock()`, and leaving them off keeps that coupling untouched. Deletion happens in the Specific Dates list's Edit form. Weekdays outside 0–4 simply don't render.
+- **Meeting Finder is deliberately weekday-only** (`markAll`) — it searches for a recurring weekly slot, and projecting a one-off date onto every week of the term would over-block the heatmap.
 - The **Meeting Finder grid** uses percentage-based positioning so it scales to fill the available panel height without scrolling; cells and hour lines are positioned as `(offset / GRID_MINS) * 100 + '%'`
 
 ## Tab order (left to right)
 
-Lab Sections | Exams | TAs | Graduate Courses | Schedule Labs | Schedule Proctoring | Summary | Meeting Finder
+Assignments | Exams | TAs | Graduate Courses | Schedule Labs | Schedule Proctoring | Summary | Meeting Finder
+
+"Assignments" is UI text only — the JSON key is still `labs`, and so are every function name (`renderLabForm`, `duplicateLab`, …) and the docx export's "Lab Assignments" heading. An entry there is a lab section or any other duty a TA is assigned to.
 
 ## Solver (greedy — lab scheduling)
 
 Hard constraints (eligibility filters):
 1. Role count: assignments per role ≤ configured count
 2. SE cap: total SE assigned to a TA ≤ their max_se (including outside duties)
-3. No double-booking: a TA cannot be assigned to two labs whose meetings overlap on the same day (checks all meetings in `meetings[]`)
-4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments
-5. `date_conflicts[]`: evaluated per (TA, lab) pair, not folded into the flat, lab-agnostic fixed-times list — a conflict's effect on a given lab depends on that lab's own `date_start`/`date_end`. The conflict's date span is clamped to the lab's `date_start`/`date_end` (when present) before being expanded into weekday+time windows checked against that lab's meetings; if the lab has no date range set, the check falls back to the conflict's own unclamped span. Entries with `ignore_for_labs` are skipped entirely for this check. Because the app has no per-occurrence lab-assignment model, a lab that's actively meeting on the conflicting weekday within the (clamped) window is blocked entirely, not just for the specific date(s) within the conflict — the residual imprecision the `ignore_for_labs` toggle exists to work around.
+3. No double-booking: a TA cannot hold two labs that clash. Precomputed once into `lab_conflicts` (`lab_id → frozenset` of clashing lab ids), so `double_booked()` is a set-membership test rather than a nested scan. Pairwise rule:
+   - **weekly × weekly** — same weekday + time overlap. Deliberately does *not* consult date ranges, preserving the conservative behavior that predates `date_meetings[]`.
+   - **weekly × dated** — the dated meeting's weekday matches the weekly meeting's day, times overlap, and the dated meeting's date falls inside the weekly lab's `date_start`/`date_end` (an absent bound never excludes).
+   - **dated × dated** — same *date* + time overlap. This exactness is what stops two one-off sessions on the same weekday but different dates from being falsely reported as double-booked.
+4. Availability: a TA cannot be assigned to a lab that conflicts with any of their grad course meetings or other commitments. `ta_fixed_times` entries are `(day, start, end, date_start, date_end)` — the trailing range is the grad course's own (`None, None` for `other_commitments`, which recur all term). Weekly lab meetings are matched by weekday and ignore the range; a `date_meetings[]` session additionally requires its date to fall inside it.
+5. `date_conflicts[]`: evaluated per (TA, lab) pair, not folded into the flat, lab-agnostic fixed-times list — a conflict's effect on a given lab depends on that lab's own `date_start`/`date_end`. The conflict's date span is clamped to the lab's `date_start`/`date_end` (when present) before being expanded into weekday+time windows checked against that lab's meetings; if the lab has no date range set, the check falls back to the conflict's own unclamped span. Entries with `ignore_for_labs` are skipped entirely for this check. Because the app has no per-occurrence lab-assignment model, a lab that's actively meeting on the conflicting weekday within the (clamped) window is blocked entirely, not just for the specific date(s) within the conflict — the residual imprecision the `ignore_for_labs` toggle exists to work around. A `date_meetings[]` session *has* a real date, so it skips all of that and goes straight through `_date_conflict_overlaps(dc, date_obj, s, e)` — the exact-date test, no weekday collapsing and no clamping. That path is strictly more precise and is the one case where `ignore_for_labs` should not be needed.
 
 Scoring (higher is better), with all magnitudes as **user-configurable
 weights** — defaults live in `_DEFAULT_SETTINGS` in `ta_scheduler.py`, the
@@ -157,7 +166,7 @@ Endpoint: `/api/schedule-proctoring`
 Hard constraints:
 1. PE cap: total PE assigned to a TA ≤ their max_pe (including outside_proctoring)
 2. No double-booking: a TA cannot proctor two exams with overlapping times on the same date
-3. No conflict with assigned lab meetings (exam weekday vs. lab weekday)
+3. No conflict with assigned lab meetings. Weekly meetings are matched exam-weekday vs. lab-weekday, gated on `_date_in_range(exam.date, lab.date_start, lab.date_end)` — an exam outside the lab's active term does not block. One-off `date_meetings[]` sessions are matched on the exact date instead (`ta_lab_dates`, checked next to the `date_conflicts` block since it needs the parsed exam date rather than the weekday, which also puts it below the `time_tbd`/`tbd` early returns that must exempt it).
 4. No conflict with grad course regular meetings (weekday) or grad course exams (date-specific)
 5. No conflict with other_commitments (weekday)
 6. No conflict with the TA's `date_conflicts[]` (date-specific) — an interval-overlap test against the exam's exact date: the conflict's first day contributes from `start_min`, its last day up to `end_min`, and any days between are treated as full days. Always enforced regardless of `ignore_for_labs` (that flag only ever narrows the lab-side check)
@@ -266,7 +275,7 @@ drift from the constraint that produced it.
 
 ## CSV import
 
-The "Import Class Info" button (visible on Lab Sections and Exams tabs) opens a file picker and parses a department course export CSV with these columns:
+The "Import Class Info" button (visible on the Assignments and Exams tabs) opens a file picker and parses a department course export CSV with these columns:
 
 `Course Level, Subject, Number, Section, Title, Meeting Days, Meeting Times, Meeting Dates, Term`
 
@@ -275,7 +284,7 @@ The "Import Class Info" button (visible on Lab Sections and Exams tabs) opens a 
 - Exam sessions (Meeting Dates start == end) are stored in `exams[]` on the course entry and also returned as `exam_courses` for import into the Exams tab
 - Rows with empty Meeting Days or Meeting Times are skipped (online-only)
 - Graduate courses → imported into the Graduate Courses list
-- Undergraduate courses → grouped by course number, imported into Lab Sections via a checkbox modal
+- Undergraduate courses → grouped by course number, imported into Assignments via a checkbox modal
 - `exam_courses` → deduplicated list of exams per undergrad course, importable into the Exams tab
 
 ## Default data
@@ -322,8 +331,13 @@ between the courses, or the SE cap), not the scoring.
 of every feature go through the same primitive.
 
 Data accessors:
-- `getMeetings(item)` — the only way to read an item's meeting times. Returns `[{day, start_min, end_min}]`, preferring `meetings[]` and falling back to the legacy top-level fields. Mirrors the backend's `_get_meetings()`.
-- `fmtMeetings(item, dayNames = DAYS)` — every meeting formatted and joined (`"M 9:00 AM–10:15 AM, W 9:00 AM–10:15 AM"`), or `"—"`. Pass `DAY_SHORT` / `DAY_LONG` for longer forms. Backend twin: `fmt_meetings(item, day_names)`.
+- `getMeetings(item)` — the only way to read an item's **weekly** meeting times. Returns `[{day, start_min, end_min}]`, preferring `meetings[]` and falling back to the legacy top-level fields. Mirrors the backend's `_get_meetings()`. It stays weekday-only on purpose — all nine call sites assume that shape.
+- `getDateMeetings(item)` — the twin for one-off `date_meetings[]`, returning the raw entry objects in **raw order** so `inlineList()` removal indices stay valid. `sortedDateMeetings(item)` is the date-sorted copy every display path uses. Backend: `_date_meeting_rows()` yields `(date, start, end, label)`, and `_get_date_meetings()` is the solver's projection of it down to `(date, start, end)` — labels are display-only and are deliberately not threaded through the conflict checks.
+- `dateMeetingWeekday(dm)` — the app's 0=Mon..4=Fri weekday for a dated meeting, or `null` if unparseable. Uses the established `new Date(iso + 'T00:00:00')` idiom; never `Date.parse()` of a bare ISO date, which parses as UTC.
+- `dateInRange(dateStr, ds, de)` — true unless `dateStr` falls outside `[ds, de]`; an absent bound never excludes. ISO strings compared directly, exactly as the backend's `_date_in_range()` does, so the two cannot drift.
+- `fmtMeetings(item, dayNames = DAYS)` — every weekly meeting formatted and joined (`"M 9:00 AM–10:15 AM, W 9:00 AM–10:15 AM"`), or `"—"`. Pass `DAY_SHORT` / `DAY_LONG` for longer forms. Backend twin: `fmt_meetings(item, day_names)`.
+- `fmtDateMeetings(item, dayNames = DAY_SHORT)` — every dated meeting, date-sorted (`"Tue 9/15/2026 1:00 PM–5:00 PM (Setup), …"`), or `"—"`; the trailing `(label)` appears only for named sessions. Backend twin: `fmt_date_meetings(item)`. Because its output can now carry a user-typed name, `renderLabView`'s Day/Time cell runs it through `escHtml()` — the one `innerHTML` consumer of it.
+- `fmtMeetingsAll(item, dayNames)` — weekly and dated joined with `·`, `"—"` if neither. **This is what every display call site uses** (`renderLabView`'s Day/Time column, `taAssignmentSummary()`, the Summary tab subtitle), so a date-only assignment never renders as a blank row. Twin of the combined string the docx export builds.
 - `displayName(item)` — `"CHM 111 001"` from `{name, section}`.
 - `examLabel(exam, fallback='—')` — `displayName` for exams (course + section).
 - `examFullLabel(exam)` — `"CHM 111 001 — Midterm 1"`, degrading to whichever half exists.
@@ -336,6 +350,7 @@ Rendering primitives:
 - `renderAssignGrid(container, cfg)` — the TA × slot matrix behind both Grid views. `cfg` supplies `columns`, `conflictFn`, `findAssignment`, `onAdd`, `onRemove`, `onToggleLock`.
 - `renderTASummaryTable(container, headers, rowFn)` — the "TA Summary" table under both schedule tabs.
 - `renderLoadSection(which)` / `openAddLoadModal(which)` — Outside Duties (SE) and Outside Proctoring (PE), driven by the `LOAD_SECTIONS` config.
+- `openDateMeetingForm(item, mode, listEl, index?)` — the one inline form behind **+ Add Date** (`mode: 'single'`), **+ Add Weekly Series** (`mode: 'series'`) and each row's **Edit** in the Assignments form's Specific Dates section, following `openDcForm()`'s toggle-off/`insertAdjacentElement('afterend')` pattern (the toggle key is `dataset.dmTarget`, `mode + ':' + index`, so two different rows' Edit forms replace rather than toggle each other). `index` is null when adding, otherwise the `date_meetings[]` position being edited — always `mode: 'single'`, and the form grows Save/Delete instead of Add. The form's first field is the optional session name; a series applies the same name to every row it generates, and the name is part of the duplicate test so two sessions differing only in name are distinct. Rows therefore carry no `×`; deletion lives in the edit form, matching Date-Specific Conflicts. A series walks the date range day by day and pushes one ordinary `date_meetings[]` row per matching weekday, skipping exact duplicates — the result is ordinary rows, with no second meeting concept anywhere downstream.
 - `openAssignPicker(cfg)` — the assign-a-TA modal for both lab roles and exam proctoring.
 - `lockBadge(locked, onToggle?)` — the only 🔒/🔓 renderer. Interactive when given `onToggle`, static otherwise (for cells whose parent already handles the click).
 - `xBtn(onClick, title, extraCls?)` — the only delete affordance (`.btn-x`).
@@ -346,6 +361,8 @@ Rendering primitives:
 
 Conflict detection (single source of truth, used by both the grids and the modals):
 - `taLabConflictReasons(ta, lab, maps?)` and `taExamConflictReasons(ta, exam, maps?)` return human-readable reason strings. They deliberately **exclude** the SE/PE cap check, which the caller adds because only it knows the role. Pass `conflictMaps()` when calling in a loop. Both check `ta.date_conflicts[]` — the lab side skips entries with `ignore_for_labs` and clamps each conflict to the lab's own `date_start`/`date_end`; the exam side always enforces, no `ignore_for_labs` check.
+  Both also handle `date_meetings[]`: `taLabConflictReasons()` re-runs all four sources (grad-course weekly meetings gated on `dateInRange`, grad-course `exams[]`, `other_commitments`, `date_conflicts[]`) against each dated session with exact-date tests, naming the date in the reason string; `taExamConflictReasons()` checks the exam's date against each assigned lab's dated sessions. They are the single source of truth for the assign-TA modals and both Grid views, so they are the only frontend place conflict logic changes.
+  Neither checks lab-vs-lab double-booking — that constraint lives only in the solver.
 
 ## Styling
 

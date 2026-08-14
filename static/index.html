@@ -111,7 +111,7 @@ nav.tabs { display: flex; gap: 12px; padding: 8px 16px;
 .btn-sm.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
 .btn-sm.btn-danger:hover { background: #E0352B; }
 
-/* ── roles panel (Lab Sections tab only) ────────────────────── */
+/* ── roles panel (Assignments tab only) ────────────────────── */
 .roles-panel { display: none; width: 400px; flex-shrink: 0; border-left: 1px solid var(--border);
                background: var(--sidebar-bg); flex-direction: column; overflow: hidden; }
 .roles-panel.active { display: flex; }
@@ -240,6 +240,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .block-editable { pointer-events: all; cursor: grab; user-select: none; }
 .block-editable:active { cursor: grabbing; }
 .block-lab     { background: var(--blue-lt);   border-left: 3px solid var(--blue);   color: var(--blue-dk); }
+.block-labdate { background: var(--green-lt);  border-left: 3px dashed var(--green); color: var(--green-dk); }
 .block-course  { background: var(--amber-lt);  border-left: 3px solid var(--amber);  color: var(--amber-dk); }
 .block-commit  { background: var(--purple-lt); border-left: 3px solid var(--purple); color: var(--purple-dk); }
 .block-preview { background: rgba(59,130,246,.25); border: 2px dashed var(--blue);
@@ -519,7 +520,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 
 <nav class="tabs">
   <div class="tab-group">
-    <button class="tab-btn active" data-tab="labs"    onclick="switchTab('labs')"     title="Define lab sections and their TA role requirements">Lab Sections</button>
+    <button class="tab-btn active" data-tab="labs"    onclick="switchTab('labs')"     title="Define lab assignments — lab sections and other duties — and their TA role requirements">Assignments</button>
     <button class="tab-btn" data-tab="exams"   onclick="switchTab('exams')"    title="Define exams for proctoring assignments">Exams</button>
   </div>
   <div class="tab-group">
@@ -581,7 +582,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
         <div id="grid-info-list"></div>
       </div>
     </div>
-    <!-- Roles panel (Lab Sections tab only) -->
+    <!-- Roles panel (Assignments tab only) -->
     <div class="roles-panel active" id="roles-panel">
       <div class="panel-section">
         <div class="panel-section-header">
@@ -611,11 +612,11 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 
   <!-- MEETING FINDER WORKSPACE -->
   <div id="meeting-workspace">
-    <!-- Left panel: lab section checklist -->
+    <!-- Left panel: assignment checklist -->
     <div class="left-panel">
       <div class="panel-section">
         <div class="panel-section-header">
-          <span>Lab Sections</span>
+          <span>Assignments</span>
         </div>
         <div style="display:flex;gap:6px;padding:0 15px 8px;">
           <button class="btn-sm" onclick="meetingSelectAll()">Select All</button>
@@ -784,6 +785,62 @@ function fmtMeetings(item, dayNames = DAYS) {
     .filter(m => m.day >= 0 && m.day < dayNames.length)
     .map(m => `${dayNames[m.day]} ${fmtRange(m.start_min, m.end_min)}`);
   return parts.length ? parts.join(', ') : '—';
+}
+
+// One-off, date-specific meetings of an item: [{date, start_min, end_min}].
+// Raw order is preserved so inlineList() removal indices stay valid. Mirrors
+// the backend's _get_date_meetings(). getMeetings() stays weekday-only.
+function getDateMeetings(item) {
+  return item?.date_meetings || [];
+}
+
+// The app's 0=Mon..4=Fri weekday for a date_meetings[] entry, or null if the
+// date is missing/unparseable. 'T00:00:00' forces local-midnight parsing —
+// never Date.parse() of a bare ISO date, which is treated as UTC.
+function dateMeetingWeekday(dm) {
+  if (!dm?.date) return null;
+  const d = new Date(dm.date + 'T00:00:00');
+  if (isNaN(d)) return null;
+  return (d.getDay() + 6) % 7;
+}
+
+// Date-sorted copy of an item's dated meetings — the display order everywhere.
+// (getDateMeetings() itself must stay in raw order for inlineList indices.)
+function sortedDateMeetings(item) {
+  return getDateMeetings(item).filter(dm => dm.date).slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start_min - b.start_min);
+}
+
+// "Tue 9/15/2026 1:00 PM–5:00 PM (Setup), ..." — every one-off dated meeting,
+// or '—'. The trailing "(label)" appears only for sessions that were named.
+function fmtDateMeetings(item, dayNames = DAY_SHORT) {
+  const parts = sortedDateMeetings(item).map(dm => {
+    const wd = dateMeetingWeekday(dm);
+    const prefix = (wd !== null && wd < dayNames.length) ? dayNames[wd] + ' ' : '';
+    return `${prefix}${fmtDateUS(dm.date)} ${fmtRange(dm.start_min, dm.end_min)}`
+         + (dm.label ? ` (${dm.label})` : '');
+  });
+  return parts.length ? parts.join(', ') : '—';
+}
+
+// Weekly meetings and one-off dates together — '—' if there are neither.
+// Twin of the combined string the docx export builds.
+function fmtMeetingsAll(item, dayNames = DAYS) {
+  const parts = [];
+  const weekly = fmtMeetings(item, dayNames);
+  if (weekly !== '—') parts.push(weekly);
+  const dated = fmtDateMeetings(item, DAY_SHORT);
+  if (dated !== '—') parts.push(dated);
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+// True unless `dateStr` falls outside [ds, de]. An absent bound never excludes.
+// Mirrors the backend's _date_in_range().
+function dateInRange(dateStr, ds, de) {
+  if (!dateStr) return true;
+  if (ds && dateStr < ds) return false;
+  if (de && dateStr > de) return false;
+  return true;
 }
 
 // (start_date, end_date) raw ISO strings for a date_conflicts[] entry, falling
@@ -1196,7 +1253,7 @@ function getItems() {
 }
 
 function renderLeftPanel() {
-  const titles = {courses:'Graduate Courses', tas:'TAs', labs:'Lab Sections'};
+  const titles = {courses:'Graduate Courses', tas:'TAs', labs:'Assignments'};
   $id('panel-title').textContent = titles[S.tab] || '';
   const list = $id('item-list');
   list.innerHTML = '';
@@ -1217,6 +1274,10 @@ function renderLeftPanel() {
     } else if (S.tab === 'labs' && item.day !== undefined && item.day !== null) {
       const badge = item.meetings?.length > 1 ? item.meetings.map(m=>'MTWRF'[m.day]).join('') : DAYS[item.day];
       row.appendChild(el('span','item-badge', badge));
+    } else if (S.tab === 'labs' && getDateMeetings(item).length) {
+      // Date-only assignment: no weekly day to show, so count the dates instead.
+      const n = getDateMeetings(item).length;
+      row.appendChild(el('span','item-badge', `${n} date${n===1?'':'s'}`));
     }
     list.appendChild(row);
   });
@@ -1256,7 +1317,7 @@ function createNewItem() {
             email:'', date_conflicts:[], schedule_complete:false};
     S.data.tas.push(item);
   } else if (S.tab === 'labs') {
-    item = {id:uid(), name:'New Lab', section:'', day:0, start_min:540, end_min:660,
+    item = {id:uid(), name:'New Assignment', section:'', day:0, start_min:540, end_min:660,
             roles: []};
     S.data.labs.push(item);
   }
@@ -1272,6 +1333,7 @@ function duplicateLab(src) {
     roles: (src.roles||[]).map(r => Object.assign({}, r)),
   });
   if (src.meetings) copy.meetings = src.meetings.map(m => Object.assign({}, m));
+  if (src.date_meetings) copy.date_meetings = src.date_meetings.map(m => Object.assign({}, m));
   S.data.labs.push(copy);
   markDirty();
   renderLeftPanel();
@@ -1760,7 +1822,7 @@ function renderTAConflictList(ta) {
 // ── Lab form ──
 function renderLabForm(item, form) {
   form.innerHTML = '';
-  form.appendChild(el('h3',null,'Edit Lab'));
+  form.appendChild(el('h3',null,'Edit Assignment'));
   form.appendChild(nameSectionRow(item, true));
 
   form.appendChild(formHeading('Meeting Times'));
@@ -1769,6 +1831,36 @@ function renderLabForm(item, form) {
 
   // Date range for regular meetings
   form.appendChild(dateRangeSection(item));
+
+  // Specific Dates — one-off sessions, in addition to the weekly times above.
+  // Both footer buttons and each row's "Edit" open the same inline form
+  // (openDateMeetingForm), so there is exactly one UI for entering a date and
+  // time — no parallel add-form and edit-form. Deleting lives inside that form
+  // too, matching Date-Specific Conflicts.
+  form.appendChild(formHeading('Specific Dates'));
+  form.appendChild(el('p','help-text',
+    'One-off sessions on particular dates, honored by both solvers in addition to the weekly times above. An assignment may have only specific dates and no weekly times at all. Each session can be given its own name — the grid uses it in place of the assignment name.'));
+  const addDateBtn   = el('button','btn-sm','+ Add Date');
+  const addSeriesBtn = el('button','btn-sm','+ Add Weekly Series');
+  const dmList = inlineList(getDateMeetings(item).map((dm, i) => {
+    const wd = dateMeetingWeekday(dm);
+    const wdStr = wd !== null && wd < DAY_SHORT.length ? DAY_SHORT[wd] + ' ' : '';
+    const dateStr = `${wdStr}${fmtDateUS(dm.date)}`;
+    const timeStr = fmtRange(dm.start_min, dm.end_min);
+    const editBtn = el('button','btn-sm','Edit');
+    editBtn.type = 'button';
+    editBtn.onclick = () => openDateMeetingForm(item, 'single', dmList, i);
+    // A named session leads with its name and demotes date+time to the meta
+    // cell; an unnamed one keeps the date as its identity.
+    return {
+      cells: dm.label
+        ? [dm.label, el('span','il-meta', `${dateStr} ${timeStr}`), editBtn]
+        : [dateStr,  el('span','il-meta', timeStr), editBtn],
+    };
+  }), {empty: 'No specific dates', footer: [addDateBtn, addSeriesBtn]});
+  form.appendChild(dmList);
+  addDateBtn.onclick   = () => openDateMeetingForm(item, 'single', dmList);
+  addSeriesBtn.onclick = () => openDateMeetingForm(item, 'series', dmList);
 
   // Roles
   form.appendChild(formHeading('Role Requirements'));
@@ -1824,6 +1916,175 @@ function renderLabForm(item, form) {
   delBtn.onclick = deleteCurrentItem;
   actions.appendChild(delBtn);
   form.appendChild(actions);
+
+  renderLabDateList(item);
+}
+
+// The one inline form behind "+ Add Date", "+ Add Weekly Series" and each
+// row's "Edit". `index` is null when adding; otherwise the date_meetings[]
+// position being edited (always mode 'single' — a series only ever expands
+// into ordinary rows, so there is no second meeting concept downstream).
+function openDateMeetingForm(item, mode, listEl, index = null) {
+  const target = mode + ':' + (index === null ? 'new' : index);
+  const open = $id('dm-inline-form');
+  const wasThisTarget = open && open.dataset.dmTarget === target;
+  if (open) open.remove();
+  if (wasThisTarget) return;
+
+  const existing = index === null ? null : getDateMeetings(item)[index];
+  const f = el('div','inline-form'); f.id = 'dm-inline-form';
+  f.dataset.dmTarget = target;
+
+  // Optional per-session name. Blank means "just use the assignment's name",
+  // which is what the grid block and the lists fall back to.
+  const lblInp = document.createElement('input');
+  lblInp.type = 'text';
+  lblInp.placeholder = 'Name (optional, e.g. "IR training")';
+  lblInp.className = 'w-full';
+  lblInp.style.marginBottom = '4px';
+  lblInp.value = existing?.label || '';
+  f.appendChild(lblInp);
+
+  // Weekday checkboxes (series only)
+  const dayCbs = [];
+  if (mode === 'series') {
+    const dayRow = el('div','form-row');
+    dayRow.style.cssText = 'align-items:center;gap:8px;margin-bottom:4px;';
+    DAYS.forEach((d, i) => {
+      const wrap = el('label');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:3px;font-size:var(--fs-sm);';
+      const cb = document.createElement('input'); cb.type='checkbox';
+      cb.style.cssText = 'margin:0;flex-shrink:0;';
+      dayCbs[i] = cb;
+      wrap.append(cb, el('span',null,d));
+      dayRow.appendChild(wrap);
+    });
+    f.appendChild(dayRow);
+  }
+
+  // Date input(s)
+  const dateRow = el('div','form-row');
+  dateRow.style.cssText = 'align-items:center;gap:4px;';
+  const startDateInp = document.createElement('input');
+  startDateInp.type='date'; startDateInp.style.flex='1'; startDateInp.style.minWidth='0';
+  startDateInp.value = existing?.date || '';
+  dateRow.appendChild(startDateInp);
+  let endDateInp = null;
+  if (mode === 'series') {
+    endDateInp = document.createElement('input');
+    endDateInp.type='date'; endDateInp.style.flex='1'; endDateInp.style.minWidth='0';
+    // Same auto-mirror idiom as dateConflictRangeFields().
+    let endTouched = false;
+    startDateInp.oninput = () => { if (!endTouched) endDateInp.value = startDateInp.value; };
+    endDateInp.oninput = () => { endTouched = true; };
+    dateRow.append(el('span',null,'–'), endDateInp);
+  }
+  f.appendChild(dateRow);
+
+  // Time range
+  let startMin = existing?.start_min ?? 780, endMin = existing?.end_min ?? 1020;
+  const startSel = timeSelect(startMin, v => startMin = v);
+  const endSel   = timeSelect(endMin, v => endMin = v);
+  startSel.style.flex = endSel.style.flex = '1';
+  startSel.style.minWidth = endSel.style.minWidth = '0';
+  const timeRow = el('div','form-row');
+  timeRow.style.cssText = 'align-items:center;gap:4px;margin-top:4px;';
+  timeRow.append(startSel, el('span',null,'–'), endSel);
+  f.appendChild(timeRow);
+
+  const btnRow = el('div'); btnRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+  const saveBtn = el('button','btn-sm btn-primary', existing ? 'Save' : 'Add');
+  saveBtn.onclick = () => {
+    if (!startDateInp.value) {
+      alert(mode === 'series' ? 'Please select a start date.' : 'Please select a date.');
+      return;
+    }
+    if (endMin <= startMin) { alert('End time must be after start time.'); return; }
+
+    const label = lblInp.value.trim();
+
+    if (existing) {
+      Object.assign(existing,
+        {date: startDateInp.value, start_min: startMin, end_min: endMin, label});
+      markDirty(); renderItemForm(); renderGrid();
+      return;
+    }
+
+    const rows = [];
+    if (mode === 'single') {
+      rows.push(startDateInp.value);
+    } else {
+      const days = dayCbs.map((cb,i) => cb.checked ? i : -1).filter(i => i >= 0);
+      if (!days.length) { alert('Please select at least one weekday.'); return; }
+      const to = endDateInp.value || startDateInp.value;
+      if (to < startDateInp.value) { alert('End date cannot be before start date.'); return; }
+      const last = new Date(to + 'T00:00:00');
+      for (let d = new Date(startDateInp.value + 'T00:00:00'); d <= last; d.setDate(d.getDate()+1)) {
+        if (days.includes((d.getDay() + 6) % 7)) {
+          rows.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+        }
+      }
+      if (!rows.length) { alert('No dates in that range fall on the selected weekdays.'); return; }
+    }
+
+    item.date_meetings = item.date_meetings || [];
+    let added = 0;
+    rows.forEach(date => {
+      // A series applies the same name to every row it generates; two sessions
+      // differing only in name are distinct, so the name is part of the
+      // duplicate test.
+      const dup = item.date_meetings.some(dm =>
+        dm.date === date && dm.start_min === startMin && dm.end_min === endMin
+        && (dm.label || '') === label);
+      if (dup) return;
+      item.date_meetings.push({date, start_min: startMin, end_min: endMin, label});
+      added++;
+    });
+    if (mode === 'series') {
+      const skipped = rows.length - added;
+      alert(`Added ${added} date${added === 1 ? '' : 's'}` +
+            (skipped ? ` (${skipped} already present).` : '.'));
+    } else if (!added) {
+      alert('That date and time is already in the list.');
+    }
+    markDirty(); renderItemForm(); renderGrid();
+  };
+  const cancelBtn = el('button','btn-sm','Cancel');
+  cancelBtn.type = 'button';
+  cancelBtn.onclick = () => { f.remove(); };
+  btnRow.append(saveBtn, cancelBtn);
+  if (existing) {
+    const deleteBtn = el('button','btn-sm btn-danger','Delete');
+    deleteBtn.type = 'button';
+    deleteBtn.onclick = () => {
+      item.date_meetings.splice(index, 1);
+      markDirty(); renderItemForm(); renderGrid();
+    };
+    btnRow.append(deleteBtn);
+  }
+  f.appendChild(btnRow);
+
+  listEl.insertAdjacentElement('afterend', f);
+}
+
+function renderLabDateList(lab) {
+  const div = $id('grid-info-list');
+  if (!div) return;
+  div.innerHTML = '';
+  if (!lab) return;
+  const dates = sortedDateMeetings(lab);
+  if (!dates.length) return;
+  const hdr = el('p'); hdr.innerHTML = '<strong>Specific Dates</strong>'; div.appendChild(hdr);
+  const ul = el('ul','grid-info-ul');
+  dates.forEach(dm => {
+    const wd = dateMeetingWeekday(dm);
+    const wdStr = wd !== null && wd < DAY_SHORT.length ? DAY_SHORT[wd] + ' ' : '';
+    const li = el('li');
+    li.textContent = `${wdStr}${dm.date}  ${fmtRange(dm.start_min, dm.end_min)}`
+                   + (dm.label ? ` — ${dm.label}` : '');
+    ul.appendChild(li);
+  });
+  div.appendChild(ul);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1934,6 +2195,37 @@ function getBlocksForItem(item) {
       blocks.push({type:'lab', day:m.day, start:m.start_min, end:m.end_min,
                    label:displayName(item), editable:true, eraseType, commitIndex:i});
     });
+    if (S.tab === 'labs') {
+      // One-off dated meetings, drawn on the weekday of their date. Collapsed
+      // by (weekday, start, end, label) so a multi-week series is one block
+      // labelled "· 4 dates" rather than four identical blocks fanned into
+      // lanes — while two differently-named sessions in the same slot stay
+      // separate blocks. A named session shows its own name; unnamed ones fall
+      // back to the assignment's name.
+      // Deliberately non-editable and carrying no eraseType/commitIndex —
+      // those are positional indices into meetings[], and leaving them off
+      // keeps applyBlockChange()/eraseBlock() untouched. Removal happens in
+      // the Specific Dates list's Edit form instead.
+      const byslot = new Map();
+      getDateMeetings(item).forEach(dm => {
+        const wd = dateMeetingWeekday(dm);
+        if (wd === null || wd < 0 || wd > 4 || !dm.start_min) return;
+        const label = dm.label || '';
+        const key = `${wd}|${dm.start_min}|${dm.end_min}|${label}`;
+        if (!byslot.has(key)) byslot.set(key, {wd, dm, label, dates: []});
+        byslot.get(key).dates.push(dm.date);
+      });
+      byslot.forEach(({wd, dm, label, dates}) => {
+        dates.sort();
+        const name = label || displayName(item);
+        blocks.push({
+          type: 'labdate', day: wd, start: dm.start_min, end: dm.end_min,
+          label: `${name} · ${dates.length} date${dates.length===1?'':'s'}`,
+          title: `${name}\n${dates.map(fmtDateUS).join(', ')}`,
+          editable: false,
+        });
+      });
+    }
   } else if (S.tab === 'tas') {
     // Grad courses (non-editable) — show all meeting days
     const gcMap = Object.fromEntries(S.data.grad_courses.map(gc=>[gc.id,gc]));
@@ -1970,6 +2262,7 @@ function renderBlock(b) {
     div.style.left  = `calc(${b._lane * pct}% + 1px)`;
     div.style.right = `calc(${(b._totalLanes - b._lane - 1) * pct}% + 1px)`;
   }
+  if (b.title) div.title = b.title;
   div.dataset.eraseType   = b.eraseType || '';
   div.dataset.commitIndex = b.commitIndex ?? '';
   div.dataset.day         = b.day;
@@ -2278,7 +2571,7 @@ function renderLabView(container) {
   const tbody = el('tbody');
 
   S.data.labs.forEach(lab => {
-    const timeStr = fmtMeetings(lab);
+    const timeStr = fmtMeetingsAll(lab);
 
     const activeRoles = (lab.roles||[]).filter(rr=>rr.count>0);
 
@@ -2302,7 +2595,8 @@ function renderLabView(container) {
         if (activeRoles.length > 1) { labTd.rowSpan = activeRoles.length; labTd.style.verticalAlign = 'middle'; }
         tr.appendChild(labTd);
       }
-      tr.appendChild(el('td',null,timeStr));
+      // escHtml because fmtMeetingsAll() can carry a user-typed session name.
+      tr.appendChild(el('td',null,escHtml(timeStr)));
       const roleLabel = escHtml(role?.label||rr.role_id) +
         (rr.preferred_experienced>0 ? ` <span class="role-se-note">(${rr.preferred_experienced} exp pref)</span>` : '');
       const roleTd = el('td'); roleTd.innerHTML = roleLabel;
@@ -2824,7 +3118,7 @@ function taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn }
       const role = rolesMap[a.role_id] ?? {};
       const se   = role.se_value ?? 0;
       totalSE += se;
-      const time = fmtMeetings(lab, DAY_SHORT);
+      const time = fmtMeetingsAll(lab, DAY_SHORT);
       seRows.push([displayName(lab)||'—', role.label||'—', time, se.toFixed(1)]);
       const courseSection = displayName(lab) || '—', roleLabel = role.label || '—';
       seLines.push(time === '—' ? `${courseSection}, ${roleLabel}` : `${courseSection}, ${roleLabel}: ${time}`);
@@ -2957,7 +3251,7 @@ function renderSummary() {
       if (mailBtn) { mailBtn.style.marginTop = '0'; h2.append(mailBtn); }
       sectionWrap.append(h2);
       const sub = el('p','summary-sub');
-      const labTimes = fmtMeetings(lab, DAY_LONG);
+      const labTimes = fmtMeetingsAll(lab, DAY_LONG);
       sub.textContent = labTimes === '—' ? '(time TBD)' : labTimes;
       sectionWrap.append(sub);
 
@@ -3113,7 +3407,7 @@ function renderMeetingFinder() {
       filterDiv.appendChild(lbl);
     });
   } else {
-    filterDiv.appendChild(el('p','help-text meeting-empty','No lab sections with assignments yet'));
+    filterDiv.appendChild(el('p','help-text meeting-empty','No assignments with TAs yet'));
   }
 
   // ── Determine filtered TA set ────────────────────────────────
@@ -3256,7 +3550,7 @@ function roleListRow(role) {
 }
 
 // Footer row of the Course Roles group: a course picker (from distinct lab
-// names) + button. With no lab sections yet the footer renders disabled rather
+// names) + button. With no assignments yet the footer renders disabled rather
 // than replacing the whole control.
 function addCourseRoleFooter() {
   const courseNames = [...new Set(S.data.labs.map(l => l.name).filter(Boolean))].sort();
@@ -3266,10 +3560,10 @@ function addCourseRoleFooter() {
 
   if (!courseNames.length) {
     const o = document.createElement('option');
-    o.textContent = 'No lab sections yet'; select.appendChild(o);
+    o.textContent = 'No assignments yet'; select.appendChild(o);
     select.disabled = true;
     addBtn.classList.add('btn-disabled');
-    addBtn.title = 'Add a lab section first to create course-specific roles.';
+    addBtn.title = 'Add an assignment first to create course-specific roles.';
   } else {
     courseNames.forEach(name => {
       const o = document.createElement('option'); o.value = name; o.textContent = name;
@@ -3407,7 +3701,7 @@ async function importClassList() {
         <div id="import-grad-list" class="picker-list"></div>
       ` : ''}
       ${undergrad.length ? `
-        <h3>Lab Sections</h3>
+        <h3>Assignments</h3>
         <p class="modal-note">Select courses to import all sections:</p>
         <div style="margin-bottom:6px;">
           <button class="btn-sm" onclick="importLabSelectAll(true)">Select All</button>
@@ -4272,6 +4566,11 @@ function conflictMaps() {
 function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
   const reasons = [];
   const labMeetings = getMeetings(lab);
+  // One-off dated meetings carry a real date, so they get exact-date tests
+  // rather than the weekday collapsing the weekly branches below have to do.
+  const labDates = getDateMeetings(lab)
+    .filter(dm => dm.date)
+    .map(dm => ({dm, wd: dateMeetingWeekday(dm)}));
 
   // Grad course conflicts
   for (const gcId of (ta.grad_course_ids || [])) {
@@ -4304,6 +4603,37 @@ function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
       }
     }
   }
+
+  // ── Same four sources again, against this lab's one-off dated meetings ──
+  for (const {dm, wd} of labDates) {
+    for (const gcId of (ta.grad_course_ids || [])) {
+      const gc = maps.gc[gcId];
+      if (!gc) continue;
+      for (const gm of getMeetings(gc)) {
+        if (gm.day === wd && overlap(dm.start_min, dm.end_min, gm.start_min, gm.end_min)
+            && dateInRange(dm.date, gc.date_start, gc.date_end)) {
+          reasons.push(`conflicts with ${gc.name} on ${fmtDateUS(dm.date)}`);
+        }
+      }
+      for (const gcEx of (gc.exams || [])) {
+        if (gcEx.date === dm.date
+            && overlap(dm.start_min, dm.end_min, gcEx.start_min, gcEx.end_min)) {
+          reasons.push(`conflicts with ${gc.name} exam on ${fmtDateUS(dm.date)}`);
+        }
+      }
+    }
+    for (const oc of (ta.other_commitments || [])) {
+      if (oc.day === wd && overlap(dm.start_min, dm.end_min, oc.start_min, oc.end_min)) {
+        reasons.push(`conflicts with commitment on ${fmtDateUS(dm.date)}`);
+      }
+    }
+    for (const dc of (ta.date_conflicts || [])) {
+      if (dc.ignore_for_labs) continue;
+      if (dateConflictOverlapsDate(dc, dm.date, dm.start_min, dm.end_min)) {
+        reasons.push(`conflicts with date conflict "${dc.label || 'Conflict'}" on ${fmtDateUS(dm.date)}`);
+      }
+    }
+  }
   return reasons;
 }
 
@@ -4319,8 +4649,7 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
   }
 
   if (hasDates && examWd !== null && examWd !== undefined) {
-    const inRange = item => !item.date_start || !item.date_end ||
-      (exam.date >= item.date_start && exam.date <= item.date_end);
+    const inRange = item => dateInRange(exam.date, item.date_start, item.date_end);
 
     // Grad course conflicts
     for (const gcId of (ta.grad_course_ids || [])) {
@@ -4346,6 +4675,13 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
         if (m.day === examWd && overlap(exam.start_min, exam.end_min, m.start_min, m.end_min)
             && inRange(lab)) {
           reasons.push(`conflicts with lab ${lab.name}`);
+        }
+      }
+      // One-off dated lab sessions — matched on the exact date, not the weekday.
+      for (const dm of getDateMeetings(lab)) {
+        if (dm.date === exam.date
+            && overlap(exam.start_min, exam.end_min, dm.start_min, dm.end_min)) {
+          reasons.push(`conflicts with ${lab.name} session on ${fmtDateUS(dm.date)}`);
         }
       }
     });
@@ -4544,11 +4880,13 @@ function showHelpModal() {
         departmental class list CSV. These can be obtained from
         <a href="https://www.apps.miamioh.edu/courselist/" target="_blank">apps.miamioh.edu/courselist</a>.
         Graduate courses are imported into the Graduate Courses tab; undergraduate sections
-        are grouped by course number and imported into Lab Sections.</p>
+        are grouped by course number and imported into Assignments.</p>
 
-        <h3>Lab Sections</h3>
-        <p>Define undergraduate lab sections. For each lab, set the meeting time on the
-        grid and configure how many TAs each role requires. Labs drive the scheduling.</p>
+        <h3>Assignments</h3>
+        <p>Define the duties TAs are assigned to — undergraduate lab sections and anything
+        else that needs staffing. Set weekly meeting times on the grid, or list one-off
+        <strong>Specific Dates</strong> for work that only happens in certain weeks, then
+        configure how many TAs each role requires. Assignments drive the scheduling.</p>
 
         <h3>Graduate Courses</h3>
         <p>Add graduate courses taken by TAs. Meeting times entered here are used to
