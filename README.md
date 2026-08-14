@@ -79,7 +79,7 @@ The DMG is written to `dist/`. Drag **TA Scheduler.app** to `/Applications` to i
 | **Exams** | Define exam sessions for proctoring, with date, time, PE value, and proctor count |
 | **Graduate Courses** | Define grad courses that TAs may be enrolled in |
 | **TAs** | Define TAs, their experience level, SE/PE caps, grad courses, and other commitments |
-| **Schedule Labs** | Run the lab solver, view/edit assignments, export DOCX |
+| **Schedule Assignments** | Run the lab solver, view/edit assignments, export DOCX |
 | **Schedule Proctoring** | Run the proctoring solver, view/edit proctor assignments |
 | **Summary** | Read-only overview by lab, by exam, and by TA with SE/PE totals |
 | **Meeting Finder** | Find times when most TAs are free |
@@ -89,10 +89,10 @@ The DMG is written to `dist/`. Drag **TA Scheduler.app** to `/Applications` to i
 1. **Import CSV** (Lab Sections or Exams tab) — import your department's course export to populate labs, grad courses, and exam sessions automatically
 2. **Add TAs** — enter each TA's name, experience, max SE, max PE, enrolled grad courses, and any other time commitments
 3. **Configure roles** — use the **Roles** button to define role types and set counts/experience preferences on each lab
-4. **Run lab solver** — go to the Schedule Labs tab and click **Assign TAs**
+4. **Run lab solver** — go to the Schedule Assignments tab and click **Assign TAs**
 5. **Run proctoring solver** — go to the Schedule Proctoring tab and click **Assign Proctors**
 6. **Adjust manually** — lock, override, or tweak assignments as needed
-7. **Review** — check the Summary tab for a consolidated view; export DOCX from Schedule Labs
+7. **Review** — check the Summary tab for a consolidated view; export DOCX from Schedule Assignments
 
 ### Grid interaction
 

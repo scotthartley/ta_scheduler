@@ -552,7 +552,7 @@ input.w-full, select.w-full, .w-full { width: 100%; }
     <button class="tab-btn" data-tab="courses" onclick="switchTab('courses')"  title="Add graduate courses taken by TAs">Graduate Courses</button>
   </div>
   <div class="tab-group">
-    <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule Labs</button>
+    <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" title="Run solver, assign TAs, and export the schedule">Schedule Assignments</button>
     <button class="tab-btn" data-tab="proctoring" onclick="switchTab('proctoring')" title="Run proctoring solver, assign TAs to exams">Schedule Proctoring</button>
   </div>
   <div class="tab-group">
@@ -4765,7 +4765,7 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
 // ════════════════════════════════════════════════════════════════
 // GRID VIEWS
 // ════════════════════════════════════════════════════════════════
-// TA × slot matrix, shared by the Schedule Labs and Schedule Proctoring tabs.
+// TA × slot matrix, shared by the Schedule Assignments and Schedule Proctoring tabs.
 // A column carries {key, headHtml, headTitle, label} and everything else is
 // supplied by the caller.
 function renderAssignGrid(container, cfg) {
@@ -4944,7 +4944,7 @@ function showHelpModal() {
         of proctors needed. Exams can also be imported from a class list CSV. The
         calendar shows exams by month.</p>
 
-        <h3>Schedule Labs</h3>
+        <h3>Schedule Assignments</h3>
         <p>Use <strong>Assign TAs</strong> to auto-fill open slots, or use <strong>+ TA</strong> to assign manually.
         Lock assignments you want to keep; the solver won't overwrite locked slots.
         Switch between Lab View and TA View. Export DOCX when done.</p>

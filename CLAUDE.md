@@ -95,7 +95,7 @@ proctor_assignments: [{exam_id, ta_id, locked}]
 
 ## Tab order (left to right)
 
-Assignments | Exams | TAs | Graduate Courses | Schedule Labs | Schedule Proctoring | Summary | Meeting Finder
+Assignments | Exams | TAs | Graduate Courses | Schedule Assignments | Schedule Proctoring | Summary | Meeting Finder
 
 "Assignments" is UI text only — the JSON key is still `labs`, and so are every function name (`renderLabForm`, `duplicateLab`, …) and the docx export's "Lab Assignments" heading. An entry there is a lab section or any other duty a TA is assigned to.
 
