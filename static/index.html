@@ -834,27 +834,40 @@ function sortedDateMeetings(item) {
     .sort((a, b) => a.date.localeCompare(b.date) || a.start_min - b.start_min);
 }
 
-// "Tue 9/15/2026 1:00 PM–5:00 PM (Setup), ..." — every one-off dated meeting,
-// or '—'. The trailing "(label)" appears only for sessions that were named.
-function fmtDateMeetings(item, dayNames = DAY_SHORT) {
-  const parts = sortedDateMeetings(item).map(dm => {
+// ["Tue 9/15/2026 1:00 PM–5:00 PM (Setup)", ...] — every one-off dated
+// meeting, date-sorted, one per entry. The trailing "(label)" appears only
+// for sessions that were named.
+function fmtDateMeetingsList(item, dayNames = DAY_SHORT) {
+  return sortedDateMeetings(item).map(dm => {
     const wd = dateMeetingWeekday(dm);
     const prefix = (wd !== null && wd < dayNames.length) ? dayNames[wd] + ' ' : '';
     return `${prefix}${fmtDateUS(dm.date)} ${fmtRange(dm.start_min, dm.end_min)}`
          + (dm.label ? ` (${dm.label})` : '');
   });
+}
+
+// "Tue 9/15/2026 1:00 PM–5:00 PM (Setup), ..." — every one-off dated meeting,
+// or '—'. The trailing "(label)" appears only for sessions that were named.
+function fmtDateMeetings(item, dayNames = DAY_SHORT) {
+  const parts = fmtDateMeetingsList(item, dayNames);
   return parts.length ? parts.join(', ') : '—';
+}
+
+// Weekly meetings and one-off dates together, one entry per line — empty if
+// there are neither. Twin of the combined lines the docx export builds.
+function fmtMeetingsAllLines(item, dayNames = DAYS) {
+  const lines = [];
+  const weekly = fmtMeetings(item, dayNames);
+  if (weekly !== '—') lines.push(weekly);
+  lines.push(...fmtDateMeetingsList(item, DAY_SHORT));
+  return lines;
 }
 
 // Weekly meetings and one-off dates together — '—' if there are neither.
 // Twin of the combined string the docx export builds.
 function fmtMeetingsAll(item, dayNames = DAYS) {
-  const parts = [];
-  const weekly = fmtMeetings(item, dayNames);
-  if (weekly !== '—') parts.push(weekly);
-  const dated = fmtDateMeetings(item, DAY_SHORT);
-  if (dated !== '—') parts.push(dated);
-  return parts.length ? parts.join(' · ') : '—';
+  const lines = fmtMeetingsAllLines(item, dayNames);
+  return lines.length ? lines.join(' · ') : '—';
 }
 
 // True unless `dateStr` falls outside [ds, de]. An absent bound never excludes.
@@ -1073,6 +1086,16 @@ function el(tag, cls, html) {
   if (cls) e.className = cls;
   if (html !== undefined) e.innerHTML = html;
   return e;
+}
+
+// An array of strings as <br>-joined DOM nodes, for multi-line table/paragraph content.
+function linesToNodes(lines) {
+  const nodes = [];
+  lines.forEach((line, i) => {
+    if (i) nodes.push(el('br'));
+    nodes.push(document.createTextNode(line));
+  });
+  return nodes;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3168,10 +3191,15 @@ function taAssignmentSummary(ta, d, { rolesMap, labsMap, examsMap, proctorAsgn }
       const role = rolesMap[a.role_id] ?? {};
       const se   = role.se_value ?? 0;
       totalSE += se;
-      const time = fmtMeetingsAll(lab, DAY_SHORT);
-      seRows.push([displayName(lab)||'—', role.label||'—', time, se.toFixed(1)]);
+      const timeLines = fmtMeetingsAllLines(lab, DAY_SHORT);
+      seRows.push([displayName(lab)||'—', role.label||'—',
+        timeLines.length ? linesToNodes(timeLines) : document.createTextNode('—'),
+        se.toFixed(1)]);
       const courseSection = displayName(lab) || '—', roleLabel = role.label || '—';
-      seLines.push(time === '—' ? `${courseSection}, ${roleLabel}` : `${courseSection}, ${roleLabel}: ${time}`);
+      seLines.push(timeLines.length
+        ? `${courseSection}, ${roleLabel}: ${timeLines[0]}`
+        : `${courseSection}, ${roleLabel}`);
+      for (const line of timeLines.slice(1)) seLines.push(`    ${line}`);
     }
     seRows.push(['Total SE', '', '', `${totalSE.toFixed(1)} / ${(ta.max_se??2).toFixed(1)}`]);
   }
@@ -3295,8 +3323,9 @@ function renderSummary() {
       if (mailBtn) { mailBtn.style.marginTop = '0'; h2.append(mailBtn); }
       sectionWrap.append(h2);
       const sub = el('p','summary-sub');
-      const labTimes = fmtMeetingsAll(lab, DAY_LONG);
-      sub.textContent = labTimes === '—' ? '(time TBD)' : labTimes;
+      const labTimeLines = fmtMeetingsAllLines(lab, DAY_LONG);
+      if (labTimeLines.length) sub.append(...linesToNodes(labTimeLines));
+      else sub.textContent = '(time TBD)';
       sectionWrap.append(sub);
 
       if (labAsgn.length) {

@@ -230,14 +230,20 @@ def fmt_meetings(item, day_names=None):
     return ", ".join(parts) if parts else "—"
 
 
+def _date_meeting_lines(item):
+    """Every one-off, date-specific meeting of an item, date-sorted, one per line:
+    ['Tue Sep 15, 2026 1:00 PM–5:00 PM (Setup)', 'Tue Sep 22, 2026 1:00 PM–5:00 PM'].
+    The trailing '(label)' appears only for sessions that were given a name."""
+    return [f"{d.strftime('%a %b %d, %Y')} {fmt_time(s)}–{fmt_time(e)}"
+            + (f" ({label})" if label else "")
+            for d, s, e, label in sorted(_date_meeting_rows(item))]
+
+
 def fmt_date_meetings(item):
     """Every one-off, date-specific meeting of an item, date-sorted:
     'Tue Sep 15, 2026 1:00 PM–5:00 PM (Setup); Tue Sep 22, 2026 1:00 PM–5:00 PM'.
     The trailing '(label)' appears only for sessions that were given a name."""
-    parts = [f"{d.strftime('%a %b %d, %Y')} {fmt_time(s)}–{fmt_time(e)}"
-             + (f" ({label})" if label else "")
-             for d, s, e, label in sorted(_date_meeting_rows(item))]
-    return "; ".join(parts)
+    return "; ".join(_date_meeting_lines(item))
 
 
 # ── CSV import helpers ────────────────────────────────────────────────────────
@@ -1425,14 +1431,14 @@ def generate_docx(data):
         doc.add_paragraph()
         for lab in course_labs:
             doc.add_heading(lab_disp(lab), 3)
-            lab_dates = fmt_date_meetings(lab)
+            date_lines = _date_meeting_lines(lab)
             weekly = fmt_meetings(lab, DAY_LONG)
             # Suppress the "—" placeholder when specific dates carry the whole
             # story (a date-only assignment has no weekly meetings at all).
-            if weekly != "—" or not lab_dates:
+            if weekly != "—" or not date_lines:
                 doc.add_paragraph(weekly)
-            if lab_dates:
-                doc.add_paragraph(lab_dates)
+            for line in date_lines:
+                doc.add_paragraph(line)
             lab_asgn = sorted(
                 [a for a in assignments if a["lab_id"] == lab["id"]],
                 key=lambda a: tas_map.get(a["ta_id"], {}).get("name", ""),
@@ -1571,12 +1577,13 @@ def generate_docx(data):
                 row[0].text = lab_disp(lab)
                 row[1].text = role.get("label", "")
                 if lab:
-                    parts = [p for p in (fmt_meetings(lab), fmt_date_meetings(lab)) if p]
-                    # fmt_meetings() returns "—" when there are no weekly times;
-                    # drop it when specific dates carry the whole story.
-                    if len(parts) == 2 and parts[0] == "—":
-                        parts = parts[1:]
-                    row[2].text = "; ".join(parts)
+                    date_lines = _date_meeting_lines(lab)
+                    weekly = fmt_meetings(lab)
+                    # Suppress the "—" placeholder when specific dates carry
+                    # the whole story (a date-only assignment has no weekly
+                    # meetings at all).
+                    lines = date_lines if weekly == "—" and date_lines else [weekly] + date_lines
+                    fill_cell_lines(row[2], lines)
         outside_proctor = ta.get("outside_proctoring", [])
         if ta_proctor or outside_proctor:
             doc.add_heading("Proctoring", 3)
