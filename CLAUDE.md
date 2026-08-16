@@ -141,8 +141,23 @@ user-configurable.
   Roles flagged `exempt_from_split` are skipped here and are never added to
   `st["roles"]`, so they neither pay the charge nor inflate the multiplier for
   anyone else's next role (see "Roles").
-- `− load_balance_weight × current SE` — default 500
+- `− (load_balance_weight + split_load_weight × extra roles held) × current SE` —
+  defaults 500 and 250, where *extra roles held* is `max(0, len(roles_held) - 1)`.
+  The `split_load_weight` half is a **soft preference for giving already-split TAs
+  lighter overall loads**: each role beyond the first makes every SE unit that TA
+  carries count for more, so they fall behind an idle rival sooner and shed a
+  role's *last* seats rather than its first. `roles_held` already excludes
+  `exempt_from_split` roles, so an exempt duty never makes a TA look split here.
+  Set to 0 to disable. Note this is the one term that pulls *against*
+  concentration at the margin — seats a split TA sheds land on someone, who may
+  have to open a new pairing to take them; `new_role_penalty` still outweighs it
+  at the defaults, so it only breaks ties among TAs who already hold the role.
 - `+ random tiebreak`
+
+Every term here is a **scoring** term, never an eligibility filter. Only
+`eligible_tas()` (role count, SE cap, double-booking, availability) can leave a
+slot unfilled, so no weight — at any magnitude — can turn a fillable slot into an
+unfilled one. A split TA who is the last candidate for a seat still takes it.
 
 The rest of this section describes the relationship between the *default*
 values; it changes if the user edits their weights via Preferences.
@@ -159,6 +174,12 @@ holds the role, so a role's last seats can land on a fresh person even when an
 existing holder is still under their cap. That is the intended "near-cap TAs
 yield" behavior, but it is also the first thing to check when a role looks more
 scattered than expected.
+
+`split_load_weight` lowers that break-even for split TAs specifically: a TA
+holding two roles is charged 750 per SE unit rather than 500, so they stop
+outscoring an idle rival at **1.07 SE** instead of 1.6 (three roles → 1000/unit,
+0.8 SE). Between two TAs who both already hold the role and carry equal load,
+the split one now loses deterministically where it used to be a coin flip.
 
 Slots are processed in ascending order of eligible TA count (fail-first). The highest-scoring eligible TA is assigned to each slot.
 

@@ -568,6 +568,9 @@ _BASE_SCORE          = 1000
 _EXPERIENCE_BONUS    = 200
 _NEW_ROLE_PENALTY    = 800   # cost of opening a new (TA, role) pairing
 _LOAD_BALANCE_WEIGHT = 500
+_SPLIT_LOAD_WEIGHT   = 250   # extra load-balance charge per SE unit, per role held beyond
+                             # the first — a soft preference for keeping already-split TAs
+                             # lighter overall. Purely a scoring term; see score().
 
 _LAB_FAMILIARITY_BONUS      = 300
 _LAB_SECTION_BONUS          = 150
@@ -586,6 +589,7 @@ _DEFAULT_SETTINGS = {
     "experience_bonus": _EXPERIENCE_BONUS,
     "new_role_penalty": _NEW_ROLE_PENALTY,
     "load_balance_weight": _LOAD_BALANCE_WEIGHT,
+    "split_load_weight": _SPLIT_LOAD_WEIGHT,
     "lab_familiarity_bonus": _LAB_FAMILIARITY_BONUS,
     "lab_section_bonus": _LAB_SECTION_BONUS,
     "new_course_penalty": _NEW_COURSE_PENALTY,
@@ -634,6 +638,7 @@ def solve(data):
     experience_bonus    = settings["experience_bonus"]
     new_role_penalty    = settings["new_role_penalty"]
     load_balance_weight = settings["load_balance_weight"]
+    split_load_weight   = settings["split_load_weight"]
 
     if not labs or not tas:
         return {"status": "feasible", "assignments": assignments_in, "diagnostics": {}}
@@ -819,7 +824,16 @@ def solve(data):
             # absent from roles_held, so they neither pay this nor inflate the
             # multiplier — only load balancing decides who takes them.
             s -= new_role_penalty * (1 + len(roles_held))
-        s -= st["used_se"][ta["id"]] * load_balance_weight
+        # Load balancing, surcharged for TAs who are already split: each role held
+        # beyond the first makes every SE unit they carry count for more, so they
+        # fall behind an idle rival sooner and shed the *last* seats of a role
+        # rather than its first. Deliberately a scoring term and not an eligibility
+        # filter — if a split TA is the only candidate left for a seat they still
+        # take it, so this can never turn a fillable slot into an unfilled one.
+        # roles_held already excludes exempt_from_split roles, so an exempt duty
+        # does not make a TA look split here either.
+        split_surcharge = split_load_weight * max(0, len(roles_held) - 1)
+        s -= st["used_se"][ta["id"]] * (load_balance_weight + split_surcharge)
         s += random.random()
         return s
 
