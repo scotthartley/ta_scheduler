@@ -2670,7 +2670,7 @@ function renderLabView(container) {
 
   const table = el('table','data-table');
   const thead = el('thead'); const thr = el('tr');
-  ['Lab','Day/Time','Role','Count','Net SE','Assigned TAs'].forEach(h => {
+  ['Lab','Day/Time','Role','Count','Experienced','Net SE','Assigned TAs'].forEach(h => {
     const th = el('th',null,h); thr.appendChild(th);
   });
   thead.appendChild(thr); table.appendChild(thead);
@@ -2694,7 +2694,7 @@ function renderLabView(container) {
 
     if (!activeRoles.length) {
       const hrow = el('tr','lab-header');
-      const hcell = el('td'); hcell.colSpan=6;
+      const hcell = el('td'); hcell.colSpan=7;
       hcell.innerHTML = `<strong>${escHtml(displayName(lab))}</strong>`;
       hrow.appendChild(hcell); tbody.appendChild(hrow);
       return;
@@ -2716,11 +2716,18 @@ function renderLabView(container) {
       const timeTd = el('td',null,escHtml(timeStr));
       if (timeTitle) timeTd.title = timeTitle;
       tr.appendChild(timeTd);
-      const roleLabel = escHtml(role?.label||rr.role_id) +
-        (rr.preferred_experienced>0 ? ` <span class="role-se-note">(${rr.preferred_experienced} exp pref)</span>` : '');
-      const roleTd = el('td'); roleTd.innerHTML = roleLabel;
+      const roleTd = el('td'); roleTd.innerHTML = escHtml(role?.label||rr.role_id);
       tr.appendChild(roleTd);
       tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
+      const expAssigned = labAssigns.filter(a => tasMap[a.ta_id]?.experience==='experienced').length;
+      const expTd = el('td');
+      if (rr.preferred_experienced>0) {
+        expTd.appendChild(el('span', expAssigned < rr.preferred_experienced ? 'stat-box stat-red' : null,
+          `${expAssigned}/${rr.preferred_experienced}`));
+      } else {
+        expTd.textContent = '—';
+      }
+      tr.appendChild(expTd);
       tr.appendChild(el('td',null,((role?.se_value||0)*rr.count).toFixed(1)));
 
       const assignCell = el('td');
