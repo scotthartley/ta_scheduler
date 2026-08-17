@@ -566,7 +566,14 @@ _SOLVER_ITERATIONS = 100
 
 _BASE_SCORE          = 1000
 _EXPERIENCE_BONUS    = 200
-_NEW_ROLE_PENALTY    = 800   # cost of opening a new (TA, role) pairing
+_NEW_ROLE_PENALTY    = 400   # cost of opening a new (TA, role) pairing. Halved from
+                             # 800 because that made the *second*-role break-even
+                             # (new_role_penalty × 2 / load_balance_weight) 3.2 SE —
+                             # above a typical max_se of 3, so load balancing could
+                             # never pull a one-role TA into a second role and even
+                             # loads depended on a lucky block draw. 400 puts it at
+                             # 1.6 SE and balance becomes reliable. See "Weights
+                             # cannot fix a shortage of un-split TAs" in CLAUDE.md.
 _LOAD_BALANCE_WEIGHT = 500
 _SPLIT_LOAD_WEIGHT   = 250   # extra load-balance charge per SE unit, per role held beyond
                              # the first — a soft preference for keeping already-split TAs
@@ -838,12 +845,27 @@ def solve(data):
         s += random.random()
         return s
 
-    # Slot order is derived from locked-only state, so it is identical on every
-    # iteration — compute it once.
+    # Each slot's candidate pool measured from locked-only state — the input to
+    # the fail-first ordering below. Only the *count* is constant across passes;
+    # the order built from it is not, so this is the part that gets hoisted.
     init_st = initial_state()
-    sorted_slots = sorted(slots,
-        key=lambda s: (len(eligible_tas(init_st, s[0], s[1])),
-                       -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0)))
+    eligible_count = {}
+    for lab, rr in slots:
+        slot_key = (lab["id"], rr["role_id"])
+        if slot_key not in eligible_count:
+            eligible_count[slot_key] = len(eligible_tas(init_st, lab, rr))
+
+    # Inputs to the per-pass experienced-TA shortfall, which the pass ranking
+    # below reads. Every role requirement asking for experienced TAs, including
+    # those in fully-locked slots that produce no solver slot of their own — the
+    # diagnostic counts those, so the ranking must see the same set.
+    experienced_tas = frozenset(
+        ta["id"] for ta in tas if ta.get("experience") == "experienced")
+    exp_requirements = [
+        ((lab["id"], rr["role_id"]), rr.get("preferred_experienced", 0))
+        for lab in labs for rr in lab.get("roles", [])
+        if rr.get("preferred_experienced", 0) > 0
+    ]
 
     # ── single greedy pass ─────────────────────────────────────────────────
 
@@ -851,7 +873,36 @@ def solve(data):
         st = initial_state()
         result_assignments = list(locked_assignments)
 
-        for lab, rr in sorted_slots:
+        # Slots are ordered in course blocks, fail-first *within* each block —
+        # the same treatment the proctoring solver gives its exams, and for the
+        # same reason. Blocking by course is what lets new_role_penalty
+        # concentrate at all: once a TA opens a role they are the cheap
+        # candidate for the rest of that course, and keeping those slots
+        # consecutive puts them in front of the solver while that TA's SE
+        # headroom is still free.
+        #
+        # Without blocking, the sort key is dominated by candidate-pool size,
+        # which barely varies across a file's labs — so the order collapses to
+        # the labs[] order and the last course listed is placed only after every
+        # other course has drained the pool of un-split TAs. A one-section course
+        # at the end of the list then *has* to be staffed by TAs who already hold
+        # another role, and no scoring weight can undo that: greedy has no
+        # lookahead and nothing reserves capacity.
+        #
+        # The block order is drawn per pass, not sorted, for the same reason it
+        # is on the proctoring side — any fail-first rule over blocks pins the
+        # loosest course last on every pass, so redrawing is what lets some
+        # iterations hand it an early block for best-of-N to keep.
+        course_order = {}
+        for lab, _rr in slots:
+            course_order.setdefault(lab.get("name", ""), random.random())
+        order = sorted(slots, key=lambda s: (
+            course_order[s[0].get("name", "")],
+            eligible_count[(s[0]["id"], s[1]["role_id"])],
+            -roles_map.get(s[1]["role_id"], {}).get("se_value", 1.0),
+            random.random()))
+
+        for lab, rr in order:
             candidates = eligible_tas(st, lab, rr)
             if not candidates:
                 continue
@@ -871,27 +922,261 @@ def solve(data):
                 st["roles"][best["id"]].add(rr["role_id"])
             st["per_slot"].setdefault((lab["id"], rr["role_id"]), set()).add(best["id"])
 
-        return result_assignments
-
-    # ── run multiple iterations, keep the best ─────────────────────────────
-
-    best_result = None
-    best_unfilled = float("inf")
-
-    for _ in range(max(1, int(settings.get("solver_iterations") or _SOLVER_ITERATIONS))):
-        result_assignments = _greedy_pass()
-
-        # Count unfilled seats for this attempt
         unfilled_count = len(slots) - sum(
             1 for a in result_assignments if not a.get("locked"))
-        if unfilled_count <= 0:
-            best_result = result_assignments
-            break
-        if unfilled_count < best_unfilled:
-            best_unfilled = unfilled_count
+        # Experienced-TA shortfall, summed over every role requirement that asks
+        # for one — the same quantity the unfulfilled_experience diagnostic
+        # reports below, measured per pass so the ranking can see it.
+        exp_shortfall = sum(
+            max(0, pref - sum(1 for tid in st["per_slot"].get(key, ()) if tid in experienced_tas))
+            for key, pref in exp_requirements)
+        # Load imbalance, as the sum of squared SE over *every* TA including the
+        # unassigned. With the seat total fixed (which it is, once unfilled ties
+        # above), a sum of squares is minimised exactly when the loads are equal,
+        # and it falls fastest by lifting the *least*-loaded TA — which is the
+        # complaint this term exists to answer. Measured in absolute SE, matching
+        # score()'s own load term, rather than as a fraction of each TA's max_se.
+        load_ss = sum(v * v for v in st["used_se"].values())
+        # TAs holding more than one role — the concentration objective itself,
+        # counted the way renderTASummary()'s "role-split" column counts it.
+        # st["roles"] already excludes exempt_from_split roles, so an exempt duty
+        # never makes a TA look split here.
+        split_count = sum(1 for tid in st["roles"] if len(st["roles"][tid]) > 1)
+        return result_assignments, unfilled_count, exp_shortfall, load_ss, split_count
+
+    # ── post-pass repair: put the split TAs on the lighter loads ───────────
+
+    # preferred_experienced per (lab_id, role_id), for the guard below.
+    slot_pref_exp = {
+        (lab["id"], rr["role_id"]): rr.get("preferred_experienced", 0)
+        for lab in labs for rr in lab.get("roles", [])
+    }
+
+    def _rebalance_loads(result):
+        """Hand a seat from a heavily-loaded TA to a TA more than one seat
+        lighter, whenever the move is legal and does not raise any slot's
+        experienced-TA shortfall.
+
+        Why the ranking alone cannot do this: the pass ranking puts experienced
+        shortfall above load imbalance, and on some files those two objectives
+        are *coupled in every draw* — each greedy pass either satisfies the
+        experience preferences (leaving one TA stranded on a token load) or
+        balances the loads (shorting a section by an experienced TA), and no
+        pass does both. Measured on a real file after one TA's max_se dropped
+        3 → 2: of 1000 passes, every zero-shortfall pass had load_ss 141 (one
+        TA at 1 SE, twelve at 3) and every load_ss-139 pass had shortfall ≥ 1.
+        The ranking then correctly picks zero shortfall, and the stranded TA is
+        unfixable by any number of iterations. A local move decouples them: the
+        stranded TA is experienced, so taking a seat from an experienced 3-SE
+        donor fixes the balance at zero cost to the experience counts.
+
+        A move requires `used_se[donor] - used_se[receiver] > se_value`, which
+        is exactly the condition for load_ss to strictly decrease (the delta is
+        −2·se_value·(gap − se_value)), so the term the pass was ranked on only
+        improves. The seat stays filled, so `unfilled` is unchanged, and the
+        experience guard keeps `exp_shortfall` from rising — the two terms
+        ranked above load_ss are both preserved. Split count may rise (the
+        receiver may open a new pairing); that is the documented priority
+        order — balance outranks concentration — and among equal-gap moves the
+        candidate ranking below still prefers a receiver who already holds the
+        role and a donor shedding their last seat of it. Every eligibility
+        check mirrors `eligible_tas()`, and locked seats are never touched.
+
+        Terminates because each move lowers load_ss by at least
+        2 × se_value × 0.001 (zero-SE seats are skipped — moving one cannot
+        change balance), with the iteration cap as a float backstop.
+        """
+        result = list(result)
+        for _ in range(4 * len(result) + 16):
+            used_se, roles_held, booked = {}, {}, {}
+            for ta in tas:
+                used_se[ta["id"]], roles_held[ta["id"]], booked[ta["id"]] = 0.0, set(), set()
+            occupants, seat_count = {}, {}
+            for a in result:
+                tid = a["ta_id"]
+                if tid not in used_se:
+                    continue
+                used_se[tid] += roles_map.get(a["role_id"], {}).get("se_value", 1.0)
+                booked[tid].add(a["lab_id"])
+                if a["role_id"] not in exempt_roles:
+                    roles_held[tid].add(a["role_id"])
+                occupants.setdefault((a["lab_id"], a["role_id"]), set()).add(tid)
+                seat_count[(tid, a["role_id"])] = seat_count.get((tid, a["role_id"]), 0) + 1
+
+            best = None
+            for idx, a in enumerate(result):
+                if a.get("locked"):
+                    continue
+                donor, lab_id, role_id = a["ta_id"], a["lab_id"], a["role_id"]
+                if donor not in used_se:
+                    continue
+                se_val = roles_map.get(role_id, {}).get("se_value", 1.0)
+                if se_val <= 0:
+                    continue
+                here = occupants.get((lab_id, role_id), set())
+                pref = slot_pref_exp.get((lab_id, role_id), 0)
+                exp_now = sum(1 for t in here if t in experienced_tas)
+
+                for ta in tas:
+                    rid = ta["id"]
+                    if rid == donor or rid in here:
+                        continue
+                    gap = used_se[donor] - used_se[rid]
+                    if gap - se_val <= 0.001:
+                        continue          # would not strictly lower load_ss
+                    if (rid, lab_id) in static_conflicts:
+                        continue
+                    if not lab_conflicts[lab_id].isdisjoint(booked[rid]):
+                        continue
+                    if used_se[rid] + se_val > ta.get("max_se", 2.0) + 0.001:
+                        continue
+                    if pref > 0:
+                        exp_after = exp_now - (donor in experienced_tas) + (rid in experienced_tas)
+                        if max(0, pref - exp_after) > max(0, pref - exp_now):
+                            continue      # never trade away the experience preference
+                    cand = (gap,
+                            role_id in roles_held[rid],           # no new pairing
+                            seat_count.get((donor, role_id), 0) == 1)  # donor sheds role
+                    if best is None or cand > best[0]:
+                        best = (cand, idx, rid)
+
+            if best is None:
+                break
+            _, idx, rid = best
+            result[idx] = {**result[idx], "ta_id": rid}
+        return result
+
+    def _lighten_split_tas(result):
+        """Hand seats from split TAs to less-fragmented TAs who already hold the
+        same role and are exactly one seat's SE lighter.
+
+        A greedy pass cannot arrange this itself. A TA becomes split on whichever
+        course block runs last, and by then there are no seats left to withhold
+        from them — which is why `split_load_weight`, whose whole purpose is to
+        keep split TAs lighter, has nothing to act on. The observed result is the
+        exact inverse of what is wanted: on a representative file every split TA
+        came out at the SE cap while every TA on the lighter load held one role.
+        Nor can the pass ranking select the good case out of the draws, because
+        the draws do not contain it — of 3000 passes at optimal balance, 1522
+        placed every split TA at the cap and the best seen was a 2.75 mean.
+
+        The exact-load-swap condition (`used_se[donor] - used_se[receiver] ==
+        se_value`) is what makes this safe to run after ranking: the two TAs
+        *trade* loads, so the multiset of loads — and therefore `load_ss`, the
+        term the winning pass was chosen on — is unchanged. Requiring the
+        receiver to already hold the role means no new pairing is opened, so the
+        split count cannot rise either; a donor reduced to one role lowers it.
+        Every other check mirrors `eligible_tas()`, so a repaired seat is one the
+        solver could have assigned in the first place.
+
+        Terminates because each move strictly lowers Σ len(roles_held) × used_se
+        (the receiver is strictly less fragmented than the donor), with an
+        iteration cap as a float-arithmetic backstop.
+        """
+        result = list(result)
+        for _ in range(4 * len(result) + 16):
+            used_se, roles_held, booked = {}, {}, {}
+            for ta in tas:
+                used_se[ta["id"]], roles_held[ta["id"]], booked[ta["id"]] = 0.0, set(), set()
+            occupants = {}
+            for a in result:
+                tid = a["ta_id"]
+                if tid not in used_se:
+                    continue
+                used_se[tid] += roles_map.get(a["role_id"], {}).get("se_value", 1.0)
+                booked[tid].add(a["lab_id"])
+                if a["role_id"] not in exempt_roles:
+                    roles_held[tid].add(a["role_id"])
+                occupants.setdefault((a["lab_id"], a["role_id"]), set()).add(tid)
+
+            moved = False
+            for idx, a in enumerate(result):
+                if a.get("locked"):
+                    continue
+                donor, lab_id, role_id = a["ta_id"], a["lab_id"], a["role_id"]
+                if role_id in exempt_roles or len(roles_held.get(donor, ())) < 2:
+                    continue
+                se_val = roles_map.get(role_id, {}).get("se_value", 1.0)
+                here = occupants.get((lab_id, role_id), set())
+                pref = slot_pref_exp.get((lab_id, role_id), 0)
+                exp_now = sum(1 for t in here if t in experienced_tas)
+
+                for ta in tas:
+                    rid = ta["id"]
+                    if rid == donor or rid in here:
+                        continue
+                    if role_id not in roles_held[rid]:
+                        continue          # would open a new pairing
+                    if len(roles_held[rid]) >= len(roles_held[donor]):
+                        continue          # receiver must be less fragmented
+                    if abs(used_se[donor] - used_se[rid] - se_val) > 0.001:
+                        continue          # must be an exact load swap
+                    if (rid, lab_id) in static_conflicts:
+                        continue
+                    if not lab_conflicts[lab_id].isdisjoint(booked[rid]):
+                        continue
+                    if used_se[rid] + se_val > ta.get("max_se", 2.0) + 0.001:
+                        continue
+                    if pref > 0:
+                        exp_after = exp_now - (donor in experienced_tas) + (rid in experienced_tas)
+                        if max(0, pref - exp_after) > max(0, pref - exp_now):
+                            continue      # never trade away the experience preference
+                    result[idx] = {**a, "ta_id": rid}
+                    moved = True
+                    break
+                if moved:
+                    break
+            if not moved:
+                break
+        return result
+
+    # ── run multiple iterations, keep the best ─────────────────────────────
+    #
+    # Passes are ranked on (unfilled, experienced shortfall, load imbalance,
+    # split TAs), not unfilled alone. Stopping at the first feasible pass made
+    # the iterations dead weight on any file that is not capacity-tight — the
+    # common case: the first pass fills every seat, the loop breaks, and the
+    # remaining draws never run, so solver_iterations bought nothing at all. The
+    # extra terms are what turn those draws into quality, and the per-pass block
+    # order drawn above is what makes the draws differ.
+    #
+    # The order of the terms is the priority order, and it matters a great deal:
+    #
+    #   unfilled       — a pass that staffs more seats always wins, so no amount
+    #                    of quality can cost a seat.
+    #   exp shortfall  — a staffing requirement the user typed per role. Without
+    #                    it a pass that shorts a section by an experienced TA can
+    #                    win on the terms below.
+    #   load imbalance — every TA carrying a comparable share. This is the one
+    #                    users notice and object to first, so it outranks the
+    #                    concentration objective outright.
+    #   split TAs      — concentration, as a last tiebreak among passes that are
+    #                    equal on all of the above.
+    #
+    # Imbalance MUST rank above splits, and putting splits above it was a real
+    # regression: the two pull in opposite directions whenever a course has a
+    # single section (see the note at the end of this section), so ranking on
+    # splits first picks, out of every draw, exactly the pass that strands TAs on
+    # a token load. It silently overrode a user who had already turned
+    # new_role_penalty down to rebalance.
+    #
+    # Deliberately *not* the full score sum: this stays a feasibility-first
+    # ranking over named quantities, so a user's locked assignments are never
+    # traded away for a better global objective (the tradeoff the proctoring
+    # solver's comment documents rejecting, for the same reason).
+
+    best_result = None
+    best_key = None
+
+    for _ in range(max(1, int(settings.get("solver_iterations") or _SOLVER_ITERATIONS))):
+        result_assignments, unfilled_count, exp_shortfall, load_ss, split_count = _greedy_pass()
+
+        key = (unfilled_count, exp_shortfall, load_ss, split_count)
+        if best_key is None or key < best_key:
+            best_key = key
             best_result = result_assignments
 
-    result_assignments = best_result
+    result_assignments = _lighten_split_tas(_rebalance_loads(best_result))
 
     # ── diagnostics ──────────────────────────────────────────────────────────
     tas_map = {ta["id"]: ta for ta in tas}
