@@ -562,7 +562,7 @@ def export_docx():
 
 # ── solver ───────────────────────────────────────────────────────────────────
 
-_SOLVER_ITERATIONS = 50
+_SOLVER_ITERATIONS = 100
 
 _BASE_SCORE          = 1000
 _EXPERIENCE_BONUS    = 200
@@ -586,6 +586,7 @@ _SPREAD_PENALTY_PER_DAY = 40   # max penalty 280 (same-day) — under one PE loa
 # Single source of truth for user-configurable solver weights, persisted in
 # data["settings"]. Keep keys in sync with DEFAULT_SETTINGS in static/index.html.
 _DEFAULT_SETTINGS = {
+    "solver_iterations": _SOLVER_ITERATIONS,
     "experience_bonus": _EXPERIENCE_BONUS,
     "new_role_penalty": _NEW_ROLE_PENALTY,
     "load_balance_weight": _LOAD_BALANCE_WEIGHT,
@@ -877,7 +878,7 @@ def solve(data):
     best_result = None
     best_unfilled = float("inf")
 
-    for _ in range(_SOLVER_ITERATIONS):
+    for _ in range(max(1, int(settings.get("solver_iterations") or _SOLVER_ITERATIONS))):
         result_assignments = _greedy_pass()
 
         # Count unfilled seats for this attempt
@@ -1289,7 +1290,7 @@ def solve_proctoring(data):
     best_state = None
     best_unfilled = float("inf")
 
-    for _ in range(_SOLVER_ITERATIONS):
+    for _ in range(max(1, int(settings.get("solver_iterations") or _SOLVER_ITERATIONS))):
         result, st = _greedy_pass()
         unfilled_count = len(slots) - sum(1 for a in result if not a.get("locked"))
         if unfilled_count <= 0:

@@ -2925,6 +2925,7 @@ function confirmAddLoad(which) {
 // Mirrors _DEFAULT_SETTINGS in ta_scheduler.py — keep the two in sync; there is
 // no shared source of truth between the Python and JS sides.
 const DEFAULT_SETTINGS = {
+  solver_iterations: 100,
   experience_bonus: 200,
   new_role_penalty: 800,
   load_balance_weight: 500,
@@ -2941,6 +2942,7 @@ const DEFAULT_SETTINGS = {
 // Single source of truth for preference field DOM ids — reused by
 // openPreferencesModal, resetPreferencesForm and savePreferences.
 const PREF_FIELD_IDS = {
+  solver_iterations: 'pref-solver-iterations',
   experience_bonus: 'pref-experience-bonus',
   new_role_penalty: 'pref-new-role-penalty',
   load_balance_weight: 'pref-load-balance-weight',
@@ -2955,6 +2957,10 @@ const PREF_FIELD_IDS = {
 };
 
 const PREF_SECTIONS = [
+  { title: 'Solver', fields: [
+    { key: 'solver_iterations', label: 'Solver iterations', min: 1,
+      hint: 'Number of randomized greedy attempts per solve (both lab and proctoring); higher may find better solutions but takes longer to run' },
+  ]},
   { title: 'Lab Assignment', fields: [
     { key: 'experience_bonus', label: 'Experience bonus',
       hint: 'Added when a role prefers experienced TAs and the candidate is experienced' },
@@ -2991,6 +2997,7 @@ function openPreferencesModal() {
       <div class="form-group" style="margin-top:10px;" title="${escHtml(f.hint)}">
         <label>${escHtml(f.label)}<br>
           <input id="${PREF_FIELD_IDS[f.key]}" class="num-input" type="number" step="1"
+                 ${f.min != null ? `min="${f.min}"` : ''}
                  value="${current[f.key]}" style="margin-top:4px;">
         </label>
       </div>`).join('')}
@@ -3018,7 +3025,10 @@ function resetPreferencesForm() {
 function savePreferences() {
   const settings = {};
   Object.entries(PREF_FIELD_IDS).forEach(([key, id]) => {
-    settings[key] = parseFloat($id(id).value) || 0;
+    const raw = $id(id).value;
+    settings[key] = key === 'solver_iterations'
+      ? Math.max(1, parseInt(raw, 10) || 100)
+      : parseFloat(raw) || 0;
   });
   S.data.settings = settings;
   markDirty();

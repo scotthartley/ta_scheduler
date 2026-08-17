@@ -125,11 +125,11 @@ Scoring (higher is better), with all magnitudes as **user-configurable
 weights** — defaults live in `_DEFAULT_SETTINGS` in `ta_scheduler.py`, the
 single source of truth (mirrored in `DEFAULT_SETTINGS` in
 `static/index.html`), and are overridden per-schedule by `data["settings"]`,
-edited via the Preferences (⚙) modal. `_SOLVER_ITERATIONS` and `_BASE_SCORE`
-are the exceptions: iteration count is a performance/quality tradeoff, not a
-scoring weight, and the base score is a constant offset added identically to
-every candidate for a slot, so it never affects ranking — neither is
-user-configurable.
+edited via the Preferences (⚙) modal. `_BASE_SCORE` is the exception: it's a
+constant offset added identically to every candidate for a slot, so it never
+affects ranking, and is not user-configurable. Iteration count (`solver_iterations`,
+default 100) is also user-configurable via Preferences even though it's a
+performance/quality tradeoff rather than a scoring weight — see below.
 
 - `_BASE_SCORE` 1000 (fixed, not configurable)
 - `+ experience_bonus` (default 200) — role has `preferred_experienced` and the TA is experienced
@@ -183,7 +183,8 @@ the split one now loses deterministically where it used to be a coin flip.
 
 Slots are processed in ascending order of eligible TA count (fail-first). The highest-scoring eligible TA is assigned to each slot.
 
-The solver runs up to 50 random-tiebreak iterations and keeps the result with the fewest unfilled slots.
+The solver runs up to a configurable number of random-tiebreak iterations
+(`solver_iterations`, default 100) and keeps the result with the fewest unfilled slots.
 
 Locked assignments are always preserved; the solver fills remaining slots.
 
@@ -249,7 +250,7 @@ raising `new_course_penalty` from 1600 to 10000 changed the outcome for a
 late-processed course not at all — it was the course-block ordering below that
 moved it. Reach for capacity or ordering there, not weights.
 
-Also runs up to 50 iterations, keeping the best result. It gets similar hoisting
+Also runs up to a configurable number of iterations (default 100), keeping the best result. It gets similar hoisting
 treatment to the lab solver: `exam_wd`, the `static_conflicts` frozenset of
 `(ta_id, exam_id)` pairs, and each exam's `eligible_count` (from locked-only
 state) are all computed once. `exam_date_obj` (each exam's parsed
@@ -273,8 +274,8 @@ into whichever course happened to be processed first.
 The block order is **drawn per pass, not sorted**. Any fail-first rule ranks a
 course by how constrained its exams are, which sends the loosest course —
 single-proctor sittings with few conflicts, typically the make-ups — dead last,
-every pass. Redrawing lets some of the 50 iterations hand that course an early
-block, and best-of-50 keeps a draw that worked out. (Sorting blocks fail-first
+every pass. Redrawing lets some iterations hand that course an early
+block, and best-of-N keeps a draw that worked out. (Sorting blocks fail-first
 was measured and behaves like no blocking at all, for exactly this reason.)
 
 Within a block, fail-first is measured in **slack, not pool size**. An exam
@@ -291,7 +292,7 @@ it only shuffles *within* a tie group, and such an exam usually sits alone above
 the pack rather than in one. `-pe_value` places the expensive seats while
 headroom is still unfragmented.
 
-The 50 iterations select on **unfilled count only**, stopping at the first
+The iterations select on **unfilled count only**, stopping at the first
 feasible pass — they buy feasibility, never quality. Selecting the
 highest-*scoring* feasible pass instead was measured: it improves the global
 objective (distinct (TA, course) pairings 23.0 → 21.1) but costs ~8× the
@@ -299,7 +300,7 @@ runtime and consistently overrides a user's locked assignment as a seed for
 concentration, since the global optimum concentrates somewhere else. Left as-is
 deliberately.
 
-When the best of the 50 passes still leaves slots unfilled, each `unfilled`
+When the best of the passes still leaves slots unfilled, each `unfilled`
 diagnostics entry carries a `reason` string ("9 of 13 TAs at PE cap (needs 1.5
 PE free), 1 proctoring an overlapping exam") tallied from the winning pass's
 final state, which `_greedy_pass()` returns alongside its result.
@@ -375,7 +376,7 @@ because `score()` only ever sees `rr["role_id"]` against a flat set of role ids 
 nothing about the lab reaches it. A per-requirement flag would make a TA's charge
 depend on which seat greedy happened to fill first (exempt seat first → the role
 is absent from the set → the later real seat is charged; other order → it isn't),
-which is order-dependence the 50-pass best-of would surface as flapping. Since
+which is order-dependence the multi-pass best-of would surface as flapping. Since
 `ensureCourseRole()` mints a 1:1 role per course name, flagging the role is
 already per-duty control in practice.
 
