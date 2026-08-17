@@ -4834,7 +4834,7 @@ function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
   for (const oc of (ta.other_commitments || [])) {
     for (const lm of labMeetings) {
       if (oc.day === lm.day && overlap(lm.start_min, lm.end_min, oc.start_min, oc.end_min)) {
-        reasons.push(`conflicts with commitment (${fmtTime(oc.start_min)}–${fmtTime(oc.end_min)})`);
+        reasons.push(`conflicts with "${oc.label || 'Commitment'}" (${fmtTime(oc.start_min)}–${fmtTime(oc.end_min)})`);
       }
     }
   }
@@ -4870,7 +4870,7 @@ function taLabConflictReasons(ta, lab, maps = conflictMaps()) {
     }
     for (const oc of (ta.other_commitments || [])) {
       if (oc.day === wd && overlap(dm.start_min, dm.end_min, oc.start_min, oc.end_min)) {
-        reasons.push(`conflicts with commitment on ${fmtDateUS(dm.date)}`);
+        reasons.push(`conflicts with "${oc.label || 'Commitment'}" on ${fmtDateUS(dm.date)}`);
       }
     }
     for (const dc of (ta.date_conflicts || [])) {
@@ -4934,7 +4934,7 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
     // Other commitment conflicts
     for (const oc of (ta.other_commitments || [])) {
       if (oc.day === examWd && overlap(exam.start_min, exam.end_min, oc.start_min, oc.end_min)) {
-        reasons.push(`conflicts with commitment`);
+        reasons.push(`conflicts with "${oc.label || 'Commitment'}"`);
       }
     }
   }
