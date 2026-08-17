@@ -121,6 +121,21 @@ only the role count (1) and the SE cap (2) bind. The slot list is built purely
 from `lab.roles[].count` minus locked seats and never consults meetings, so
 duty seats are solver-fillable exactly like lab seats.
 
+The solver's objectives, in priority order. The first is a **hard rule**
+enforced by ranking + repair; the rest are weighted preferences:
+
+1. **Load band** — every TA's *slack* (`max_se − used_se`) inside a shared
+   1-SE window: loads balanced *relative to each TA's own cap* ("x to x+1 SE
+   from max"), over TAs with `max_se > 0`, ε = 0.001. Unfilled seats still
+   outrank it — an empty seat never buys balance — and when the band is
+   unreachable the solver does best effort and reports the leftovers (see the
+   `load_band` diagnostic below).
+2. Few split (multi-role) TAs.
+3. Split TAs get the lighter loads.
+4. Per-role experienced-TA counts honored — the band outranks this one too:
+   reaching it may trade an experienced seat away (see the tier-2 move in
+   `_rebalance_loads()`), with the trade surfaced in `unfulfilled_experience`.
+
 Scoring (higher is better), with all magnitudes as **user-configurable
 weights** — defaults live in `_DEFAULT_SETTINGS` in `ta_scheduler.py`, the
 single source of truth (mirrored in `DEFAULT_SETTINGS` in
@@ -141,22 +156,20 @@ performance/quality tradeoff rather than a scoring weight — see below.
   Roles flagged `exempt_from_split` are skipped here and are never added to
   `st["roles"]`, so they neither pay the charge nor inflate the multiplier for
   anyone else's next role (see "Roles").
-- `− (load_balance_weight + split_load_weight × extra roles held) × current SE` —
-  defaults 500 and 250, where *extra roles held* is `max(0, len(roles_held) - 1)`.
-  The `split_load_weight` half is a **soft preference for giving already-split TAs
-  lighter overall loads**: each role beyond the first makes every SE unit that TA
-  carries count for more, so they fall behind an idle rival sooner and shed a
-  role's *last* seats rather than its first. `roles_held` already excludes
-  `exempt_from_split` roles, so an exempt duty never makes a TA look split here.
-  Set to 0 to disable. Note this is the one term that pulls *against*
-  concentration at the margin — seats a split TA sheds land on someone, who may
-  have to open a new pairing to take them; `new_role_penalty` still outweighs it
-  at the defaults, so it only breaks ties among TAs who already hold the role.
-  It is also **inert whenever a TA is split by the last course block placed**,
-  which is the common case — there are no seats left to withhold at that point.
-  `_lighten_split_tas()` is what actually delivers lighter loads for split TAs;
-  this term only helps when the split happens with work still to place.
+- `+ slack × load_balance_weight` — default 500 per SE unit of remaining
+  headroom (`max_se − current SE`). Balance is measured **relative to each TA's
+  own cap**: with equal caps this is rank-identical to the old
+  `− current SE × weight` form (the cap is a constant per-candidate offset), so
+  the break-evens below are unchanged; with mixed caps it prefers the TA with
+  more slack, which is what the load band wants.
 - `+ random tiebreak`
+
+(`split_load_weight`, a former surcharge on the load term for already-split
+TAs, was **removed** — measured near-inert, because a TA usually splits on the
+last course block placed, when no seats remain to withhold;
+`_lighten_split_tas()` is what actually delivers objective 3. A stale
+`split_load_weight` key may linger in old files' saved `settings` blobs; it is
+merged in but never read.)
 
 Every term here is a **scoring** term, never an eligibility filter. Only
 `eligible_tas()` (role count, SE cap, double-booking, availability) can leave a
@@ -166,14 +179,16 @@ unfilled one. A split TA who is the last candidate for a seat still takes it.
 The rest of this section describes the relationship between the *default*
 values; it changes if the user edits their weights via Preferences.
 
-There are **two** break-evens against `load_balance_weight`, and the second is the
-one that decides whether loads come out even:
+There are **two** break-evens against `load_balance_weight`, measured in the
+slack *difference* between two candidates (with equal caps, their load
+difference), and the second is the one that decides whether loads come out even:
 
 - **First role** — `new_role_penalty / load_balance_weight` = **0.8 SE** at the
-  defaults. Past that load, an idle TA outscores a TA who already holds the role,
-  so a role's last seats can land on a fresh person even when an existing holder
-  is still under their cap. That is the intended "near-cap TAs yield" behavior,
-  and the first thing to check when a role looks more scattered than expected.
+  defaults. Once an idle TA has that much more slack than a TA who already holds
+  the role, the idle one outscores them, so a role's last seats can land on a
+  fresh person even when an existing holder is still under their cap. That is
+  the intended "near-cap TAs yield" behavior, and the first thing to check when
+  a role looks more scattered than expected.
 - **Second role** — doubled by the `1 + len(roles_held)` multiplier, so **1.6 SE**.
   A TA holding one role is only pulled into a second once they fall this far
   behind an idle rival. This is the number that has to stay *below* a typical
@@ -188,12 +203,6 @@ roles harder at the cost of lumpier loads (slack pools in one or two TAs), and
 800 remains the setting to reach for when near-zero split TAs matters more than
 even loads. But it should be a deliberate choice, not the default, because uneven
 loads are what users notice and object to first.
-
-`split_load_weight` lowers the first-role break-even for split TAs specifically: a
-TA holding two roles is charged 750 per SE unit rather than 500, so they stop
-outscoring an idle rival at **0.53 SE** instead of 0.8 (three roles → 1000/unit,
-0.4 SE). Between two TAs who both already hold the role and carry equal load,
-the split one now loses deterministically where it used to be a coin flip.
 
 The highest-scoring eligible TA is assigned to each slot. Slot *order* is
 re-derived inside `_greedy_pass()` on every pass, in **course blocks (by
@@ -226,7 +235,7 @@ The solver runs up to a configurable number of iterations (`solver_iterations`,
 default 100) and keeps the best by
 
 ```
-(unfilled seats, experienced-TA shortfall, load imbalance, split TAs)
+(unfilled seats, band excess, experienced-TA shortfall, slack imbalance, split TAs)
 ```
 
 It formerly kept the fewest unfilled slots alone and **broke at the first pass
@@ -241,6 +250,12 @@ quality, and the per-pass block order is what makes the draws differ.
 
 - **unfilled** — a pass that staffs more seats always wins, so no amount of
   quality can cost a seat.
+- **band excess** — `round(max(0, max_slack − min_slack − 1.0), 3)` over TAs
+  with `max_se > 0`, quantized to 3 decimals so float noise cannot split ties.
+  This is the hard band rule, and it sits *above* the experience term
+  deliberately: reaching the band may cost an experienced seat, the trade
+  `_rebalance_loads()`'s tier-2 move enacts. The window is shared but its
+  position x is free — no integer alignment, since 0.5-SE roles exist.
 - **experienced-TA shortfall** — a staffing requirement the user typed per role.
   `exp_requirements` covers every requirement with `preferred_experienced > 0`,
   including ones whose slots are fully locked and generate no solver slot,
@@ -248,11 +263,11 @@ quality, and the per-pass block order is what makes the draws differ.
   term a pass that shorts a section by an experienced TA wins on the terms below
   — a real regression that ranking introduced, caught by `status` flipping
   `feasible` → `partial`.
-- **load imbalance** — `load_ss`, the sum of squared SE over *every* TA including
-  the unassigned. With the seat total fixed (which it is, once `unfilled` ties), a
-  sum of squares is minimised exactly when loads are equal, and it falls fastest
-  by lifting the *least*-loaded TA. Measured in absolute SE, matching `score()`'s
-  own load term, rather than as a fraction of each TA's `max_se`.
+- **slack imbalance** — `slack_ss`, the sum of squared slack over every TA with
+  a positive cap, including the unassigned — fine balance beyond the band. With
+  the seat total fixed (which it is, once `unfilled` ties), a sum of squares is
+  minimised exactly when the slacks are equal, and it falls fastest by lifting
+  the TA with the *most* slack — the least-loaded relative to their own cap.
 - **split TAs** — concentration, as a last tiebreak among passes equal on
   everything above. Counted the way `renderTASummary()`'s `role-split` column
   counts it, so exempt roles are excluded.
@@ -272,77 +287,95 @@ over named quantities, so a user's locked assignments are never traded away for 
 better global objective — the same tradeoff the proctoring solver documents
 rejecting below.
 
-There is no early exit from the loop: with `load_ss` in the key there is no
+There is no early exit from the loop: with `slack_ss` in the key there is no
 "perfect" value to stop on, and a full 100 passes costs ~30 ms on a 53-seat file
 (~300 ms at `solver_iterations = 1000`).
 
-### `_rebalance_loads()` — the balance repair
+### The repair passes
 
-The winning pass first goes through a rebalance step, which hands a non-locked
-seat from a heavily-loaded TA to a TA **more than one seat's SE lighter** —
-exactly the condition for `load_ss` to strictly decrease — repeating until no
-such move is legal.
+The winning pass goes through two local-move repairs, in a fixed order:
+`_rebalance_loads()` improves the slack multiset until the band holds (or no
+legal move remains), then `_lighten_split_tas()` permutes loads *within* that
+multiset so the split TAs end on the lighter ones — so rebalance must run
+first. They share their bookkeeping: `_seat_state()` rebuilds per-TA
+load/role/booking state from an assignment list, `_move_legal()` is the
+static-conflict / lab-conflict / SE-cap check mirroring `eligible_tas()`, and
+`_exp_cost()` is the experienced-shortfall delta of a proposed handoff. The two
+driver loops stay separate on purpose — their move rules and invariants differ,
+and merging them would obscure both.
 
-This exists because **ranking exp-shortfall above imbalance can strand a TA on
-a token load when the two objectives are coupled in every draw**. Measured on a
-real file after one experienced TA's `max_se` dropped 3 → 2: of 1000 passes,
-*every* zero-shortfall pass left one TA at 1 SE with twelve at 3 (`load_ss`
-141), and *every* balanced pass (`load_ss` 139) shorted a section by 1–2
-experienced TAs. The ranking then correctly picks zero shortfall, and no
-number of iterations can fix the stranded TA — the good pass simply isn't in
-the distribution. A local move decouples the objectives: the stranded TA was
-experienced, so taking a seat from an experienced 3-SE donor restored the
-optimal spread at zero cost to the experience counts. Don't "fix" this by
-reordering the ranking terms — that would trade a typed staffing requirement
-for balance globally, when the repair gets both.
+### `_rebalance_loads()` — the band repair
 
-Safety mirrors `_lighten_split_tas()`: the seat stays filled (`unfilled`
-unchanged), the same experience guard rejects any move that would raise a
-slot's shortfall (`exp_shortfall` unchanged), every eligibility check mirrors
-`eligible_tas()`, and locked seats are never touched. Unlike the lighten step,
-the receiver **may open a new pairing** — split count can rise, which is the
-documented priority order (balance outranks concentration); among equal-gap
-moves the candidate ranking still prefers a receiver already holding the role
-and a donor shedding their last seat of it. Zero-SE seats are skipped (moving
-one cannot change balance, and would break the termination argument).
+Hands a non-locked seat from a low-slack TA to a TA whose slack is **more than
+one seat's SE larger** — exactly the condition for `slack_ss` to strictly
+decrease (delta `−2·se_value·(gap − se_value)`) — repeating until no legal move
+remains. This is the mechanism that actually enforces the hard band; the
+ranking term above only selects the best available draw.
+
+It exists because the band and the experience preferences can be **coupled in
+every draw**. Measured on a real file after one experienced TA's `max_se`
+dropped 3 → 2: of 1000 passes, *every* zero-shortfall pass left one TA
+stranded on a token load, and *every* balanced pass shorted a section by 1–2
+experienced TAs — the good pass simply isn't in the distribution, so no number
+of iterations finds it. A local move decouples the objectives: on that file the
+stranded TA was experienced, so taking a seat from an experienced full-load
+donor restored the spread at zero cost to the experience counts.
+
+Experience is handled in **two tiers**, because the band outranks the typed
+experience preference:
+
+- **Tier 1** (always preferred): the best move that does not raise any slot's
+  experienced-TA shortfall (`_exp_cost() ≤ 0`).
+- **Tier 2** (only when no tier-1 move exists *and* the slack spread still
+  exceeds 1 + ε): the best move from the same search that *does* raise a
+  shortfall — an experienced seat is traded to reach the band, and the trade
+  surfaces in the `unfulfilled_experience` diagnostic. Every move still
+  requires the strict `slack_ss` decrease, so termination is unchanged, and
+  tier 2 can never fire once the band holds: experience is only ever traded to
+  *reach* the band, never for polish beyond it.
+
+Safety: the seat stays filled (`unfilled` unchanged), every eligibility check
+mirrors `eligible_tas()`, and locked seats are never touched. Unlike the
+lighten step, the receiver **may open a new pairing** — split count can rise,
+which is the documented priority order (balance outranks concentration); among
+equal-gap moves the candidate ranking still prefers a receiver already holding
+the role and a donor shedding their last seat of it. Zero-SE seats are skipped
+(moving one cannot change balance, and would break the termination argument).
 
 On the coupled file this takes every seed from `{1×1, 2×8, 3×12}` to the
 integer-optimal `{2×10, 3×11}` with zero experienced shortfall — a result no
 single greedy pass produced — at the price of two extra split TAs, all of whom
 end on the lighter 2-SE load after the lighten step below runs.
 
-### `_lighten_split_tas()` — the post-pass repair
+### `_lighten_split_tas()` — split TAs get the lighter loads
 
-Runs **after** `_rebalance_loads()` — rebalance improves the load multiset,
-lighten permutes within it, so the order matters and this one must come second.
+Runs **after** `_rebalance_loads()`. Hands seats from split TAs to
+less-fragmented TAs who already hold the same role and have **exactly one
+seat's SE more slack**. The goal is that if some TAs must be split, they should
+be the ones carrying less work relative to their cap.
 
-This step hands seats from split
-TAs to less-fragmented TAs who already hold the same role and are **exactly one
-seat's SE lighter**. The goal is that if some TAs must be split, they should be
-the ones carrying *less* total work.
-
-A greedy pass cannot arrange that itself. A TA becomes split on whichever course
-block runs last, and by then there are no seats left to withhold from them — so
-`split_load_weight`, whose entire purpose is to keep split TAs lighter, has
-nothing to act on. The measured result was the exact inverse of what is wanted:
-across 30 solves of the representative file, **every** split TA sat at the SE cap
+A greedy pass cannot arrange that itself: a TA becomes split on whichever
+course block runs last, and by then there are no seats left to withhold from
+them (this is why the old `split_load_weight` score surcharge was inert and got
+removed). The measured result was the exact inverse of what is wanted: across
+30 solves of the representative file, **every** split TA sat at the SE cap
 (mean 3.00) while every TA on the lighter load held one role (mean 2.23). The
-pass ranking cannot select the good case either, because the draws do not contain
-it — of 3000 passes at optimal balance, 1522 put every split TA at the cap, and
-the best of the remainder reached only a 2.75 mean.
+pass ranking cannot select the good case either, because the draws do not
+contain it — of 3000 passes at optimal balance, 1522 put every split TA at the
+cap, and the best of the remainder reached only a 2.75 mean.
 
-The **exact-load-swap** condition is what makes this safe to run *after* ranking:
-donor and receiver trade loads, so the multiset of loads — and therefore
-`load_ss`, the term the winning pass was selected on — is provably unchanged
-(verified: `load_ss` is 139.0 on all 25 seeds, the same value the pre-repair
-solver produced). Requiring the receiver to already hold the role means no new
-pairing is opened, so split count cannot rise; a donor reduced to one role lowers
-it. Every remaining check mirrors `eligible_tas()` — `static_conflicts`,
-`lab_conflicts`, the SE cap, and same-slot occupancy — so a repaired seat is one
-the solver could have assigned in the first place, and locked assignments are
-skipped outright. There is one extra guard with no counterpart in `eligible_tas()`:
-a move that would raise a slot's experienced-TA shortfall is rejected, since the
-ranking above already paid for that property and the repair must not sell it back.
+The **exact-slack-swap** condition (`slack[receiver] − slack[donor] ==
+se_value`, ε 0.001) is what makes this safe to run after ranking *and* after
+the band repair: donor and receiver trade slacks, so the slack multiset — and
+therefore both `band_excess` and `slack_ss`, the terms everything upstream was
+selected on — is provably unchanged. Requiring the receiver to already hold the
+role means no new pairing is opened, so split count cannot rise; a donor
+reduced to one role lowers it. Every remaining check goes through
+`_move_legal()` plus same-slot occupancy, so a repaired seat is one the solver
+could have assigned in the first place, and locked assignments are skipped
+outright. Unlike the band repair, this pass has no hard rule to reach, so it
+never trades an experience preference — any move with `_exp_cost() > 0` is
+rejected.
 
 Termination: each move strictly lowers `Σ len(roles_held) × used_se`, because the
 receiver is strictly less fragmented than the donor. The iteration cap is a
@@ -351,6 +384,16 @@ float-arithmetic backstop, not the mechanism.
 On the representative file this takes the mean split-TA load from 3.00 to **2.06**
 (mean single-role load 2.23 → 2.81) with load spread, split count, filled seats
 and status all unchanged, and no measurable runtime cost.
+
+### The `load_band` diagnostic
+
+After both repairs, the final assignment is checked against the band over TAs
+with `max_se > 0`. If the slack spread still exceeds 1 + ε, each TA whose slack
+exceeds `min_slack + 1.0` is reported in `diagnostics["load_band"]` as
+`{ta_name, assigned_se, max_se}` and `status` flips to `partial` — these are
+the under-loaded TAs the band could not lift, because conflicts blocked their
+remaining seats or too few seats exist. `renderSchedule()` renders them in the
+warn box as "Load balance outside target band".
 
 Locked assignments are always preserved; the solver fills remaining slots.
 
@@ -368,14 +411,14 @@ the same section), so a file can force splits arithmetically: with N TAs, a
 one-section course needing S seats, and other courses needing at least T TAs at
 their SE cap, `S + T > N` makes `S + T − N` splits unavoidable. Past that floor
 `new_role_penalty` saturates — 800 → 5000 changed nothing on a representative
-file — and `split_load_weight` does nothing at all, since it only engages once a
-TA is *already* split.
+file.
 
 **"No TA on a light load" and "few split TAs" are directly opposed** under a
 one-section course, because its seat-holders can only take on more work by
 crossing into another course — i.e. by splitting. Balance is the side users
-care about, which is why the pass ranking puts imbalance above splits and why
-`new_role_penalty` is the dial to reach for when loads come out lumpy:
+care about, which is why the load band is a hard rule, the pass ranking puts
+imbalance above splits, and `new_role_penalty` is the dial to reach for when
+loads come out lumpy:
 
 The number that matters is the **second-role break-even**,
 `new_role_penalty × 2 / load_balance_weight` (see the two break-evens above), and
@@ -393,10 +436,11 @@ within the default 100 iterations (~30 ms), where 800 needs ~1000 iterations
 (~300 ms) to reach the same place and otherwise strands a TA at 1 SE.
 
 Note that **changing a default only affects files that have never opened
-Preferences**: `savePreferences()` writes all twelve keys into `data["settings"]`
-unconditionally, so one visit to the modal pins every value against future
-default changes. Reset-to-defaults + Save in that modal is the way to pick them
-up.
+Preferences**: `savePreferences()` writes every `PREF_FIELD_IDS` key into
+`data["settings"]` unconditionally, so one visit to the modal pins every value
+against future default changes. Reset-to-defaults + Save in that modal is the
+way to pick them up — and also the way a previously saved file sheds a removed
+setting's stale key (e.g. `split_load_weight`).
 
 ## Solver (greedy — proctoring)
 

@@ -574,10 +574,11 @@ _NEW_ROLE_PENALTY    = 400   # cost of opening a new (TA, role) pairing. Halved 
                              # loads depended on a lucky block draw. 400 puts it at
                              # 1.6 SE and balance becomes reliable. See "Weights
                              # cannot fix a shortage of un-split TAs" in CLAUDE.md.
-_LOAD_BALANCE_WEIGHT = 500
-_SPLIT_LOAD_WEIGHT   = 250   # extra load-balance charge per SE unit, per role held beyond
-                             # the first — a soft preference for keeping already-split TAs
-                             # lighter overall. Purely a scoring term; see score().
+_LOAD_BALANCE_WEIGHT = 500   # bonus per SE unit of *slack* (max_se − used_se) the
+                             # candidate still has — balance is measured relative to
+                             # each TA's own cap, not in absolute SE. (The removed
+                             # split_load_weight setting may linger as a stale key in
+                             # old files' settings blobs; it is never read.)
 
 _LAB_FAMILIARITY_BONUS      = 300
 _LAB_SECTION_BONUS          = 150
@@ -597,7 +598,6 @@ _DEFAULT_SETTINGS = {
     "experience_bonus": _EXPERIENCE_BONUS,
     "new_role_penalty": _NEW_ROLE_PENALTY,
     "load_balance_weight": _LOAD_BALANCE_WEIGHT,
-    "split_load_weight": _SPLIT_LOAD_WEIGHT,
     "lab_familiarity_bonus": _LAB_FAMILIARITY_BONUS,
     "lab_section_bonus": _LAB_SECTION_BONUS,
     "new_course_penalty": _NEW_COURSE_PENALTY,
@@ -646,12 +646,12 @@ def solve(data):
     experience_bonus    = settings["experience_bonus"]
     new_role_penalty    = settings["new_role_penalty"]
     load_balance_weight = settings["load_balance_weight"]
-    split_load_weight   = settings["split_load_weight"]
 
     if not labs or not tas:
         return {"status": "feasible", "assignments": assignments_in, "diagnostics": {}}
 
     labs_by_id = {lab["id"]: lab for lab in labs}
+    ta_max     = {ta["id"]: ta.get("max_se", 2.0) for ta in tas}
     locked_assignments = [a for a in assignments_in if a.get("locked")]
 
     # ── precomputed, input-only data (constant across all iterations) ──────
@@ -812,7 +812,7 @@ def solve(data):
                 continue
             if (tid, lab_id) in static_conflicts:
                 continue
-            if st["used_se"][tid] + se_val > ta.get("max_se", 2.0) + 0.001:
+            if st["used_se"][tid] + se_val > ta_max[tid] + 0.001:
                 continue
             if double_booked(st, tid, lab_id):
                 continue
@@ -832,16 +832,15 @@ def solve(data):
             # absent from roles_held, so they neither pay this nor inflate the
             # multiplier — only load balancing decides who takes them.
             s -= new_role_penalty * (1 + len(roles_held))
-        # Load balancing, surcharged for TAs who are already split: each role held
-        # beyond the first makes every SE unit they carry count for more, so they
-        # fall behind an idle rival sooner and shed the *last* seats of a role
-        # rather than its first. Deliberately a scoring term and not an eligibility
-        # filter — if a split TA is the only candidate left for a seat they still
-        # take it, so this can never turn a fillable slot into an unfilled one.
-        # roles_held already excludes exempt_from_split roles, so an exempt duty
-        # does not make a TA look split here either.
-        split_surcharge = split_load_weight * max(0, len(roles_held) - 1)
-        s -= st["used_se"][ta["id"]] * (load_balance_weight + split_surcharge)
+        # Load balancing on *slack* (max_se − used_se): the candidate with the
+        # most remaining headroom relative to their own cap wins, which is the
+        # balance rule the solver enforces — every TA's slack inside a shared
+        # 1-SE band. With equal caps this is rank-identical to charging absolute
+        # SE (the documented break-evens against new_role_penalty are unchanged);
+        # with mixed caps it prefers the TA with more headroom, which is the
+        # point. Deliberately a scoring term and not an eligibility filter — no
+        # weight can turn a fillable slot into an unfilled one.
+        s += (ta_max[ta["id"]] - st["used_se"][ta["id"]]) * load_balance_weight
         s += random.random()
         return s
 
@@ -930,80 +929,135 @@ def solve(data):
         exp_shortfall = sum(
             max(0, pref - sum(1 for tid in st["per_slot"].get(key, ()) if tid in experienced_tas))
             for key, pref in exp_requirements)
-        # Load imbalance, as the sum of squared SE over *every* TA including the
-        # unassigned. With the seat total fixed (which it is, once unfilled ties
-        # above), a sum of squares is minimised exactly when the loads are equal,
-        # and it falls fastest by lifting the *least*-loaded TA — which is the
-        # complaint this term exists to answer. Measured in absolute SE, matching
-        # score()'s own load term, rather than as a fraction of each TA's max_se.
-        load_ss = sum(v * v for v in st["used_se"].values())
+        # Balance is measured on *slack* (max_se − used_se), over every TA with a
+        # positive cap, including the unassigned:
+        #   band_excess — how far the slack spread exceeds the hard 1-SE band
+        #     ("every TA within x to x+1 SE of their own max"). Quantized to 3
+        #     decimals so float noise cannot split ties.
+        #   slack_ss   — the sum of squared slacks. With the seat total fixed
+        #     (which it is, once unfilled ties above), it is minimised exactly
+        #     when the slacks are equal, and it falls fastest by lifting the TA
+        #     with the *most* slack — the least-loaded relative to their cap.
+        slacks = [ta_max[tid] - v for tid, v in st["used_se"].items()
+                  if ta_max[tid] > 0]
+        slack_ss = sum(v * v for v in slacks)
+        band_excess = (round(max(0.0, max(slacks) - min(slacks) - 1.0), 3)
+                       if len(slacks) >= 2 else 0.0)
         # TAs holding more than one role — the concentration objective itself,
         # counted the way renderTASummary()'s "role-split" column counts it.
         # st["roles"] already excludes exempt_from_split roles, so an exempt duty
         # never makes a TA look split here.
         split_count = sum(1 for tid in st["roles"] if len(st["roles"][tid]) > 1)
-        return result_assignments, unfilled_count, exp_shortfall, load_ss, split_count
+        return (result_assignments, unfilled_count, band_excess, exp_shortfall,
+                slack_ss, split_count)
 
-    # ── post-pass repair: put the split TAs on the lighter loads ───────────
+    # ── post-pass repairs ──────────────────────────────────────────────────
+    #
+    # Two local-move passes share their bookkeeping: _rebalance_loads() moves
+    # seats until every TA's slack sits inside a shared 1-SE band, then
+    # _lighten_split_tas() permutes loads within that multiset so the split TAs
+    # end on the lighter ones. The move rules and invariants differ, so the two
+    # driver loops stay separate; the state rebuild, the legality checks, and
+    # the experience-shortfall delta are the parts they share.
 
-    # preferred_experienced per (lab_id, role_id), for the guard below.
+    # preferred_experienced per (lab_id, role_id), for the experience guard.
     slot_pref_exp = {
         (lab["id"], rr["role_id"]): rr.get("preferred_experienced", 0)
         for lab in labs for rr in lab.get("roles", [])
     }
 
+    def _seat_state(result):
+        """Per-TA load/role/booking state rebuilt from an assignment list — the
+        common opening block of both repair passes. Returns
+        (used_se, roles_held, booked, occupants, seat_count)."""
+        used_se, roles_held, booked = {}, {}, {}
+        for ta in tas:
+            used_se[ta["id"]], roles_held[ta["id"]], booked[ta["id"]] = 0.0, set(), set()
+        occupants, seat_count = {}, {}
+        for a in result:
+            tid = a["ta_id"]
+            if tid not in used_se:
+                continue
+            used_se[tid] += roles_map.get(a["role_id"], {}).get("se_value", 1.0)
+            booked[tid].add(a["lab_id"])
+            if a["role_id"] not in exempt_roles:
+                roles_held[tid].add(a["role_id"])
+            occupants.setdefault((a["lab_id"], a["role_id"]), set()).add(tid)
+            seat_count[(tid, a["role_id"])] = seat_count.get((tid, a["role_id"]), 0) + 1
+        return used_se, roles_held, booked, occupants, seat_count
+
+    def _move_legal(used_se, booked, rid, lab_id, se_val):
+        """Whether TA `rid` may take a seat in `lab_id` worth `se_val` —
+        the static-conflict / lab-conflict / SE-cap checks, mirroring
+        eligible_tas(). (Same-slot occupancy is the caller's `rid in here`.)"""
+        if (rid, lab_id) in static_conflicts:
+            return False
+        if not lab_conflicts[lab_id].isdisjoint(booked[rid]):
+            return False
+        return used_se[rid] + se_val <= ta_max[rid] + 0.001
+
+    def _exp_cost(here, pref, donor, rid):
+        """How much handing this seat donor → rid would raise the slot's
+        experienced-TA shortfall (≤ 0 means it would not)."""
+        if pref <= 0:
+            return 0
+        exp_now = sum(1 for t in here if t in experienced_tas)
+        exp_after = exp_now - (donor in experienced_tas) + (rid in experienced_tas)
+        return max(0, pref - exp_after) - max(0, pref - exp_now)
+
+    def _band_spread(used_se):
+        """max(slack) − min(slack) over TAs with a positive SE cap, or 0."""
+        slacks = [ta_max[ta["id"]] - used_se[ta["id"]]
+                  for ta in tas if ta_max[ta["id"]] > 0]
+        return (max(slacks) - min(slacks)) if len(slacks) >= 2 else 0.0
+
     def _rebalance_loads(result):
-        """Hand a seat from a heavily-loaded TA to a TA more than one seat
-        lighter, whenever the move is legal and does not raise any slot's
-        experienced-TA shortfall.
+        """Hand a seat from a low-slack TA to a TA whose slack (max_se −
+        used_se) is more than one seat's SE larger, repeating until no such
+        move is legal — the enforcement mechanism for the hard load band.
 
-        Why the ranking alone cannot do this: the pass ranking puts experienced
-        shortfall above load imbalance, and on some files those two objectives
-        are *coupled in every draw* — each greedy pass either satisfies the
-        experience preferences (leaving one TA stranded on a token load) or
-        balances the loads (shorting a section by an experienced TA), and no
-        pass does both. Measured on a real file after one TA's max_se dropped
-        3 → 2: of 1000 passes, every zero-shortfall pass had load_ss 141 (one
-        TA at 1 SE, twelve at 3) and every load_ss-139 pass had shortfall ≥ 1.
-        The ranking then correctly picks zero shortfall, and the stranded TA is
-        unfixable by any number of iterations. A local move decouples them: the
-        stranded TA is experienced, so taking a seat from an experienced 3-SE
-        donor fixes the balance at zero cost to the experience counts.
+        Why the ranking alone cannot do this: on some files the band and the
+        experience preferences are *coupled in every draw* — each greedy pass
+        either satisfies the experience preferences (leaving one TA stranded on
+        a token load) or balances the loads (shorting a section by an
+        experienced TA), and no pass does both. Measured on a real file after
+        one TA's max_se dropped 3 → 2: of 1000 passes, every zero-shortfall
+        pass stranded one TA and every balanced pass had shortfall ≥ 1. A local
+        move decouples them: the stranded TA was experienced, so taking a seat
+        from an experienced full-load donor fixed the balance at zero cost to
+        the experience counts.
 
-        A move requires `used_se[donor] - used_se[receiver] > se_value`, which
-        is exactly the condition for load_ss to strictly decrease (the delta is
-        −2·se_value·(gap − se_value)), so the term the pass was ranked on only
-        improves. The seat stays filled, so `unfilled` is unchanged, and the
-        experience guard keeps `exp_shortfall` from rising — the two terms
-        ranked above load_ss are both preserved. Split count may rise (the
-        receiver may open a new pairing); that is the documented priority
+        A move requires `slack[receiver] − slack[donor] > se_value`, which is
+        exactly the condition for slack_ss to strictly decrease (the delta is
+        −2·se_value·(gap − se_value)), so the fine-balance term the pass was
+        ranked on only improves, and each move lowers it by at least
+        2 × se_value × 0.001 — the termination argument (zero-SE seats are
+        skipped: moving one cannot change balance and would break it). The
+        seat stays filled, so `unfilled` is unchanged. Split count may rise
+        (the receiver may open a new pairing); that is the documented priority
         order — balance outranks concentration — and among equal-gap moves the
-        candidate ranking below still prefers a receiver who already holds the
-        role and a donor shedding their last seat of it. Every eligibility
-        check mirrors `eligible_tas()`, and locked seats are never touched.
+        candidate ranking still prefers a receiver who already holds the role
+        and a donor shedding their last seat of it. Locked seats are never
+        touched.
 
-        Terminates because each move lowers load_ss by at least
-        2 × se_value × 0.001 (zero-SE seats are skipped — moving one cannot
-        change balance), with the iteration cap as a float backstop.
+        Experience is a two-tier concern, because the band outranks it:
+
+          tier 1 — the best move that does not raise any slot's experienced-TA
+            shortfall. Always preferred.
+          tier 2 — only when no tier-1 move exists AND the slack spread still
+            exceeds the 1-SE band: the same search without the experience
+            guard, trading an experienced seat to reach the band. The trade
+            shows up in the unfulfilled_experience diagnostic. Once the band
+            holds, tier 2 can never fire — experience is only ever traded to
+            *reach* the band, never for polish beyond it.
         """
         result = list(result)
         for _ in range(4 * len(result) + 16):
-            used_se, roles_held, booked = {}, {}, {}
-            for ta in tas:
-                used_se[ta["id"]], roles_held[ta["id"]], booked[ta["id"]] = 0.0, set(), set()
-            occupants, seat_count = {}, {}
-            for a in result:
-                tid = a["ta_id"]
-                if tid not in used_se:
-                    continue
-                used_se[tid] += roles_map.get(a["role_id"], {}).get("se_value", 1.0)
-                booked[tid].add(a["lab_id"])
-                if a["role_id"] not in exempt_roles:
-                    roles_held[tid].add(a["role_id"])
-                occupants.setdefault((a["lab_id"], a["role_id"]), set()).add(tid)
-                seat_count[(tid, a["role_id"])] = seat_count.get((tid, a["role_id"]), 0) + 1
+            used_se, roles_held, booked, occupants, seat_count = _seat_state(result)
+            slack = {ta["id"]: ta_max[ta["id"]] - used_se[ta["id"]] for ta in tas}
 
-            best = None
+            best = None        # tier 1: preserves every slot's experience count
+            best_trade = None  # tier 2: would raise a slot's exp shortfall
             for idx, a in enumerate(result):
                 if a.get("locked"):
                     continue
@@ -1015,31 +1069,28 @@ def solve(data):
                     continue
                 here = occupants.get((lab_id, role_id), set())
                 pref = slot_pref_exp.get((lab_id, role_id), 0)
-                exp_now = sum(1 for t in here if t in experienced_tas)
 
                 for ta in tas:
                     rid = ta["id"]
                     if rid == donor or rid in here:
                         continue
-                    gap = used_se[donor] - used_se[rid]
+                    gap = slack[rid] - slack[donor]
                     if gap - se_val <= 0.001:
-                        continue          # would not strictly lower load_ss
-                    if (rid, lab_id) in static_conflicts:
+                        continue          # would not strictly lower slack_ss
+                    if not _move_legal(used_se, booked, rid, lab_id, se_val):
                         continue
-                    if not lab_conflicts[lab_id].isdisjoint(booked[rid]):
-                        continue
-                    if used_se[rid] + se_val > ta.get("max_se", 2.0) + 0.001:
-                        continue
-                    if pref > 0:
-                        exp_after = exp_now - (donor in experienced_tas) + (rid in experienced_tas)
-                        if max(0, pref - exp_after) > max(0, pref - exp_now):
-                            continue      # never trade away the experience preference
                     cand = (gap,
                             role_id in roles_held[rid],           # no new pairing
                             seat_count.get((donor, role_id), 0) == 1)  # donor sheds role
-                    if best is None or cand > best[0]:
+                    if _exp_cost(here, pref, donor, rid) > 0:
+                        if best_trade is None or cand > best_trade[0]:
+                            best_trade = (cand, idx, rid)
+                    elif best is None or cand > best[0]:
                         best = (cand, idx, rid)
 
+            if best is None and best_trade is not None \
+                    and _band_spread(used_se) > 1.0 + 0.001:
+                best = best_trade
             if best is None:
                 break
             _, idx, rid = best
@@ -1047,27 +1098,28 @@ def solve(data):
         return result
 
     def _lighten_split_tas(result):
-        """Hand seats from split TAs to less-fragmented TAs who already hold the
-        same role and are exactly one seat's SE lighter.
+        """Hand seats from split TAs to less-fragmented TAs who already hold
+        the same role and have exactly one seat's SE *more slack*.
 
-        A greedy pass cannot arrange this itself. A TA becomes split on whichever
-        course block runs last, and by then there are no seats left to withhold
-        from them — which is why `split_load_weight`, whose whole purpose is to
-        keep split TAs lighter, has nothing to act on. The observed result is the
-        exact inverse of what is wanted: on a representative file every split TA
-        came out at the SE cap while every TA on the lighter load held one role.
-        Nor can the pass ranking select the good case out of the draws, because
-        the draws do not contain it — of 3000 passes at optimal balance, 1522
-        placed every split TA at the cap and the best seen was a 2.75 mean.
+        A greedy pass cannot arrange this itself. A TA becomes split on
+        whichever course block runs last, and by then there are no seats left
+        to withhold from them. The observed result is the exact inverse of what
+        is wanted: on a representative file every split TA came out at the SE
+        cap while every TA on the lighter load held one role. Nor can the pass
+        ranking select the good case out of the draws, because the draws do not
+        contain it — of 3000 passes at optimal balance, 1522 placed every split
+        TA at the cap and the best seen was a 2.75 mean.
 
-        The exact-load-swap condition (`used_se[donor] - used_se[receiver] ==
-        se_value`) is what makes this safe to run after ranking: the two TAs
-        *trade* loads, so the multiset of loads — and therefore `load_ss`, the
-        term the winning pass was chosen on — is unchanged. Requiring the
-        receiver to already hold the role means no new pairing is opened, so the
-        split count cannot rise either; a donor reduced to one role lowers it.
-        Every other check mirrors `eligible_tas()`, so a repaired seat is one the
-        solver could have assigned in the first place.
+        The exact-swap condition (`slack[receiver] − slack[donor] == se_value`)
+        is what makes this safe to run after ranking and after the band repair:
+        the two TAs *trade* slacks, so the slack multiset — and therefore both
+        the band and `slack_ss`, the terms everything upstream was selected on
+        — is provably unchanged. Requiring the receiver to already hold the
+        role means no new pairing is opened, so the split count cannot rise
+        either; a donor reduced to one role lowers it. Every other check
+        mirrors `eligible_tas()`, so a repaired seat is one the solver could
+        have assigned in the first place, and unlike the band repair this pass
+        never trades an experience preference — it has no hard rule to reach.
 
         Terminates because each move strictly lowers Σ len(roles_held) × used_se
         (the receiver is strictly less fragmented than the donor), with an
@@ -1075,19 +1127,8 @@ def solve(data):
         """
         result = list(result)
         for _ in range(4 * len(result) + 16):
-            used_se, roles_held, booked = {}, {}, {}
-            for ta in tas:
-                used_se[ta["id"]], roles_held[ta["id"]], booked[ta["id"]] = 0.0, set(), set()
-            occupants = {}
-            for a in result:
-                tid = a["ta_id"]
-                if tid not in used_se:
-                    continue
-                used_se[tid] += roles_map.get(a["role_id"], {}).get("se_value", 1.0)
-                booked[tid].add(a["lab_id"])
-                if a["role_id"] not in exempt_roles:
-                    roles_held[tid].add(a["role_id"])
-                occupants.setdefault((a["lab_id"], a["role_id"]), set()).add(tid)
+            used_se, roles_held, booked, occupants, _sc = _seat_state(result)
+            slack = {ta["id"]: ta_max[ta["id"]] - used_se[ta["id"]] for ta in tas}
 
             moved = False
             for idx, a in enumerate(result):
@@ -1099,7 +1140,6 @@ def solve(data):
                 se_val = roles_map.get(role_id, {}).get("se_value", 1.0)
                 here = occupants.get((lab_id, role_id), set())
                 pref = slot_pref_exp.get((lab_id, role_id), 0)
-                exp_now = sum(1 for t in here if t in experienced_tas)
 
                 for ta in tas:
                     rid = ta["id"]
@@ -1109,18 +1149,12 @@ def solve(data):
                         continue          # would open a new pairing
                     if len(roles_held[rid]) >= len(roles_held[donor]):
                         continue          # receiver must be less fragmented
-                    if abs(used_se[donor] - used_se[rid] - se_val) > 0.001:
-                        continue          # must be an exact load swap
-                    if (rid, lab_id) in static_conflicts:
+                    if abs(slack[rid] - slack[donor] - se_val) > 0.001:
+                        continue          # must be an exact slack swap
+                    if not _move_legal(used_se, booked, rid, lab_id, se_val):
                         continue
-                    if not lab_conflicts[lab_id].isdisjoint(booked[rid]):
-                        continue
-                    if used_se[rid] + se_val > ta.get("max_se", 2.0) + 0.001:
-                        continue
-                    if pref > 0:
-                        exp_after = exp_now - (donor in experienced_tas) + (rid in experienced_tas)
-                        if max(0, pref - exp_after) > max(0, pref - exp_now):
-                            continue      # never trade away the experience preference
+                    if _exp_cost(here, pref, donor, rid) > 0:
+                        continue          # never trade away the experience preference
                     result[idx] = {**a, "ta_id": rid}
                     moved = True
                     break
@@ -1132,24 +1166,30 @@ def solve(data):
 
     # ── run multiple iterations, keep the best ─────────────────────────────
     #
-    # Passes are ranked on (unfilled, experienced shortfall, load imbalance,
-    # split TAs), not unfilled alone. Stopping at the first feasible pass made
-    # the iterations dead weight on any file that is not capacity-tight — the
-    # common case: the first pass fills every seat, the loop breaks, and the
-    # remaining draws never run, so solver_iterations bought nothing at all. The
-    # extra terms are what turn those draws into quality, and the per-pass block
-    # order drawn above is what makes the draws differ.
+    # Passes are ranked on (unfilled, band excess, experienced shortfall, slack
+    # imbalance, split TAs), not unfilled alone. Stopping at the first feasible
+    # pass made the iterations dead weight on any file that is not
+    # capacity-tight — the common case: the first pass fills every seat, the
+    # loop breaks, and the remaining draws never run, so solver_iterations
+    # bought nothing at all. The extra terms are what turn those draws into
+    # quality, and the per-pass block order drawn above is what makes the draws
+    # differ.
     #
     # The order of the terms is the priority order, and it matters a great deal:
     #
-    #   unfilled       — a pass that staffs more seats always wins, so no amount
-    #                    of quality can cost a seat.
+    #   unfilled       — a pass that staffs more seats always wins, so nothing
+    #                    below can cost a seat (an empty seat never buys
+    #                    balance).
+    #   band excess    — the hard rule: every TA's slack (max_se − used_se)
+    #                    inside a shared 1-SE window. Above the experience term
+    #                    deliberately — the band may cost an experienced seat,
+    #                    which the tier-2 trade in _rebalance_loads() enacts.
     #   exp shortfall  — a staffing requirement the user typed per role. Without
     #                    it a pass that shorts a section by an experienced TA can
     #                    win on the terms below.
-    #   load imbalance — every TA carrying a comparable share. This is the one
-    #                    users notice and object to first, so it outranks the
-    #                    concentration objective outright.
+    #   slack_ss       — fine balance beyond the band. Outranks the
+    #                    concentration objective outright: uneven loads are what
+    #                    users notice and object to first.
     #   split TAs      — concentration, as a last tiebreak among passes that are
     #                    equal on all of the above.
     #
@@ -1169,9 +1209,10 @@ def solve(data):
     best_key = None
 
     for _ in range(max(1, int(settings.get("solver_iterations") or _SOLVER_ITERATIONS))):
-        result_assignments, unfilled_count, exp_shortfall, load_ss, split_count = _greedy_pass()
+        (result_assignments, unfilled_count, band_excess, exp_shortfall,
+         slack_ss, split_count) = _greedy_pass()
 
-        key = (unfilled_count, exp_shortfall, load_ss, split_count)
+        key = (unfilled_count, band_excess, exp_shortfall, slack_ss, split_count)
         if best_key is None or key < best_key:
             best_key = key
             best_result = result_assignments
@@ -1207,11 +1248,35 @@ def solve(data):
                         "exp_preferred": pref_exp,
                     })
 
-    status = "partial" if (unfilled or unfulfilled_exp) else "feasible"
+    # The hard load band, checked on the final (post-repair) assignments: every
+    # TA's slack (max_se − used_se) within a shared 1-SE window, over TAs with a
+    # positive cap. When the repairs could not reach it — conflicts blocked the
+    # under-loaded TAs' remaining seats, or too few seats exist — report each TA
+    # whose slack exceeds min_slack + 1.0 (the under-loaded ones the band could
+    # not lift) and flip status to partial.
+    final_se = {ta["id"]: 0.0 for ta in tas}
+    for a in result_assignments:
+        if a["ta_id"] in final_se:
+            final_se[a["ta_id"]] += roles_map.get(a["role_id"], {}).get("se_value", 1.0)
+    band_tas = [ta for ta in tas if ta_max[ta["id"]] > 0]
+    load_band = []
+    if len(band_tas) >= 2:
+        min_slack = min(ta_max[ta["id"]] - final_se[ta["id"]] for ta in band_tas)
+        for ta in band_tas:
+            if ta_max[ta["id"]] - final_se[ta["id"]] > min_slack + 1.0 + 0.001:
+                load_band.append({
+                    "ta_name":     ta["name"],
+                    "assigned_se": final_se[ta["id"]],
+                    "max_se":      ta_max[ta["id"]],
+                })
+
+    status = "partial" if (unfilled or unfulfilled_exp or load_band) else "feasible"
     return {
         "status":      status,
         "assignments": result_assignments,
-        "diagnostics": {"unfilled_roles": unfilled, "unfulfilled_experience": unfulfilled_exp},
+        "diagnostics": {"unfilled_roles": unfilled,
+                        "unfulfilled_experience": unfulfilled_exp,
+                        "load_band": load_band},
     }
 
 

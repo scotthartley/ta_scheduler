@@ -2617,6 +2617,7 @@ function renderSchedule(diag, status) {
   // Diagnostics
   const unfilled = diag.unfilled_roles || [];
   const unfulfilledExp = diag.unfulfilled_experience || [];
+  const loadBand = diag.load_band || [];
   let html = '';
   if (status === 'partial') {
     html = '<h4>⚠ Partial Schedule</h4>';
@@ -2627,6 +2628,11 @@ function renderSchedule(diag, status) {
     if (unfulfilledExp.length) {
       html += '<p><strong>Experience preferences not fully met:</strong></p><ul>' +
         unfulfilledExp.map(u => `<li><strong>${escHtml(u.lab_name)}</strong> — ${escHtml(u.role_label)}: ${u.exp_assigned}/${u.exp_preferred} experienced</li>`).join('') + '</ul>';
+    }
+    if (loadBand.length) {
+      const fmtSE = v => Number.isInteger(v) ? v.toFixed(1) : String(v);
+      html += '<p><strong>Load balance outside target band:</strong></p><ul>' +
+        loadBand.map(u => `<li><strong>${escHtml(u.ta_name)}</strong>: ${fmtSE(u.assigned_se)} of ${fmtSE(u.max_se)} SE max</li>`).join('') + '</ul>';
     }
   }
   showWarnBox($id('diagnostics'), html);
@@ -2929,7 +2935,6 @@ const DEFAULT_SETTINGS = {
   experience_bonus: 200,
   new_role_penalty: 400,
   load_balance_weight: 500,
-  split_load_weight: 250,
   lab_familiarity_bonus: 300,
   lab_section_bonus: 150,
   new_course_penalty: 1600,
@@ -2946,7 +2951,6 @@ const PREF_FIELD_IDS = {
   experience_bonus: 'pref-experience-bonus',
   new_role_penalty: 'pref-new-role-penalty',
   load_balance_weight: 'pref-load-balance-weight',
-  split_load_weight: 'pref-split-load-weight',
   lab_familiarity_bonus: 'pref-lab-familiarity-bonus',
   lab_section_bonus: 'pref-lab-section-bonus',
   new_course_penalty: 'pref-new-course-penalty',
@@ -2967,9 +2971,7 @@ const PREF_SECTIONS = [
     { key: 'new_role_penalty', label: 'New role penalty',
       hint: 'Cost of assigning a TA to a role they do not already hold' },
     { key: 'load_balance_weight', label: 'Load balance weight',
-      hint: 'Penalty per SE unit a TA already carries' },
-    { key: 'split_load_weight', label: 'Split load weight',
-      hint: 'Extra penalty per SE unit for each role a TA holds beyond the first — a preference for giving split TAs lighter overall loads. 0 disables it' },
+      hint: 'Bonus per SE unit of remaining headroom (max SE minus assigned SE) — prefers the TA with the most slack relative to their own cap' },
   ]},
   { title: 'Proctoring', fields: [
     { key: 'lab_familiarity_bonus', label: 'Lab familiarity bonus',
