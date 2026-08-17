@@ -22,6 +22,8 @@
   --purple-lt:  #F3E8FF;
   --purple-dk:  #5E1A8A;
   --red:        #FF3B30;
+  --red-lt:     #FFE9E7;
+  --red-dk:     #99251F;
   --gray-lt:    #F2F2F7;
   --border:     rgba(60,60,67,0.18);
   --text:       #1C1C1E;
@@ -334,16 +336,20 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .data-table .lab-header td      { background: var(--blue-lt);  font-weight: 700; }
 .data-table .ta-header td       { background: var(--green-lt); font-weight: 700; }
 .data-table .summary-total td   { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
-.data-table .role-split         { color: var(--warn-text); font-weight: 600; }
+.data-table .stat-box { display: inline-block; padding: 2px 8px;
+                         border-radius: var(--r-sm); border: 1px solid var(--border); }
+.data-table .stat-box.stat-green { border-color: var(--green); background: var(--green-lt); }
+.data-table .stat-box.stat-red   { border-color: var(--red);   background: var(--red-lt); }
 .data-table input { font-size: var(--fs-sm); padding: 2px 4px;
                     border: 1px solid var(--border); border-radius: var(--r-sm); }
 .data-table input[type=number] { width: 60px; }
 
 .role-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .ta-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--blue-lt);
-            color: var(--blue-dk); border: 1px solid rgba(0,122,255,0.3); border-radius: var(--r-sm);
+            color: var(--blue-dk); border: 2px solid rgba(0,122,255,0.45); border-radius: var(--r-sm);
             padding: 3px 8px; font-size: var(--fs-xs); }
-.ta-chip.locked { background: var(--green-lt); color: var(--green-dk); border-color: rgba(52,199,89,0.35); }
+.ta-chip.locked { background: var(--green-lt); color: var(--green-dk); border-color: rgba(52,199,89,0.5); }
+.ta-chip.inexp { border-style: dashed; }
 .lock-badge { font-size: var(--fs-sm); line-height: 1; opacity: .6; cursor: default; }
 .lock-badge.interactive { cursor: pointer; }
 .lock-badge.interactive:hover { opacity: 1; }
@@ -513,14 +519,23 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .assign-grid td.assign-cell { width: 48px; min-width: 48px; height: 36px; text-align: center;
                                vertical-align: middle; border: 1px solid var(--border);
                                cursor: pointer; position: relative; }
-.assign-cell.cell-conflict {
+/* Filled and conflict cells render an inset "pill" div rather than styling the
+   <td> border/background directly — with border-collapse: collapse, adjacent
+   <td> edges touch/merge, which flattens the dashed-vs-solid distinction (and
+   the conflict hatch) into neighboring cells. Insetting the pill guarantees a
+   gap on every side regardless of collapsing. */
+.cell-pill { position: absolute; inset: 3px; display: flex; align-items: center; justify-content: center;
+             border-radius: var(--r-sm); border: 2px solid transparent; }
+.cell-pill.cell-assigned { background: var(--blue-lt);  color: var(--blue-dk);  border-color: rgba(0,122,255,0.45); }
+.cell-pill.cell-locked   { background: var(--green-lt); color: var(--green-dk); border-color: rgba(52,199,89,0.5); }
+.cell-pill.inexp         { border-style: dashed; }
+.cell-pill.cell-conflict {
+  border-color: #000;
   background-color: #e8e8e8;
   background-image:
-    linear-gradient(to bottom right, transparent calc(50% - 0.6px), #888 calc(50% - 0.6px), #888 calc(50% + 0.6px), transparent calc(50% + 0.6px)),
-    linear-gradient(to bottom left,  transparent calc(50% - 0.6px), #888 calc(50% - 0.6px), #888 calc(50% + 0.6px), transparent calc(50% + 0.6px));
+    linear-gradient(to bottom right, transparent calc(50% - 1px), #000 calc(50% - 1px), #000 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom left,  transparent calc(50% - 1px), #000 calc(50% - 1px), #000 calc(50% + 1px), transparent calc(50% + 1px));
 }
-.assign-cell.cell-assigned { background: var(--blue-lt);  color: var(--blue-dk); }
-.assign-cell.cell-locked   { background: var(--green-lt); color: var(--green-dk); }
 .assign-cell .cell-rm { position: absolute; top: 0; right: 0; z-index: 1; font-size: var(--fs-sm); }
 .assign-cell:hover { opacity: 0.8; }
 .assign-grid .col-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
@@ -2713,7 +2728,7 @@ function renderLabView(container) {
 
       labAssigns.forEach(a => {
         const ta = tasMap[a.ta_id];
-        const chip = el('div', `ta-chip${a.locked?' locked':''}`);
+        const chip = el('div', `ta-chip${a.locked?' locked':''}${ta?.experience!=='experienced'?' inexp':''}`);
         chip.innerHTML = escHtml(ta?.name||a.ta_id);
 
         chip.appendChild(lockBadge(a.locked,
@@ -2815,6 +2830,7 @@ function renderTASummary(container) {
     ta => {
       const taAssigns = S.data.assignments.filter(a => a.ta_id===ta.id);
       const usedSE = taAssigns.reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0);
+      const maxSE = ta.max_se ?? 2.0;
       // Exempt roles are invisible to the solver's concentration objective, so
       // they must not show up in the split count that reports on it either.
       const roleCount = new Set(taAssigns.map(a => a.role_id)
@@ -2822,9 +2838,9 @@ function renderTASummary(container) {
       return [
         strongCell(ta.name),
         ta.experience==='experienced'?'Experienced':'Inexperienced',
-        numCell(ta.max_se ?? 2.0, v => { ta.max_se = v; markDirty(); }),
-        usedSE.toFixed(1),
-        el('span', roleCount > 1 ? 'role-split' : null, String(roleCount)),
+        numCell(maxSE, v => { ta.max_se = v; markDirty(); }),
+        el('span', usedSE < maxSE - 0.001 ? 'stat-box stat-green' : null, usedSE.toFixed(1)),
+        el('span', roleCount > 1 ? 'stat-box stat-red' : null, String(roleCount)),
         taAssigns.map(a => assignChip(
           (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id))),
       ];
@@ -3746,7 +3762,7 @@ function roleListRow(role) {
   // "Allow split" = exempt_from_split: the role sits out the solver's concentration
   // objective entirely — a TA is neither charged for taking it nor has it counted
   // against their other roles. Named for the split penalty it switches off, the
-  // same word TA Summary's .role-split column uses. Meant for duties (grading,
+  // same word TA Summary's Roles column uses for its split count. Meant for duties (grading,
   // stockroom hours) where spreading the work across TAs is fine.
   const exemptLbl = el('label','il-exempt');
   exemptLbl.title = 'Allow this role to be split across TAs — the solver neither penalises '
@@ -4629,7 +4645,7 @@ function renderProctorExamView(container) {
     roleDiv.dataset.examId = exam.id;
     assigns.forEach(a => {
       const ta = tasMap[a.ta_id];
-      const chip = el('div',`ta-chip${a.locked?' locked':''}`);
+      const chip = el('div',`ta-chip${a.locked?' locked':''}${ta?.experience!=='experienced'?' inexp':''}`);
       chip.innerHTML = escHtml(ta?.name||a.ta_id);
       chip.draggable = true;
       chip.addEventListener('dragstart', e => {
@@ -4692,10 +4708,11 @@ function renderProctorTASummary(container) {
       const otherProctoring = ta.outside_proctoring||[];
       const usedPE = taProctorAssigns.reduce((sum,a) => sum + (examsMap[a.exam_id]?.pe_value||0), 0)
         + otherProctoring.reduce((s,op)=>s+(op.pe_value||0), 0);
+      const maxPE = ta.max_pe ?? 2.0;
       return [
         strongCell(ta.name),
-        numCell(ta.max_pe ?? 2.0, v => { ta.max_pe = v; markDirty(); updateProctorPETotals(); }),
-        usedPE.toFixed(1),
+        numCell(maxPE, v => { ta.max_pe = v; markDirty(); updateProctorPETotals(); }),
+        el('span', usedPE < maxPE - 0.001 ? 'stat-box stat-green' : null, usedPE.toFixed(1)),
         (S.data.assignments||[]).filter(a=>a.ta_id===ta.id).map(a => assignChip(
           (displayName(labsMap[a.lab_id])||a.lab_id) + ' / ' + (rolesMap[a.role_id]?.label||a.role_id))),
         taProctorAssigns.map(a => {
@@ -4993,17 +5010,20 @@ function renderAssignGrid(container, cfg) {
 
       const asgn = cfg.findAssignment(ta, col);
       if (asgn) {
-        td.classList.add(asgn.locked ? 'cell-locked' : 'cell-assigned');
-        td.append(
+        const pillCls = `cell-pill ${asgn.locked ? 'cell-locked' : 'cell-assigned'}` +
+          (ta.experience !== 'experienced' ? ' inexp' : '');
+        const pill = el('div', pillCls);
+        pill.append(
           xBtn(() => cfg.onRemove(ta, col), 'Remove assignment', 'cell-rm'),
           lockBadge(asgn.locked),
         );
+        td.appendChild(pill);
         td.title = `${ta.name} → ${col.label}${asgn.locked ? ' [locked]' : ''}`;
         td.onclick = () => cfg.onToggleLock(asgn);
       } else {
         const conflicts = cfg.conflictFn(ta, col, maps);
         if (conflicts.length) {
-          td.classList.add('cell-conflict');
+          td.appendChild(el('div', 'cell-pill cell-conflict'));
           td.title = conflicts.join('; ');
         } else {
           td.title = `Click to assign ${ta.name} → ${col.label}`;
