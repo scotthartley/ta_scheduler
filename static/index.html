@@ -350,7 +350,8 @@ input.w-full, select.w-full, .w-full { width: 100%; }
             padding: 3px 8px; font-size: var(--fs-xs); }
 .ta-chip.locked { background: var(--green-lt); color: var(--green-dk); border-color: rgba(52,199,89,0.5); }
 .ta-chip.inexp { border-style: dashed; }
-.lock-badge { font-size: var(--fs-sm); line-height: 1; opacity: .6; cursor: default; }
+.lock-badge { display: inline-flex; line-height: 1; opacity: .6; cursor: default; }
+.lock-badge svg { width: 13px; height: 13px; display: block; }
 .lock-badge.interactive { cursor: pointer; }
 .lock-badge.interactive:hover { opacity: 1; }
 .add-ta-btn { background: none; border: 1px dashed rgba(0,122,255,0.45); border-radius: var(--r-sm);
@@ -1041,10 +1042,15 @@ function examDateTimeLabel(exam) {
   return `${exam.date} ${fmtRange(exam.start_min || 0, exam.end_min || 0)}`;
 }
 
+// Lucide `lock` / `lock-open` icons (lucide.dev), inlined so they follow
+// currentColor and need no external asset.
+const LOCK_ICON_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const LOCK_ICON_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
+
 // One lock indicator everywhere. Pass onToggle to make it clickable; omit it
 // where an enclosing element already handles the click.
 function lockBadge(locked, onToggle) {
-  const b = el('span', 'lock-badge' + (onToggle ? ' interactive' : ''), locked ? '🔒' : '🔓');
+  const b = el('span', 'lock-badge' + (onToggle ? ' interactive' : ''), locked ? LOCK_ICON_CLOSED : LOCK_ICON_OPEN);
   b.title = onToggle ? (locked ? 'Unlock' : 'Lock') : (locked ? 'Locked' : 'Assigned');
   if (onToggle) b.onclick = e => { e.stopPropagation(); onToggle(); };
   return b;
@@ -5063,7 +5069,7 @@ function renderAssignGrid(container, cfg) {
           xBtn(() => { cfg.unassign(ta, col); commit(); }, 'Remove assignment', 'cell-rm'),
           lockBadge(asgn.locked),
         );
-        // The pill is mostly covered by its × and 🔒 children; neither is itself
+        // The pill is mostly covered by its × and lock-badge children; neither is itself
         // draggable, so the drag source is the pill either way. renderLabView's
         // `e.target !== chip` guard would make this pill nearly ungrabbable.
         pill.draggable = true;
