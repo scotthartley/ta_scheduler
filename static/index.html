@@ -366,6 +366,14 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .role-chips-area.drag-over  { outline: 2px dashed var(--blue);
                                background: var(--blue-lt);
                                border-radius: var(--r-sm); }
+/* Grid views. `outline`, not `border`: .assign-grid is border-collapse:collapse,
+   so a border change on one cell bleeds into its neighbour — the same reason
+   .cell-pill is an inset absolutely-positioned div. */
+.assign-cell .cell-pill[draggable="true"] { cursor: grab; }
+.cell-pill.dragging             { opacity: 0.45; }
+.assign-cell.drag-over          { outline: 2px dashed var(--blue); outline-offset: -2px;
+                                  background: var(--blue-lt); }
+.assign-cell.drag-over-conflict { outline-color: var(--amber-dk); background: var(--amber-lt); }
 
 /* meeting finder */
 .meeting-outer { display: flex; flex-direction: column; gap: 8px; }
@@ -806,6 +814,16 @@ window.S = S;
 
 let _dragAssignment = null; // {assignment, sourceLabId?, sourceRoleId?, sourceTaId?}
 let _dragProctorAssignment = null; // {assignment, sourceExamId}
+let _dragGridAssignment = null; // {ta, col} — the pill being dragged in a Grid view
+
+// A grid cell's own click handler toggles the lock (or assigns); some browsers
+// fire a click on the cell after a drop or an aborted drag, which would flip it
+// silently. Both handlers bail while this is set.
+let _gridDragJustEnded = false;
+function gridDragEnded() {
+  _gridDragJustEnded = true;
+  setTimeout(() => { _gridDragJustEnded = false; }, 0);
+}
 
 // ════════════════════════════════════════════════════════════════
 // UTILS
@@ -4979,7 +4997,15 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
 // ════════════════════════════════════════════════════════════════
 // TA × slot matrix, shared by the Schedule Assignments and Schedule Proctoring tabs.
 // A column carries {key, headHtml, headTitle, label} and everything else is
-// supplied by the caller.
+// supplied by the caller:
+//   findAssignment(ta, col) → the assignment object, or undefined
+//   conflictFn(ta, col, maps) → array of human-readable conflict reasons
+//   assign(ta, col) / unassign(ta, col) → *pure* mutations, no markDirty/render
+//   refresh() → re-render the owning tab
+// The mutators are pure because a drag-and-drop swap performs up to four of
+// them and must produce a single re-render; renderAssignGrid() owns markDirty()
+// and cfg.refresh() for every edit it makes (click-add, click-remove, lock
+// toggle, drop).
 function renderAssignGrid(container, cfg) {
   container.innerHTML = '';
   const cols = cfg.columns;
@@ -5002,6 +5028,19 @@ function renderAssignGrid(container, cfg) {
     hrow.appendChild(th);
   }
 
+  const commit = () => { markDirty(); cfg.refresh(); };
+  // Idempotence guard — a swap can target a coordinate that already holds an
+  // assignment for that TA, and cfg.assign() only ever pushes.
+  const place = (ta, col) => { cfg.unassign(ta, col); cfg.assign(ta, col); };
+
+  // cell → {ta, col, filled, conflict}, for the delegated drag handlers below.
+  const cellInfo = new Map();
+  let hoverCell = null;
+  const clearHover = () => {
+    if (hoverCell) hoverCell.classList.remove('drag-over', 'drag-over-conflict');
+    hoverCell = null;
+  };
+
   // Body rows
   const maps = conflictMaps();
   const tbody = tbl.createTBody();
@@ -5021,12 +5060,33 @@ function renderAssignGrid(container, cfg) {
           (ta.experience !== 'experienced' ? ' inexp' : '');
         const pill = el('div', pillCls);
         pill.append(
-          xBtn(() => cfg.onRemove(ta, col), 'Remove assignment', 'cell-rm'),
+          xBtn(() => { cfg.unassign(ta, col); commit(); }, 'Remove assignment', 'cell-rm'),
           lockBadge(asgn.locked),
         );
+        // The pill is mostly covered by its × and 🔒 children; neither is itself
+        // draggable, so the drag source is the pill either way. renderLabView's
+        // `e.target !== chip` guard would make this pill nearly ungrabbable.
+        pill.draggable = true;
+        pill.addEventListener('dragstart', e => {
+          _dragGridAssignment = { ta, col };
+          // Deferred so the drag image is the un-faded pill.
+          requestAnimationFrame(() => pill.classList.add('dragging'));
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', ta.id);  // Safari/WKWebView needs a payload
+        });
+        pill.addEventListener('dragend', () => {
+          pill.classList.remove('dragging');
+          _dragGridAssignment = null;
+          clearHover();
+          gridDragEnded();
+        });
         td.appendChild(pill);
         td.title = `${ta.name} → ${col.label}${asgn.locked ? ' [locked]' : ''}`;
-        td.onclick = () => cfg.onToggleLock(asgn);
+        td.onclick = () => {
+          if (_gridDragJustEnded) return;  // an aborted drag can fire a trailing click
+          asgn.locked = !asgn.locked; commit();
+        };
+        cellInfo.set(td, { ta, col, filled: true, conflict: false });
       } else {
         const conflicts = cfg.conflictFn(ta, col, maps);
         if (conflicts.length) {
@@ -5035,10 +5095,79 @@ function renderAssignGrid(container, cfg) {
         } else {
           td.title = `Click to assign ${ta.name} → ${col.label}`;
         }
-        td.onclick = () => cfg.onAdd(ta, col);
+        td.onclick = () => {
+          if (_gridDragJustEnded) return;
+          place(ta, col); commit();
+        };
+        cellInfo.set(td, { ta, col, filled: false, conflict: conflicts.length > 0 });
       }
     }
   }
+
+  // Dropping a pill on an empty cell moves the assignment there; on an occupied
+  // cell the two assignments trade columns. Trading the columns and trading the
+  // TAs give the same pair, so the swap is unambiguous — but that also means a
+  // swap sharing a row or a column with the source is a no-op, and is rejected.
+  const dropTarget = cell => {
+    const dest = cell && cellInfo.get(cell);
+    const src = _dragGridAssignment;
+    if (!dest || !src) return null;
+    if (dest.ta === src.ta && dest.col === src.col) return null;
+    if (dest.filled && (dest.ta === src.ta || dest.col === src.col)) return null;
+    return dest;
+  };
+
+  // For an empty target the resulting pair is the one the cell already renders;
+  // for a swap neither resulting pair is, so both are checked on hover.
+  const dropConflicts = dest => dest.filled
+    ? cfg.conflictFn(_dragGridAssignment.ta, dest.col, maps).length > 0 ||
+      cfg.conflictFn(dest.ta, _dragGridAssignment.col, maps).length > 0
+    : dest.conflict;
+
+  // Delegated on the table — a full grid is hundreds of cells.
+  tbl.addEventListener('dragover', e => {
+    if (!_dragGridAssignment) return;
+    const cell = e.target.closest && e.target.closest('td.assign-cell');
+    const dest = dropTarget(cell);
+    if (!dest) { clearHover(); return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (hoverCell !== cell) {
+      clearHover();
+      hoverCell = cell;
+      cell.classList.add('drag-over');
+      if (dropConflicts(dest)) cell.classList.add('drag-over-conflict');
+    }
+  });
+  tbl.addEventListener('dragleave', e => {
+    const cell = e.target.closest && e.target.closest('td.assign-cell');
+    if (!cell || cell.contains(e.relatedTarget)) return;
+    cell.classList.remove('drag-over', 'drag-over-conflict');
+    if (hoverCell === cell) hoverCell = null;
+  });
+  tbl.addEventListener('drop', e => {
+    const cell = e.target.closest && e.target.closest('td.assign-cell');
+    const dest = dropTarget(cell);
+    clearHover();
+    if (!dest) return;
+    e.preventDefault();
+    // Read and clear immediately: the re-render below destroys the pill, so its
+    // dragend may never fire.
+    const src = _dragGridAssignment;
+    _dragGridAssignment = null;
+    gridDragEnded();
+    cfg.unassign(src.ta, src.col);
+    if (dest.filled) {
+      cfg.unassign(dest.ta, dest.col);
+      place(dest.ta, src.col);
+      place(src.ta, dest.col);
+    } else {
+      // The seat lands on the dropped-on coordinate, so a drop into another
+      // row hands it to that row's TA (dest.ta === src.ta for a same-row move).
+      place(dest.ta, dest.col);
+    }
+    commit();
+  });
 
   const gridWrap = el('div','assign-grid-wrap');
   gridWrap.appendChild(tbl);
@@ -5069,16 +5198,14 @@ function renderScheduleGrid(container) {
     findAssignment: (ta, col) => S.data.assignments.find(
       a => a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id),
     conflictFn: (ta, col, maps) => taLabConflictReasons(ta, col.lab, maps),
-    onAdd: (ta, col) => {
+    assign: (ta, col) => {
       S.data.assignments.push({lab_id: col.lab.id, role_id: col.role.id, ta_id: ta.id, locked: true});
-      markDirty(); renderSchedule();
     },
-    onRemove: (ta, col) => {
+    unassign: (ta, col) => {
       S.data.assignments = S.data.assignments.filter(
         a => !(a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id));
-      markDirty(); renderSchedule();
     },
-    onToggleLock: asgn => { asgn.locked = !asgn.locked; markDirty(); renderSchedule(); },
+    refresh: renderSchedule,
   });
 }
 
@@ -5105,17 +5232,15 @@ function renderProctorGrid(container) {
     findAssignment: (ta, col) => (S.data.proctor_assignments || []).find(
       a => a.exam_id === col.exam.id && a.ta_id === ta.id),
     conflictFn: (ta, col, maps) => taExamConflictReasons(ta, col.exam, maps),
-    onAdd: (ta, col) => {
+    assign: (ta, col) => {
       S.data.proctor_assignments = S.data.proctor_assignments || [];
       S.data.proctor_assignments.push({exam_id: col.exam.id, ta_id: ta.id, locked: true});
-      markDirty(); renderProctoring();
     },
-    onRemove: (ta, col) => {
-      S.data.proctor_assignments = S.data.proctor_assignments.filter(
+    unassign: (ta, col) => {
+      S.data.proctor_assignments = (S.data.proctor_assignments || []).filter(
         a => !(a.exam_id === col.exam.id && a.ta_id === ta.id));
-      markDirty(); renderProctoring();
     },
-    onToggleLock: asgn => { asgn.locked = !asgn.locked; markDirty(); renderProctoring(); },
+    refresh: renderProctoring,
   });
 }
 
