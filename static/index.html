@@ -336,10 +336,10 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 .data-table .lab-header td      { background: var(--blue-lt);  font-weight: 700; }
 .data-table .ta-header td       { background: var(--green-lt); font-weight: 700; }
 .data-table .summary-total td   { background: var(--gray-lt); font-weight: 600; color: var(--text2); }
-.data-table .stat-box { display: inline-block; padding: 2px 8px;
+.stat-box { display: inline-block; padding: 2px 8px;
                          border-radius: var(--r-sm); border: 1px solid var(--border); }
-.data-table .stat-box.stat-green { border-color: var(--green); background: var(--green-lt); }
-.data-table .stat-box.stat-red   { border-color: var(--red);   background: var(--red-lt); }
+.stat-box.stat-green { border-color: var(--green); background: var(--green-lt); }
+.stat-box.stat-red   { border-color: var(--red);   background: var(--red-lt); }
 .data-table input { font-size: var(--fs-sm); padding: 2px 4px;
                     border: 1px solid var(--border); border-radius: var(--r-sm); }
 .data-table input[type=number] { width: 60px; }
@@ -514,16 +514,28 @@ input.w-full, select.w-full, .w-full { width: 100%; }
 #sched-ta-summary, #proctor-ta-summary { margin-top: 20px; }
 
 /* ── assignment grid view ────────────────────────────────────── */
-.assign-grid-wrap { display: inline-block; overflow: hidden; }
+/* `clip`, not `hidden` — this wrap sits between the sticky header cells and
+   #schedule-workspace, the ancestor that actually scrolls. `overflow: hidden`
+   still establishes a scroll container (it accepts programmatic scrollTop),
+   which position: sticky resolves against instead of the real scrolling
+   ancestor — since this wrap never itself scrolls, that pins nothing. `clip`
+   gets the same rounded-corner clipping without creating that container, so
+   sticky correctly looks past it to #schedule-workspace. */
+.assign-grid-wrap { display: inline-block; overflow: clip; }
 .assign-grid { border-collapse: collapse; font-size: var(--fs-sm); width: auto; }
 .assign-grid th.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; min-width: 120px;
-                               font-weight: 600; border-right: 1px solid var(--border);
+                               font-weight: 600;
                                position: sticky; left: 0; top: 0; background: var(--gray-lt); z-index: 3; }
-.assign-grid thead th:not(.ta-name-col) { border-left: hidden; border-right: hidden; }
+.assign-grid thead th:not(.ta-name-col):not(.ta-stat-col) { border-left: hidden; border-right: hidden; }
 .assign-grid thead th.col-head { vertical-align: bottom; padding: 4px; position: sticky;
                                   top: 0; background: var(--gray-lt); z-index: 1; }
+.assign-grid thead th.col-stat { vertical-align: middle; padding: 4px 8px; position: sticky;
+                                  top: 0; background: var(--gray-lt); z-index: 1; text-align: center;
+                                  font-size: var(--fs-xs); white-space: nowrap; }
+.assign-grid th.ta-stat-col, .assign-grid td.ta-stat-col { text-align: center; padding: 4px 8px;
+                               white-space: nowrap; border-right: 1px solid var(--border); }
+.assign-grid th.ta-stat-col { font-weight: 600; position: sticky; top: 0; background: var(--gray-lt); z-index: 2; }
 .assign-grid td.ta-name-col { text-align: right; padding: 4px 8px; white-space: nowrap; font-weight: 400;
-                               border-right: 1px solid var(--border);
                                position: sticky; left: 0; background: var(--panel); z-index: 1; }
 .assign-grid td.assign-cell { width: 48px; min-width: 48px; height: 36px; text-align: center;
                                vertical-align: middle; border: 1px solid var(--border);
@@ -5018,6 +5030,11 @@ function taExamConflictReasons(ta, exam, maps = conflictMaps()) {
 // them and must produce a single re-render; renderAssignGrid() owns markDirty()
 // and cfg.refresh() for every edit it makes (click-add, click-remove, lock
 // toggle, drop).
+// Optional tally columns/rows:
+//   rowStatHeader (string, e.g. 'SE') + rowStat(ta) → DOM node — adds a
+//     ta-stat-col right after the name column, showing a per-TA running tally.
+//   colStatRows ([{label, compute(col) → DOM node}]) — adds one header row per
+//     entry above the column headers, showing a per-column tally.
 function renderAssignGrid(container, cfg) {
   container.innerHTML = '';
   const cols = cfg.columns;
@@ -5027,17 +5044,37 @@ function renderAssignGrid(container, cfg) {
   if (!tas.length) { container.innerHTML = '<p style="color:var(--text2)">No TAs configured.</p>'; return; }
 
   const tbl = el('table','assign-grid');
+  const hasRowStat = !!cfg.rowStat;
+  const colStatRows = cfg.colStatRows || [];
 
-  // Header row
-  const hrow = tbl.createTHead().insertRow();
+  const thead = tbl.createTHead();
+
+  // Main header row
+  const hrow = thead.insertRow();
   const thName = el('th','ta-name-col'); thName.textContent = '';
   hrow.appendChild(thName);
+  if (hasRowStat) {
+    const thStat = el('th','ta-stat-col'); thStat.textContent = cfg.rowStatHeader || '';
+    hrow.appendChild(thStat);
+  }
   for (const col of cols) {
     const th = el('th','col-head');
     const div = el('div','col-header', col.headHtml);
     div.title = col.headTitle;
     th.appendChild(div);
     hrow.appendChild(th);
+  }
+
+  // Column-stat rows (e.g. "Filled" / "Experienced"), below the main header row.
+  for (const statRow of colStatRows) {
+    const row = thead.insertRow();
+    row.appendChild(el('th','ta-name-col', escHtml(statRow.label)));
+    if (hasRowStat) row.appendChild(el('th','ta-stat-col'));
+    for (const col of cols) {
+      const th = el('th','col-stat');
+      th.appendChild(statRow.compute(col));
+      row.appendChild(th);
+    }
   }
 
   const commit = () => { markDirty(); cfg.refresh(); };
@@ -5061,6 +5098,12 @@ function renderAssignGrid(container, cfg) {
     const tdName = row.insertCell();
     tdName.className = 'ta-name-col';
     tdName.textContent = ta.name || '(unnamed)';
+
+    if (hasRowStat) {
+      const tdStat = row.insertCell();
+      tdStat.className = 'ta-stat-col';
+      tdStat.appendChild(cfg.rowStat(ta));
+    }
 
     for (const col of cols) {
       const td = row.insertCell();
@@ -5184,10 +5227,33 @@ function renderAssignGrid(container, cfg) {
   const gridWrap = el('div','assign-grid-wrap');
   gridWrap.appendChild(tbl);
   container.appendChild(gridWrap);
+
+  // Sticky header rows stack, and their heights vary (the rotated-label row's
+  // height depends on the longest label), so a fixed CSS `top: 0` only works
+  // for row 1. Now that the table is in the DOM, measure each row's height and
+  // pin every cell to the cumulative offset of the rows above it.
+  let cumTop = 0;
+  for (const row of thead.rows) {
+    for (const cell of row.cells) cell.style.top = cumTop + 'px';
+    cumTop += row.offsetHeight;
+  }
+}
+
+// Per-TA running tally (used/max) — green under cap, red over cap.
+function capStatBox(used, max) {
+  const cls = used > max + 0.001 ? 'stat-red' : used < max - 0.001 ? 'stat-green' : null;
+  return el('span', cls ? `stat-box ${cls}` : null, `${used.toFixed(1)}/${max.toFixed(1)}`);
+}
+
+// Per-column filled-vs-target tally — red understaffed, green overstaffed.
+function targetStatBox(count, target) {
+  const cls = count < target ? 'stat-red' : count > target ? 'stat-green' : null;
+  return el('span', cls ? `stat-box ${cls}` : null, `${count}/${target}`);
 }
 
 function renderScheduleGrid(container) {
   const rolesMap = Object.fromEntries(S.data.roles.map(r=>[r.id,r]));
+  const tasMap = Object.fromEntries(S.data.tas.map(t=>[t.id,t]));
   const columns = [];
   for (const lab of [...S.data.labs].sort((a,b) => (a.name||'').localeCompare(b.name||''))) {
     for (const rq of (lab.roles || [])) {
@@ -5197,6 +5263,8 @@ function renderScheduleGrid(container) {
       const name = displayName(lab);
       columns.push({
         lab, role,
+        count: rq.count,
+        preferred_experienced: rq.preferred_experienced,
         label: `${name} (${role.label})`,
         headTitle: `${name} (${role.label})`,
         headHtml: `${escHtml(name)}<br><span style="opacity:0.7">${escHtml(role.label)}</span>`,
@@ -5218,10 +5286,37 @@ function renderScheduleGrid(container) {
         a => !(a.lab_id === col.lab.id && a.role_id === col.role.id && a.ta_id === ta.id));
     },
     refresh: renderSchedule,
+    rowStatHeader: 'SE',
+    rowStat: ta => {
+      const usedSE = S.data.assignments.filter(a => a.ta_id === ta.id)
+        .reduce((sum,a) => sum + (rolesMap[a.role_id]?.se_value||0), 0);
+      return capStatBox(usedSE, ta.max_se ?? 2.0);
+    },
+    colStatRows: [
+      {
+        label: 'Filled',
+        compute: col => {
+          const count = S.data.assignments.filter(
+            a => a.lab_id === col.lab.id && a.role_id === col.role.id).length;
+          return targetStatBox(count, col.count);
+        },
+      },
+      {
+        label: 'Experienced',
+        compute: col => {
+          if (!(col.preferred_experienced > 0)) return document.createTextNode('—');
+          const expCount = S.data.assignments.filter(
+            a => a.lab_id === col.lab.id && a.role_id === col.role.id
+              && tasMap[a.ta_id]?.experience === 'experienced').length;
+          return targetStatBox(expCount, col.preferred_experienced);
+        },
+      },
+    ],
   });
 }
 
 function renderProctorGrid(container) {
+  const examsMap = Object.fromEntries((S.data.exams||[]).map(e=>[e.id,e]));
   const columns = sortedExamsForProctoring().map(exam => {
     const course = examLabel(exam);
     const dateLabel = exam.tbd ? 'TBD' : (exam.date || '—');
@@ -5252,6 +5347,22 @@ function renderProctorGrid(container) {
       S.data.proctor_assignments = (S.data.proctor_assignments || []).filter(
         a => !(a.exam_id === col.exam.id && a.ta_id === ta.id));
     },
+    rowStatHeader: 'PE',
+    rowStat: ta => {
+      const usedPE = (S.data.proctor_assignments||[]).filter(a => a.ta_id === ta.id)
+        .reduce((sum,a) => sum + (examsMap[a.exam_id]?.pe_value||0), 0)
+        + (ta.outside_proctoring||[]).reduce((s,op) => s+(op.pe_value||0), 0);
+      return capStatBox(usedPE, ta.max_pe ?? 2.0);
+    },
+    colStatRows: [
+      {
+        label: 'Filled',
+        compute: col => {
+          const count = (S.data.proctor_assignments||[]).filter(a => a.exam_id === col.exam.id).length;
+          return targetStatBox(count, col.exam.proctor_count || 1);
+        },
+      },
+    ],
     refresh: renderProctoring,
   });
 }
