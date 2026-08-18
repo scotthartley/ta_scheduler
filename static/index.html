@@ -2742,7 +2742,10 @@ function renderLabView(container) {
       tr.appendChild(timeTd);
       const roleTd = el('td'); roleTd.innerHTML = escHtml(role?.label||rr.role_id);
       tr.appendChild(roleTd);
-      tr.appendChild(el('td',null,`${labAssigns.length}/${rr.count}`));
+      const countTd = el('td');
+      countTd.appendChild(el('span', labAssigns.length < rr.count ? 'stat-box stat-red' : null,
+        `${labAssigns.length}/${rr.count}`));
+      tr.appendChild(countTd);
       const expAssigned = labAssigns.filter(a => tasMap[a.ta_id]?.experience==='experienced').length;
       const expTd = el('td');
       if (rr.preferred_experienced>0) {
@@ -4668,7 +4671,10 @@ function renderProctorExamView(container) {
 
     const assigns = (S.data.proctor_assignments||[]).filter(a=>a.exam_id===exam.id)
       .sort((a,b) => (tasMap[a.ta_id]?.name||'').localeCompare(tasMap[b.ta_id]?.name||''));
-    tr.appendChild(el('td',null,`${assigns.length}/${exam.proctor_count||1}`));
+    const countTd = el('td');
+    countTd.appendChild(el('span', assigns.length < (exam.proctor_count||1) ? 'stat-box stat-red' : null,
+      `${assigns.length}/${exam.proctor_count||1}`));
+    tr.appendChild(countTd);
     tr.appendChild(el('td',null,(exam.pe_value||0).toFixed(1)));
 
     const assignCell = el('td');
