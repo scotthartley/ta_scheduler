@@ -3532,7 +3532,19 @@ function renderSummary() {
       btn.onclick = () => {
         tas.forEach((ta, i) => {
           const href = taMailtoHref(ta, taSummaries.get(ta.id), scope);
-          setTimeout(() => window.open(href, '_blank'), i * 180);
+          // pywebview's WKWebView only hands mailto: off to the OS mail app for
+          // real link-activation navigations, not window.open() (see mailtoBtn
+          // above) — so click a real <a target="_blank">, not window.open().
+          setTimeout(() => {
+            const a = el('a');
+            a.href = href;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.style.display = 'none';
+            document.body.append(a);
+            a.click();
+            a.remove();
+          }, i * 180);
         });
       };
     } else {
